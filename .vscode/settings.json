@@ -1,0 +1,14 @@
+{
+  "github.copilot.chat.byok.ollamaEndpoint": "http://localhost:11435",
+  "github.copilot.chat.byok.enabled": true,
+  "github.copilot.chat.byok.model": "qwen2.5:7b-instruct-q4_K_M",
+  "github.copilot.advanced": {
+    "debug.overrideEngine": "copilot-chat"
+  },
+  "github.copilot.enable": {
+    "*": true,
+    "yaml": true,
+    "plaintext": true,
+    "markdown": true
+  }
+}
