@@ -1,5 +1,5 @@
-import { N8nClient, N8nWorkflowData, N8nExecution } from './n8n-client';
-import { FlowiseClient, FlowiseChatflowData, FlowiseResponse } from './flowise-client';
+import { N8nClient, N8nWorkflowData } from './n8n-client';
+import { FlowiseClient, FlowiseChatflowData } from './flowise-client';
 import { WorkflowInstance } from '@/types/workflows';
 import { WorkflowInstanceService } from './workflow-instance-service';
 

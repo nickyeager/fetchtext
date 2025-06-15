@@ -12,14 +12,13 @@ import {
   MessageSquare, 
   Brain, 
   FileText, 
-  Calendar,
   Mail,
-  Settings,
   Zap,
   GitBranch,
   Filter,
   Timer,
-  Code
+  Code,
+  Play
 } from 'lucide-react';
 
 export interface NodeTemplate {

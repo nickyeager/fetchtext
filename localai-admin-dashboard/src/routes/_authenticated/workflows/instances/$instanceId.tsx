@@ -19,9 +19,7 @@ import {
   Activity,
   FileText,
   RefreshCw,
-  ExternalLink,
-  Edit,
-  MonitorPlay
+  ExternalLink
 } from 'lucide-react';
 import { WorkflowInstance } from '@/types/workflows';
 import { WorkflowInstanceService } from '@/lib/workflow-instance-service';
@@ -101,7 +99,7 @@ function WorkflowInstanceEditorPage() {
       setSaving(true);
       setDeploymentLogs(['Starting deployment...']);
       
-      const deployedId = await workflowClient.deployInstance(instance);
+      await workflowClient.deployInstance(instance);
       
       setDeploymentLogs(prev => [...prev, 'Deployment completed successfully']);
       toast.success('Instance deployed successfully');
