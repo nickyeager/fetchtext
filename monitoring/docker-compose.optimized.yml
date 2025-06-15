@@ -1,0 +1,230 @@
+version: '3.8'
+
+# Optimized LocalAI Monitoring Stack
+# Eliminates redundancies identified in analysis
+
+services:
+  # Prometheus - Metrics Collection (Core)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: localai-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./metrics/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./metrics/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - monitoring
+
+  # Grafana - Visualization Dashboard (Core)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: localai-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboards/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # cAdvisor - Container Metrics (Optimized)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: localai-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8084:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    networks:
+      - monitoring
+
+  # Node Exporter - System Metrics (Optimized)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: localai-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+
+  # AlertManager - Alert Routing (Core)
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: localai-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alerts/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    networks:
+      - monitoring
+
+  # Loki - Log Aggregation (Single log solution)
+  loki:
+    image: grafana/loki:latest
+    container_name: localai-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./logs/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  # Promtail - Log Collector
+  promtail:
+    image: grafana/promtail:latest
+    container_name: localai-promtail
+    restart: unless-stopped
+    volumes:
+      - ./logs/promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitoring
+    depends_on:
+      - loki
+
+  # Uptime Kuma - External Monitoring (Keep)
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: localai-uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3003:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - monitoring
+
+  # Portainer - Docker Management (Keep)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: localai-portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - monitoring
+
+  # Watchtower - Container Updates (Single update solution)
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: localai-watchtower
+    restart: unless-stopped
+    environment:
+      - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_MONITOR_ONLY=true  # Set to false to enable auto-updates
+      - WATCHTOWER_NOTIFICATIONS=slack
+      - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+
+  # Template Gallery Metrics Collector (New for our integration)
+  template-metrics:
+    image: alpine:latest
+    container_name: localai-template-metrics
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache curl jq &&
+        while true; do
+          # Collect N8N workflow metrics
+          curl -s http://n8n:5678/rest/workflows 2>/dev/null | jq -r ".data[] | .id + \",\" + .name" | 
+          while IFS=, read id name; do
+            echo "n8n_workflow_exists{id=\"$$id\",name=\"$$name\"} 1" >> /tmp/metrics.prom
+          done
+          
+          # Collect Flowise chatflow metrics  
+          curl -s http://flowise:3001/api/v1/chatflows 2>/dev/null | jq -r ".[].id" |
+          while read id; do
+            echo "flowise_chatflow_exists{id=\"$$id\"} 1" >> /tmp/metrics.prom
+          done
+          
+          # Serve metrics for Prometheus scraping
+          echo "# HELP template_gallery_metrics LocalAI Template Gallery Metrics" > /tmp/metrics.prom.tmp
+          echo "# TYPE template_gallery_metrics counter" >> /tmp/metrics.prom.tmp
+          cat /tmp/metrics.prom >> /tmp/metrics.prom.tmp 2>/dev/null || true
+          mv /tmp/metrics.prom.tmp /tmp/metrics.prom
+          
+          sleep 60
+        done &
+        
+        # Simple HTTP server for metrics endpoint
+        while true; do
+          echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n$(cat /tmp/metrics.prom 2>/dev/null || echo \"# No metrics yet\")" | nc -l -p 8080
+        done'
+    networks:
+      - monitoring
+    expose:
+      - "8080"
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  loki_data:
+  uptime_kuma_data:
+  portainer_data:
+
+networks:
+  monitoring:
+    driver: bridge
+
+# Note: Removed redundant services:
+# - elasticsearch/kibana (replaced by loki)
+# - netdata (replaced by cadvisor + node-exporter)
+# - ouroboros (replaced by watchtower)
+# - health-monitor (using Docker health + uptime-kuma)
+# - jaeger (can be added later if distributed tracing needed)

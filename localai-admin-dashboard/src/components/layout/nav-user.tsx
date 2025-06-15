@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   BadgeCheck,
   Bell,
@@ -7,6 +7,8 @@ import {
   LogOut,
   Sparkles,
 } from 'lucide-react'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -34,6 +36,22 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    try {
+      console.log('handle sign out')
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        toast.error('Error signing out: ' + error.message)
+      } else {
+        toast.success('Successfully signed out')
+        navigate({ to: '/sign-in' })
+      }
+    } catch (error) {
+      toast.error('Unexpected error during sign out')
+    }
+  }
 
   return (
     <SidebarMenu>
@@ -102,7 +120,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
               <LogOut />
               Log out
             </DropdownMenuItem>
