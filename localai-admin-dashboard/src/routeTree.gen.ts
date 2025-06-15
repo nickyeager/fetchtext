@@ -43,6 +43,7 @@ import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authen
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdImport } from './routes/_authenticated/workflows/instances/$instanceId'
+import { Route as AuthenticatedWorkflowsInstancestestsInstanceIdTestImport } from './routes/_authenticated/workflows/instances/__tests__/instanceId.test'
 
 // Create/Update Routes
 
@@ -245,6 +246,13 @@ const AuthenticatedWorkflowsInstancesInstanceIdRoute =
   AuthenticatedWorkflowsInstancesInstanceIdImport.update({
     id: '/workflows/instances/$instanceId',
     path: '/workflows/instances/$instanceId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+
+const AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute =
+  AuthenticatedWorkflowsInstancestestsInstanceIdTestImport.update({
+    id: '/workflows/instances/__tests__/instanceId/test',
+    path: '/workflows/instances/instanceId/test',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
@@ -476,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkflowsInstancesIndexImport
       parentRoute: typeof AuthenticatedRouteImport
     }
+    '/_authenticated/workflows/instances/__tests__/instanceId/test': {
+      id: '/_authenticated/workflows/instances/__tests__/instanceId/test'
+      path: '/workflows/instances/instanceId/test'
+      fullPath: '/workflows/instances/instanceId/test'
+      preLoaderRoute: typeof AuthenticatedWorkflowsInstancestestsInstanceIdTestImport
+      parentRoute: typeof AuthenticatedRouteImport
+    }
   }
 }
 
@@ -515,6 +530,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWorkflowsInstancesInstanceIdRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdRoute
   AuthenticatedWorkflowsInstancesIndexRoute: typeof AuthenticatedWorkflowsInstancesIndexRoute
+  AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute: typeof AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -530,6 +546,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedWorkflowsInstancesInstanceIdRoute,
   AuthenticatedWorkflowsInstancesIndexRoute:
     AuthenticatedWorkflowsInstancesIndexRoute,
+  AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute:
+    AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -610,6 +628,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRoute
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
+  '/workflows/instances/instanceId/test': typeof AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute
 }
 
 export interface FileRoutesByTo {
@@ -641,6 +660,7 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRoute
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
+  '/workflows/instances/instanceId/test': typeof AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute
 }
 
 export interface FileRoutesById {
@@ -677,6 +697,7 @@ export interface FileRoutesById {
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRoute
   '/_authenticated/workflows/instances/': typeof AuthenticatedWorkflowsInstancesIndexRoute
+  '/_authenticated/workflows/instances/__tests__/instanceId/test': typeof AuthenticatedWorkflowsInstancestestsInstanceIdTestRoute
 }
 
 export interface FileRouteTypes {
@@ -713,6 +734,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/workflows/instances/$instanceId'
     | '/workflows/instances'
+    | '/workflows/instances/instanceId/test'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/clerk'
@@ -743,6 +765,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/workflows/instances/$instanceId'
     | '/workflows/instances'
+    | '/workflows/instances/instanceId/test'
   id:
     | '__root__'
     | '/_authenticated'
@@ -777,6 +800,7 @@ export interface FileRouteTypes {
     | '/_authenticated/users/'
     | '/_authenticated/workflows/instances/$instanceId'
     | '/_authenticated/workflows/instances/'
+    | '/_authenticated/workflows/instances/__tests__/instanceId/test'
   fileRoutesById: FileRoutesById
 }
 
@@ -846,7 +870,8 @@ export const routeTree = rootRoute
         "/_authenticated/templates/",
         "/_authenticated/users/",
         "/_authenticated/workflows/instances/$instanceId",
-        "/_authenticated/workflows/instances/"
+        "/_authenticated/workflows/instances/",
+        "/_authenticated/workflows/instances/__tests__/instanceId/test"
       ]
     },
     "/clerk": {
@@ -978,6 +1003,10 @@ export const routeTree = rootRoute
     },
     "/_authenticated/workflows/instances/": {
       "filePath": "_authenticated/workflows/instances/index.tsx",
+      "parent": "/_authenticated"
+    },
+    "/_authenticated/workflows/instances/__tests__/instanceId/test": {
+      "filePath": "_authenticated/workflows/instances/__tests__/instanceId.test.tsx",
       "parent": "/_authenticated"
     }
   }
