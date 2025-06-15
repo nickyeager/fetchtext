@@ -14,10 +14,12 @@ import {
   IconPalette,
   IconServerOff,
   IconSettings,
+  IconTemplate,
   IconTool,
   IconUserCog,
   IconUserOff,
   IconUsers,
+  IconGitBranch,
 } from '@tabler/icons-react'
 import { AudioWaveform, Command, GalleryVerticalEnd } from 'lucide-react'
 import { ClerkLogo } from '@/assets/clerk-logo'
@@ -54,6 +56,16 @@ export const sidebarData: SidebarData = {
           title: 'Dashboard',
           url: '/',
           icon: IconLayoutDashboard,
+        },
+        {
+          title: 'Templates',
+          url: '/templates',
+          icon: IconTemplate,
+        },
+        {
+          title: 'Workflows',
+          url: '/workflows/instances',
+          icon: IconGitBranch,
         },
         {
           title: 'Tasks',

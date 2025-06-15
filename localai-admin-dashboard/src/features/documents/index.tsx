@@ -6,9 +6,10 @@ import TemplateEditor from './components/TemplateEditor'
 import { FileText, Layout, Eye, Upload } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import type { User } from '@supabase/supabase-js'
 
 export default function DocumentsFeature() {
-  const [user, setUser] = useState<unknown>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [activeTab, setActiveTab] = useState<'documents' | 'templates' | 'outputs'>('documents')
   const [documents, setDocuments] = useState<Document[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
@@ -53,7 +54,7 @@ export default function DocumentsFeature() {
       const { data: templatesData } = await supabase
         .from('templates')
         .select('*')
-        .or(`created_by.eq.${user?.id},is_public.eq.true`)
+        .or(user?.id ? `created_by.eq.${user.id},is_public.eq.true` : 'is_public.eq.true')
         .order('created_at', { ascending: false })
       
       if (templatesData) setTemplates(templatesData)

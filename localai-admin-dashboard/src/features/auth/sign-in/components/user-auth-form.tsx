@@ -2,8 +2,9 @@ import { HTMLAttributes, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { IconBrandFacebook, IconBrandGithub } from '@tabler/icons-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
+import { supabase } from '@/lib/supabase'
 
 type UserAuthFormProps = HTMLAttributes<HTMLFormElement>
 
@@ -36,6 +38,8 @@ const formSchema = z.object({
 
 export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/(auth)/sign-in' })
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -45,14 +49,28 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
     },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
-    // eslint-disable-next-line no-console
-    console.log(data)
+    try {
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      })
 
-    setTimeout(() => {
+      if (error) {
+        form.setError('password', {
+          message: error.message,
+        })
+        toast.error('Login failed: ' + error.message)
+      } else if (authData.user) {
+        toast.success('Successfully logged in!')
+        // Redirect to the intended page or dashboard
+        const redirectTo = (search as any)?.redirect || '/'
+        navigate({ to: redirectTo })
+      }
+    } finally {
       setIsLoading(false)
-    }, 3000)
+    }
   }
 
   return (

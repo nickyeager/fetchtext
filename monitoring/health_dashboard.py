@@ -2,6 +2,7 @@
 """
 LocalAI Stack Web Monitoring Dashboard
 Real-time web-based dashboard for monitoring Docker container health and metrics.
+Enhanced with template gallery integration and optimized monitoring.
 """
 
 import json
@@ -18,6 +19,8 @@ import weakref
 import signal
 import sys
 import os
+import requests
+from collections import defaultdict, deque
 
 class WebMonitoringDashboard:
     def __init__(self, port=8888):
@@ -27,24 +30,179 @@ class WebMonitoringDashboard:
         self.monitoring_task = None
         self.app = None
         
-        # Expected containers for LocalAI stack
-        self.expected_containers = {
-            'n8n': {'ports': [5679], 'health_endpoint': 'http://localhost:5679', 'category': 'workflow'},
-            'ollama': {'ports': [11435], 'health_endpoint': 'http://localhost:11435/api/tags', 'category': 'ai'},
-            'open-webui': {'ports': [8080], 'health_endpoint': 'http://localhost:8080', 'category': 'ui'},
-            'flowise': {'ports': [3001], 'health_endpoint': 'http://localhost:3001', 'category': 'ai'},
-            'qdrant': {'ports': [6333, 6334], 'health_endpoint': 'http://localhost:6333', 'category': 'database'},
-            'localai-redis': {'ports': [6380], 'health_endpoint': None, 'category': 'database'},
-            'searxng': {'ports': [8082], 'health_endpoint': 'http://localhost:8082', 'category': 'search'},
-            'caddy': {'ports': [80, 443], 'health_endpoint': 'http://localhost:80', 'category': 'proxy'},
-            'localai-neo4j-1': {'ports': [7474, 7687], 'health_endpoint': 'http://localhost:7474', 'category': 'database'},
-            'localai-postgres-1': {'ports': [5433], 'health_endpoint': None, 'category': 'database'},
-            'localai-clickhouse-1': {'ports': [8123, 9100, 9009], 'health_endpoint': 'http://localhost:8123/ping', 'category': 'database'},
-            'localai-minio-1': {'ports': [9010, 9011], 'health_endpoint': 'http://localhost:9011', 'category': 'storage'},
-            'localai-langfuse-web-1': {'ports': [3000], 'health_endpoint': 'http://localhost:3000', 'category': 'monitoring'},
-            'localai-langfuse-worker-1': {'ports': [3030], 'health_endpoint': None, 'category': 'monitoring'},
+        # Template gallery metrics
+        self.template_metrics = {
+            'n8n_workflows': {},
+            'flowise_chatflows': {},
+            'template_usage': defaultdict(int),
+            'last_template_check': None
         }
-    
+        
+        # Resource thresholds for alerts
+        self.thresholds = {
+            'cpu_warning': 70,
+            'cpu_critical': 85,
+            'memory_warning': 75,
+            'memory_critical': 90,
+            'disk_warning': 80,
+            'disk_critical': 95
+        }
+        
+        # Expected containers for LocalAI stack (consolidated from container_monitor.py)
+        self.expected_containers = {
+            'n8n': {'ports': [5679], 'health_endpoint': '/healthz', 'category': 'workflow'},
+            'ollama': {'ports': [11435], 'health_endpoint': '/api/tags', 'category': 'ai'},
+            'open-webui': {'ports': [8080], 'health_endpoint': '/health', 'category': 'ui'},
+            'flowise': {'ports': [3001], 'health_endpoint': '/api/v1/ping', 'category': 'ai'},
+            'qdrant': {'ports': [6333, 6334], 'health_endpoint': '/health', 'category': 'database'},
+            'localai-redis': {'ports': [6380], 'health_endpoint': None, 'category': 'database'},
+            'searxng': {'ports': [8082], 'health_endpoint': '/config', 'category': 'search'},
+            'caddy': {'ports': [80, 443], 'health_endpoint': '/health', 'category': 'proxy'},
+            'localai-neo4j-1': {'ports': [7474, 7687], 'health_endpoint': '/browser/', 'category': 'database'},
+            'localai-postgres-1': {'ports': [5433], 'health_endpoint': None, 'category': 'database'},
+            'localai-clickhouse-1': {'ports': [8123, 9100, 9009], 'health_endpoint': '/ping', 'category': 'database'},
+            'localai-minio-1': {'ports': [9010, 9011], 'health_endpoint': '/minio/health/live', 'category': 'storage'},
+            'localai-langfuse-web-1': {'ports': [3000], 'health_endpoint': '/api/public/health', 'category': 'monitoring'},
+            'localai-langfuse-worker-1': {'ports': [3030], 'health_endpoint': None, 'category': 'monitoring'},
+            # Template Gallery specific monitoring
+            'localai-admin-dashboard': {'ports': [5174], 'health_endpoint': '/health', 'category': 'template_gallery'}
+        }
+
+    async def collect_template_metrics(self):
+        """Collect metrics from template services (N8N, Flowise)"""
+        try:
+            # N8N workflow metrics
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://localhost:5679/rest/workflows', timeout=5) as resp:
+                        if resp.status == 200:
+                            workflows = await resp.json()
+                            self.template_metrics['n8n_workflows'] = {
+                                'total': len(workflows.get('data', [])),
+                                'active': len([w for w in workflows.get('data', []) if w.get('active', False)]),
+                                'last_updated': datetime.now().isoformat()
+                            }
+            except Exception as e:
+                self.template_metrics['n8n_workflows']['error'] = str(e)
+
+            # Flowise chatflow metrics  
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get('http://localhost:3001/api/v1/chatflows', timeout=5) as resp:
+                        if resp.status == 200:
+                            chatflows = await resp.json()
+                            self.template_metrics['flowise_chatflows'] = {
+                                'total': len(chatflows),
+                                'categories': len(set(cf.get('category', 'default') for cf in chatflows)),
+                                'last_updated': datetime.now().isoformat()
+                            }
+            except Exception as e:
+                self.template_metrics['flowise_chatflows']['error'] = str(e)
+
+            self.template_metrics['last_template_check'] = datetime.now().isoformat()
+            
+        except Exception as e:
+            print(f"Error collecting template metrics: {e}")
+
+    async def get_enhanced_container_metrics(self, container):
+        """Enhanced container metrics with resource monitoring"""
+        try:
+            container.reload()
+            stats = container.stats(stream=False)
+            
+            # Calculate CPU percentage
+            cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
+            system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
+            cpu_percent = (cpu_delta / system_delta) * len(stats['cpu_stats']['cpu_usage']['percpu_usage']) * 100 if system_delta > 0 else 0
+            
+            # Calculate memory usage
+            memory_usage = stats['memory_stats']['usage']
+            memory_limit = stats['memory_stats']['limit']
+            memory_percent = (memory_usage / memory_limit) * 100 if memory_limit > 0 else 0
+            
+            # Network I/O
+            networks = stats.get('networks', {})
+            rx_bytes = sum(net['rx_bytes'] for net in networks.values())
+            tx_bytes = sum(net['tx_bytes'] for net in networks.values())
+            
+            # Block I/O
+            blkio_stats = stats.get('blkio_stats', {})
+            read_bytes = sum(stat['value'] for stat in blkio_stats.get('io_service_bytes_recursive', []) if stat['op'] == 'Read')
+            write_bytes = sum(stat['value'] for stat in blkio_stats.get('io_service_bytes_recursive', []) if stat['op'] == 'Write')
+
+            return {
+                'name': container.name,
+                'status': container.status,
+                'image': container.image.tags[0] if container.image.tags else 'unknown',
+                'cpu_percent': round(cpu_percent, 2),
+                'memory_usage_mb': round(memory_usage / 1024 / 1024, 2),
+                'memory_percent': round(memory_percent, 2),
+                'network_rx_mb': round(rx_bytes / 1024 / 1024, 2),
+                'network_tx_mb': round(tx_bytes / 1024 / 1024, 2),
+                'block_read_mb': round(read_bytes / 1024 / 1024, 2),
+                'block_write_mb': round(write_bytes / 1024 / 1024, 2),
+                'pids': stats.get('pids_stats', {}).get('current', 0),
+                'restart_count': container.attrs['RestartCount'],
+                'health_status': self.get_container_health(container),
+                'ports': self.get_container_ports(container),
+                'category': self.expected_containers.get(container.name, {}).get('category', 'unknown'),
+                'alerts': self.generate_container_alerts(container.name, cpu_percent, memory_percent)
+            }
+            
+        except Exception as e:
+            return {'name': container.name, 'error': str(e)}
+
+    def get_container_health(self, container):
+        """Get container health status"""
+        health = container.attrs.get('State', {}).get('Health', {})
+        if health:
+            return health.get('Status', 'unknown')
+        return 'no-healthcheck'
+
+    def get_container_ports(self, container):
+        """Get container port mappings"""
+        ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
+        port_list = []
+        for internal, external in ports.items():
+            if external:
+                port_list.append(f"{external[0]['HostPort']}:{internal.split('/')[0]}")
+        return port_list
+
+    def generate_container_alerts(self, name, cpu_percent, memory_percent):
+        """Generate alerts for container resource usage"""
+        alerts = []
+        
+        if cpu_percent > self.thresholds['cpu_critical']:
+            alerts.append(f"🔥 CRITICAL: {name} CPU usage critical ({cpu_percent:.1f}%)")
+        elif cpu_percent > self.thresholds['cpu_warning']:
+            alerts.append(f"⚠️ WARNING: {name} CPU usage high ({cpu_percent:.1f}%)")
+            
+        if memory_percent > self.thresholds['memory_critical']:
+            alerts.append(f"🔥 CRITICAL: {name} memory usage critical ({memory_percent:.1f}%)")
+        elif memory_percent > self.thresholds['memory_warning']:
+            alerts.append(f"⚠️ WARNING: {name} memory usage high ({memory_percent:.1f}%)")
+            
+        return alerts
+
+    async def check_service_health(self, service_name, config):
+        """Check individual service health endpoint"""
+        if not config.get('health_endpoint'):
+            return {'status': 'no-check', 'message': 'No health endpoint configured'}
+            
+        port = config['ports'][0] if config['ports'] else 80
+        url = f"http://localhost:{port}{config['health_endpoint']}"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=5) as resp:
+                    return {
+                        'status': 'healthy' if resp.status == 200 else 'unhealthy',
+                        'status_code': resp.status,
+                        'response_time_ms': resp.headers.get('X-Response-Time', 'unknown')
+                    }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
     async def get_container_metrics(self):
         """Get metrics for all containers"""
         try:
@@ -129,8 +287,12 @@ class WebMonitoringDashboard:
             # Health endpoint check
             health_endpoint = self.expected_containers.get(container.name, {}).get('health_endpoint')
             if health_endpoint:
-                endpoint_status = await self.check_health_endpoint(health_endpoint)
-                container_info['endpoint_health'] = endpoint_status
+                expected_ports = self.expected_containers.get(container.name, {}).get('ports', [])
+                if expected_ports:
+                    port = expected_ports[0]
+                    full_url = f"http://localhost:{port}{health_endpoint}"
+                    endpoint_status = await self.check_health_endpoint(full_url)
+                    container_info['endpoint_health'] = endpoint_status
             
             return container_info
             
@@ -304,6 +466,49 @@ class WebMonitoringDashboard:
         """Serve the main dashboard HTML"""
         html_content = self.get_dashboard_html()
         return web.Response(text=html_content, content_type='text/html')
+
+    async def metrics_api_handler(self, request):
+        """API endpoint for metrics data"""
+        try:
+            metrics = await self.get_container_metrics()
+            
+            # Add template metrics
+            await self.collect_template_metrics()
+            metrics['template_gallery'] = self.template_metrics
+            
+            return web.json_response(metrics)
+        except Exception as e:
+            return web.json_response({'error': str(e)}, status=500)
+
+    async def health_api_handler(self, request):
+        """API endpoint for health status"""
+        try:
+            containers = self.client.containers.list(all=True)
+            localai_containers = [c for c in containers if any(name in c.name for name in self.expected_containers.keys())]
+            
+            health_status = {
+                'timestamp': datetime.now().isoformat(),
+                'total_containers': len(localai_containers),
+                'running_containers': len([c for c in localai_containers if c.status == 'running']),
+                'healthy_containers': 0,
+                'services': {}
+            }
+            
+            for container in localai_containers:
+                container_name = container.name
+                health = self.get_container_health(container)
+                if health == 'healthy':
+                    health_status['healthy_containers'] += 1
+                
+                health_status['services'][container_name] = {
+                    'status': container.status,
+                    'health': health,
+                    'category': self.expected_containers.get(container_name, {}).get('category', 'unknown')
+                }
+            
+            return web.json_response(health_status)
+        except Exception as e:
+            return web.json_response({'error': str(e)}, status=500)
     
     def get_dashboard_html(self):
         """Generate the HTML dashboard"""
@@ -547,6 +752,7 @@ class WebMonitoringDashboard:
                     'workflow': '🔄 Workflow',
                     'ai': '🤖 AI Services', 
                     'ui': '🎨 User Interface',
+                    'template_gallery': '🎨 Template Gallery',
                     'database': '🗄️ Databases',
                     'storage': '💾 Storage',
                     'monitoring': '📊 Monitoring',
@@ -696,6 +902,8 @@ class WebMonitoringDashboard:
         # Routes
         self.app.router.add_get('/', self.static_handler)
         self.app.router.add_get('/ws', self.websocket_handler)
+        self.app.router.add_get('/api/metrics', self.metrics_api_handler)
+        self.app.router.add_get('/api/health', self.health_api_handler)
         
         # Add CORS to all routes
         for route in list(self.app.router.routes()):
