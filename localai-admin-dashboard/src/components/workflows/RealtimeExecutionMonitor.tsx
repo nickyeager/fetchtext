@@ -13,7 +13,6 @@ import {
   XCircle, 
   Play, 
   Pause, 
-  RotateCcw,
   Wifi,
   WifiOff,
   TrendingUp,

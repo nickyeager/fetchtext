@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from   const handleExecutionClick = (execution: WorkflowExecution) => {ard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -7,12 +7,9 @@ import {
   Activity, 
   Clock, 
   CheckCircle, 
-  AlertCircle, 
   XCircle, 
-  Play, 
   Pause, 
   RotateCcw,
-  ExternalLink,
   Filter,
   RefreshCw
 } from 'lucide-react';
@@ -118,29 +115,6 @@ export function WorkflowExecutionMonitor({
       default:
         return <Clock className="w-4 h-4 text-gray-500" />;
     }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      running: 'default',
-      success: 'default',
-      error: 'destructive',
-      cancelled: 'secondary',
-      waiting: 'outline',
-    } as const;
-
-    return (
-      <Badge variant={variants[status as keyof typeof variants] || 'outline'} className="gap-1">
-        {getStatusIcon(status)}
-        {status}
-      </Badge>
-    );
-  };
-
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
   };
 
   const handleExecutionClick = (execution: WorkflowExecution) => {

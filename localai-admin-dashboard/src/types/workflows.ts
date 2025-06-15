@@ -93,8 +93,26 @@ export interface WorkflowExecution {
   outputData?: any;
   errorMessage?: string;
   executionTimeMs?: number;
+  duration?: number; // Duration in milliseconds
   startedAt: string;
   finishedAt?: string;
+  triggeredBy?: 'manual' | 'schedule' | 'webhook' | 'api';
+  triggerData?: any;
+  metrics?: {
+    totalNodes: number;
+    completedNodes: number;
+    failedNodes: number;
+  };
+  nodeExecutions?: Array<{
+    nodeId: string;
+    nodeName: string;
+    status: 'waiting' | 'running' | 'success' | 'error' | 'skipped';
+    startedAt?: string;
+    finishedAt?: string;
+    duration?: number;
+    errorMessage?: string;
+    outputData?: any;
+  }>;
 }
 
 export interface TemplateRating {

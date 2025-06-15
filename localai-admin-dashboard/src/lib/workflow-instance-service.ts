@@ -15,7 +15,11 @@ export class WorkflowInstanceService {
       throw new Error('User must be authenticated to view instances');
     }
 
-    const targetUserId = userId || user.id;
+    const targetUserId = userId || user?.id;
+
+    if (!targetUserId) {
+      throw new Error('No valid user ID available');
+    }
 
     const { data, error } = await supabase
       .from('workflow_instances')

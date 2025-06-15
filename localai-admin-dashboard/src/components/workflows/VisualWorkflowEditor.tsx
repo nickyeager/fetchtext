@@ -1,13 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
   Settings, 
-  Play, 
-  Pause, 
   Plus, 
   Trash2, 
   Copy,
@@ -59,7 +56,6 @@ export function VisualWorkflowEditor({
   const [nodes, setNodes] = useState<WorkflowNode[]>(workflow.nodes);
   const [connections, setConnections] = useState<WorkflowConnection[]>(workflow.connections);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
-  const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -432,7 +428,7 @@ function WorkflowNodeComponent({
   onClick,
   onDelete,
   onDuplicate,
-  onUpdateData,
+  onUpdateData: _onUpdateData, // Mark as intentionally unused for now
 }: WorkflowNodeComponentProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
