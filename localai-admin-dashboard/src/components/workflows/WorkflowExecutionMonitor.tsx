@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from   const handleExecutionClick = (execution: WorkflowExecution) => {ard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -99,23 +99,6 @@ export function WorkflowExecutionMonitor({
 
     setFilteredExecutions(filtered);
   }, [executions, statusFilter, workflowId]);
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running':
-        return <Activity className="w-4 h-4 text-blue-500" />;
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'cancelled':
-        return <XCircle className="w-4 h-4 text-gray-500" />;
-      case 'waiting':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
-      default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
-    }
-  };
 
   const handleExecutionClick = (execution: WorkflowExecution) => {
     setSelectedExecution(execution);
