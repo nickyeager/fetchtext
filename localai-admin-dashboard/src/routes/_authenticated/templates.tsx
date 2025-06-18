@@ -4,19 +4,19 @@ import { TemplatePreviewModal } from '@/components/templates/TemplatePreviewModa
 import { CreateTemplateDialog } from '@/components/templates/CreateTemplateDialog';
 import { WorkflowTemplate } from '@/types/workflows';
 import { TemplateService } from '@/lib/template-service';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 
 export const Route = createFileRoute('/_authenticated/templates')({
-  component: () => <div>TEST: Templates route is working!</div>,
+  component: TemplateGalleryPage,
 });
 
-function TemplateGalleryPage() {
+export function TemplateGalleryPage() {
+  const navigate = useNavigate();
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [refreshTemplates, setRefreshTemplates] = useState<(() => Promise<void>) | null>(null);
-  // const router = useRouter(); // Assuming you have access to the router instance
 
   const handlePreviewTemplate = useCallback((template: WorkflowTemplate) => {
     setSelectedTemplate(template);
@@ -53,6 +53,7 @@ function TemplateGalleryPage() {
 
   const handleUseTemplate = useCallback(async (template: WorkflowTemplate) => {
     try {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
       const instanceId = await TemplateService.useTemplate(
         template.id, 
         `${template.name} - Instance`,
@@ -60,17 +61,17 @@ function TemplateGalleryPage() {
       );
       
       toast.success(`Template "${template.name}" has been added to your workflows!`);
-      console.log('Created workflow instance:', instanceId);
       
-      // TODO: Navigate to the workflow editor or instance management page
-      // Example: router.navigate({ to: '/workflows/$instanceId', params: { instanceId } });
+      // Navigate to the workflow editor/instance management page
+      navigate({ to: `/workflows/instances/${instanceId}` });
       
       handleClosePreviewModal();
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error using template:', error);
       toast.error('Failed to use template. Please try again.');
     }
-  }, [handleClosePreviewModal]);
+  }, [navigate, handleClosePreviewModal]);
 
   const handleRateTemplate = useCallback(async (template: WorkflowTemplate, rating: number) => {
     try {
@@ -89,6 +90,7 @@ function TemplateGalleryPage() {
       }
       return;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error rating template:', error);
       toast.error('Failed to rate template. Please try again.');
     }
@@ -108,17 +110,16 @@ function TemplateGalleryPage() {
           isOpen={isPreviewModalOpen}
           onClose={handleClosePreviewModal}
           template={selectedTemplate}
-          onUse={() => handleUseTemplate(selectedTemplate)} // Corrected prop name
+          onUse={handleUseTemplate}
           onRate={handleRateTemplate}
         />
       )}
+      
       <CreateTemplateDialog
         isOpen={isCreateModalOpen}
         onClose={handleCloseCreateModal}
-        onSuccess={handleTemplateCreated} // Changed from onSubmit to onSuccess
+        onSuccess={handleTemplateCreated}
       />
     </div>
   );
 }
-
-export default TemplateGalleryPage;
