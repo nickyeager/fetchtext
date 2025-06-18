@@ -1,7 +1,7 @@
 import React from 'react'; // Import React
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { createMemoryHistory } from '@tanstack/react-router';
+import { createMemoryHistory, Outlet } from '@tanstack/react-router';
 import { RouterProvider, createRouter, createRootRoute, createRoute } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkflowInstance } from '@/types/workflows';
@@ -184,37 +184,70 @@ function MockExecutionRoute() {
 }
 
 const rootRoute = createRootRoute({
-  component: () => <div>Root</div>,
+  component: () => (
+    <div>
+      Root
+      <Outlet />
+    </div>
+  ),
 });
 
 const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/_authenticated',
-  component: () => <div>Auth Layout</div>,
+  component: () => (
+    <div>
+      Auth Layout
+      <Outlet />
+    </div>
+  ),
 });
 
 const workflowsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/workflows',
-  component: () => <div>Workflows</div>,
+  component: () => (
+    <div>
+      Workflows
+      <Outlet />
+    </div>
+  ),
 });
 
 const instancesRoute = createRoute({
   getParentRoute: () => workflowsRoute,
   path: '/instances',
-  component: () => <div>Instances</div>,
+  component: () => (
+    <div>
+      Instances
+      <Outlet />
+    </div>
+  ),
+});
+
+const instanceIdRoute = createRoute({
+  getParentRoute: () => instancesRoute,
+  path: '/$instanceId',
+  component: () => (
+    <div>
+      Instance Layout
+      <Outlet />
+    </div>
+  ),
 });
 
 const executionRoute = createRoute({
-  getParentRoute: () => instancesRoute,
-  path: '/$instanceId/execution',
+  getParentRoute: () => instanceIdRoute,
+  path: '/execution',
   component: MockExecutionRoute,
 });
 
 const routeTree = rootRoute.addChildren([
   authRoute.addChildren([
     workflowsRoute.addChildren([
-      instancesRoute.addChildren([executionRoute]),
+      instancesRoute.addChildren([
+        instanceIdRoute.addChildren([executionRoute]),
+      ]),
     ]),
   ]),
 ]);
@@ -367,7 +400,7 @@ describe('Execution Tab Route', () => {
           .mockReturnValueOnce([false]),
       }));
 
-      const { container } = render(
+      render(
         <div className="space-y-6">
           <div data-testid="card">
             <div data-testid="card-content">
@@ -388,13 +421,13 @@ describe('Execution Tab Route', () => {
       );
 
       // Should show empty state
-      expect(container.querySelector('[data-testid="empty-state"]')).toBeInTheDocument();
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
       expect(screen.getByText('No executions yet')).toBeInTheDocument();
       expect(screen.getByText("This workflow instance hasn't been executed yet.")).toBeInTheDocument();
     });
 
     it('should show execute button for active instances in empty state', () => {
-      const { container } = render(
+      render(
         <div className="text-center py-8" data-testid="empty-state">
           <div data-testid="activity-icon">Activity Icon</div>
           <h3 className="text-lg font-semibold mb-2">No executions yet</h3>
@@ -429,7 +462,7 @@ describe('Execution Tab Route', () => {
     });
 
     it('should disable execute button when execution is in progress', () => {
-      const { container } = render(
+      render(
         <button data-testid="button" disabled>
           <div data-testid="play-icon">Play Icon</div>
           Execute Now
@@ -441,7 +474,7 @@ describe('Execution Tab Route', () => {
     });
 
     it('should enable execute button when not executing', () => {
-      const { container } = render(
+      render(
         <button data-testid="button">
           <div data-testid="play-icon">Play Icon</div>
           Execute Now
