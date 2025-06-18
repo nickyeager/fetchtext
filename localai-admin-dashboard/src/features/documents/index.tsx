@@ -1,230 +1,329 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { type Document, type Template, type GeneratedOutput } from './data/schema'
-import DocumentUpload from './components/DocumentUpload'
-import TemplateEditor from './components/TemplateEditor'
-import { FileText, Layout, Eye, Upload } from 'lucide-react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import type { User } from '@supabase/supabase-js'
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  FileText, 
+  Zap, 
+  History, 
+  Settings,
+  Brain,
+  Download,
+  Eye,
+  Plus
+} from 'lucide-react';
+import { TemplateGallery } from './components/TemplateGallery';
+import { DocumentProcessor } from './components/DocumentProcessor';
 
-export default function DocumentsFeature() {
-  const [user, setUser] = useState<User | null>(null)
-  const [activeTab, setActiveTab] = useState<'documents' | 'templates' | 'outputs'>('documents')
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [outputs, setOutputs] = useState<GeneratedOutput[]>([])
-  const [_selectedDocument, setSelectedDocument] = useState<Document | null>(null)
-  const [_selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
-  const [loading, setLoading] = useState(true)
+// Define interfaces
+interface SmartVariable {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'date' | 'currency' | 'percentage';
+  description: string;
+  extraction_hints: string[];
+  default_value?: string | number;
+}
 
-  useEffect(() => {
-    // Get current user
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setLoading(false)
-    })
+interface SmartTemplate {
+  id: number;
+  uuid: string;
+  name: string;
+  description: string;
+  template_content: string;
+  smart_variables: SmartVariable[];
+  category: string;
+}
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+interface GeneratedDocument {
+  id: string;
+  template_name: string;
+  content: string;
+  created_at: string;
+  status: 'completed' | 'processing' | 'failed';
+}
 
-    return () => subscription.unsubscribe()
-  }, [])
+export default function DocumentsPage() {
+  const [currentView, setCurrentView] = useState<'gallery' | 'processor' | 'history'>('gallery');
+  const [selectedTemplate, setSelectedTemplate] = useState<SmartTemplate | null>(null);
+  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>([]);
 
-  useEffect(() => {
-    if (user) {
-      loadData()
-      setupRealtimeSubscriptions()
+  // Mock data for recent documents
+  const recentDocuments: GeneratedDocument[] = [
+    {
+      id: '1',
+      template_name: 'Project Proposal',
+      content: 'Generated project proposal content...',
+      created_at: '2024-01-15T10:30:00Z',
+      status: 'completed'
+    },
+    {
+      id: '2', 
+      template_name: 'Marketing Brief',
+      content: 'Generated marketing brief content...',
+      created_at: '2024-01-15T09:15:00Z',
+      status: 'completed'
+    },
+    {
+      id: '3',
+      template_name: 'Contract Template',
+      content: 'Processing...',
+      created_at: '2024-01-15T11:00:00Z',
+      status: 'processing'
     }
-  }, [user])
+  ];
 
-  const loadData = async () => {
-    try {
-      // Load documents
-      const { data: docsData } = await supabase
-        .from('documents')
-        .select('*')
-        .order('created_at', { ascending: false })
-      
-      if (docsData) setDocuments(docsData)
+  const handleTemplateSelect = (template: SmartTemplate) => {
+    setSelectedTemplate(template);
+    setCurrentView('processor');
+  };
 
-      // Load templates
-      const { data: templatesData } = await supabase
-        .from('templates')
-        .select('*')
-        .or(user?.id ? `created_by.eq.${user.id},is_public.eq.true` : 'is_public.eq.true')
-        .order('created_at', { ascending: false })
-      
-      if (templatesData) setTemplates(templatesData)
+  const handleGenerationComplete = (generatedContent: string) => {
+    const newDocument: GeneratedDocument = {
+      id: Date.now().toString(),
+      template_name: selectedTemplate?.name || 'Untitled',
+      content: generatedContent,
+      created_at: new Date().toISOString(),
+      status: 'completed'
+    };
+    
+    setGeneratedDocuments(prev => [newDocument, ...prev]);
+    setCurrentView('history');
+  };
 
-      // Load outputs
-      const { data: outputsData } = await supabase
-        .from('generated_outputs')
-        .select('*')
-        .order('created_at', { ascending: false })
-      
-      if (outputsData) setOutputs(outputsData)
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Error loading data:', error)
+  const handleBackToGallery = () => {
+    setSelectedTemplate(null);
+    setCurrentView('gallery');
+  };
+
+  const handleCreateTemplate = () => {
+    // TODO: Implement template creation modal
+    console.log('Create new template'); // eslint-disable-line no-console
+  };
+
+  const downloadDocument = (document: GeneratedDocument) => {
+    const blob = new Blob([document.content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement('a');
+    a.href = url;
+    a.download = `${document.template_name}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'processing': return 'bg-blue-100 text-blue-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
-  }
+  };
 
-  const setupRealtimeSubscriptions = () => {
-    // Subscribe to documents changes
-    const documentsSubscription = supabase
-      .channel('documents')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'documents' },
-        (payload) => {
-          // eslint-disable-next-line no-console
-          console.log('Document change:', payload)
-          loadData() // Refresh data on changes
-        }
-      )
-      .subscribe()
-
-    // Subscribe to templates changes
-    const templatesSubscription = supabase
-      .channel('templates')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'templates' },
-        (payload) => {
-          // eslint-disable-next-line no-console
-          console.log('Template change:', payload)
-          loadData()
-        }
-      )
-      .subscribe()
-
-    // Subscribe to outputs changes
-    const outputsSubscription = supabase
-      .channel('outputs')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'generated_outputs' },
-        (payload) => {
-          // eslint-disable-next-line no-console
-          console.log('Output change:', payload)
-          loadData()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      documentsSubscription.unsubscribe()
-      templatesSubscription.unsubscribe()
-      outputsSubscription.unsubscribe()
-    }
-  }
-
-  if (loading) {
+  if (currentView === 'processor' && selectedTemplate) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <FileText className="h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-2 text-sm font-medium">Authentication Required</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Please sign in to access document management features.
-          </p>
-        </CardContent>
-      </Card>
-    )
+      <DocumentProcessor
+        selectedTemplate={selectedTemplate}
+        onGenerationComplete={handleGenerationComplete}
+        onBack={handleBackToGallery}
+      />
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Document Management</h1>
-        <p className="text-muted-foreground">
-          Upload documents, create templates, and generate content using AI.
-        </p>
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Document Automation</h1>
+          <p className="text-gray-600 mt-1">Create intelligent documents using AI-powered templates</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCreateTemplate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Template
+          </Button>
+          <Button onClick={() => setCurrentView('gallery')}>
+            <Zap className="h-4 w-4 mr-2" />
+            Start Processing
+          </Button>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Templates Available</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">24</div>
+            <p className="text-xs text-muted-foreground">+3 new this week</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Documents Generated</CardTitle>
+            <Brain className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">157</div>
+            <p className="text-xs text-muted-foreground">+12 this month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+            <Zap className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">94.2%</div>
+            <p className="text-xs text-muted-foreground">+2.1% from last month</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Time Saved</CardTitle>
+            <Settings className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">42.3h</div>
+            <p className="text-xs text-muted-foreground">this month</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content Tabs */}
+      <Tabs value={currentView} onValueChange={(value) => setCurrentView(value as typeof currentView)}>
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="documents" className="flex items-center space-x-2">
-            <Upload className="h-4 w-4" />
-            <span>Documents</span>
+          <TabsTrigger value="gallery" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Template Gallery
           </TabsTrigger>
-          <TabsTrigger value="templates" className="flex items-center space-x-2">
-            <Layout className="h-4 w-4" />
-            <span>Templates</span>
+          <TabsTrigger value="processor" disabled={!selectedTemplate} className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            Document Processor
           </TabsTrigger>
-          <TabsTrigger value="outputs" className="flex items-center space-x-2">
-            <Eye className="h-4 w-4" />
-            <span>Generated Content</span>
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Generated Documents
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="documents" className="space-y-6">
-          <DocumentUpload
-            documents={documents}
-            onDocumentSelect={setSelectedDocument}
-            onRefresh={loadData}
+        <TabsContent value="gallery" className="space-y-6">
+          <TemplateGallery
+            onSelectTemplate={handleTemplateSelect}
+            onCreateTemplate={handleCreateTemplate}
           />
         </TabsContent>
 
-        <TabsContent value="templates" className="space-y-6">
-          <TemplateEditor
-            templates={templates}
-            onTemplateSelect={setSelectedTemplate}
-            onRefresh={loadData}
-          />
+        <TabsContent value="processor" className="space-y-6">
+          {selectedTemplate ? (
+            <DocumentProcessor
+              selectedTemplate={selectedTemplate}
+              onGenerationComplete={handleGenerationComplete}
+              onBack={handleBackToGallery}
+            />
+          ) : (
+            <Card>
+              <CardContent className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <Brain className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Template Selected</h3>
+                  <p className="text-gray-600 mb-4">Choose a template from the gallery to start processing</p>
+                  <Button onClick={() => setCurrentView('gallery')}>
+                    Browse Templates
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
-        <TabsContent value="outputs" className="space-y-6">
+        <TabsContent value="history" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Generated Content</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Generated Documents
+              </CardTitle>
               <CardDescription>
-                View and manage AI-generated content from your templates.
+                Your recently generated documents and their status
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {outputs.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No generated content yet. Create templates and generate content to see results here.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {outputs.map((output) => (
-                    <div
-                      key={output.id}
-                      className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Generated Content #{output.id}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Status: {output.status} • {new Date(output.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+              <div className="space-y-4">
+                {[...generatedDocuments, ...recentDocuments].map((document) => (
+                  <div key={document.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-gray-900">{document.template_name}</h4>
+                        <Badge className={getStatusColor(document.status)}>
+                          {document.status}
+                        </Badge>
                       </div>
-                      <div className="mt-2">
-                        <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-32">
-                          {output.generated_content.substring(0, 200)}
-                          {output.generated_content.length > 200 && '...'}
-                        </pre>
-                      </div>
+                      <p className="text-sm text-gray-600">
+                        Generated on {formatDate(document.created_at)}
+                      </p>
+                      {document.status === 'completed' && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {document.content.substring(0, 100)}...
+                        </p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className="flex items-center gap-2">
+                      {document.status === 'completed' && (
+                        <>
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => downloadDocument(document)}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      {document.status === 'processing' && (
+                        <div className="text-sm text-blue-600">Processing...</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {generatedDocuments.length === 0 && recentDocuments.length === 0 && (
+                  <div className="text-center py-8">
+                    <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Documents Generated</h3>
+                    <p className="text-gray-600 mb-4">Start by selecting a template and processing a document</p>
+                    <Button onClick={() => setCurrentView('gallery')}>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Get Started
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 } 
