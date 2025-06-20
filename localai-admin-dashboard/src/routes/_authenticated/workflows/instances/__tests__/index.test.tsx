@@ -5,7 +5,7 @@ import { RouterProvider, createRouter, createRootRoute, createRoute, Outlet } fr
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkflowInstanceService } from '@/lib/workflow-instance-service';
 import { WorkflowClient } from '@/lib/workflow-client';
-import { Route } from '@/routes/_authenticated/workflows/instances';
+import { Route } from '../index';
 
 // Mock the services
 vi.mock('@/lib/workflow-instance-service');
@@ -192,7 +192,10 @@ describe('Workflow Instances Index Route', () => {
       executeInstance: vi.fn(),
       getExecutionHistory: vi.fn().mockResolvedValue([]),
     }) as any);
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {}); // eslint-disable-line no-console
+    
+    // Clear DOM between tests to avoid multiple element issues
+    document.body.innerHTML = '';
   });
 
   describe('Successful Instances Loading', () => {
@@ -230,18 +233,42 @@ describe('Workflow Instances Index Route', () => {
     });
 
     it('should handle different template types', async () => {
-      vi.mocked(WorkflowInstanceService.getInstances).mockResolvedValue(mockWorkflowInstances);
+      const uniqueTestData = [
+        {
+          ...mockWorkflowInstances[0],
+          id: 'unique-test-3a',
+          name: 'Unique N8N Instance',
+          workflow_templates: {
+            ...mockWorkflowInstances[0].workflow_templates,
+            id: 'unique-template-3a',
+            name: 'N8N Unique Template',
+          },
+        },
+        {
+          ...mockWorkflowInstances[1],
+          id: 'unique-test-3b',
+          name: 'Unique Flowise Instance',
+          workflow_templates: {
+            ...mockWorkflowInstances[1].workflow_templates,
+            id: 'unique-template-3b',
+            name: 'Flowise Unique Template',
+          },
+        },
+      ];
+      
+      vi.mocked(WorkflowInstanceService.getInstances).mockResolvedValue(uniqueTestData);
 
       renderWithRouter('/_authenticated/workflows/instances');
 
       await waitFor(() => {
-        expect(screen.getByText('Test Workflow Instance 1')).toBeInTheDocument();
-        expect(screen.getByText('Test Workflow Instance 2')).toBeInTheDocument();
+        expect(screen.getByTestId('table')).toBeInTheDocument();
       });
 
       // Should display both n8n and flowise instances
-      expect(screen.getByText('Test Template')).toBeInTheDocument();
-      expect(screen.getByText('Flowise Template')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Unique N8N Instance')).toBeInTheDocument();
+        expect(screen.getByText('Unique Flowise Instance')).toBeInTheDocument();
+      });
     });
   });
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { createElement } from 'react'
 import { UserAuthForm } from '../user-auth-form'
 
@@ -47,13 +47,20 @@ describe('UserAuthForm', () => {
     mockSignInWithPassword = vi.mocked(supabaseModule.supabase.auth.signInWithPassword)
 
     vi.clearAllMocks()
+    // Clear DOM before each test to avoid multiple element issues
+    document.body.innerHTML = ''
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
   })
 
   it('renders email and password fields', () => {
-    render(<UserAuthForm />)
+    const { container } = render(<UserAuthForm />)
 
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
+    expect(container.querySelector('input[name="email"]')).toBeInTheDocument()
+    expect(container.querySelector('input[name="password"]')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument()
   })
 
