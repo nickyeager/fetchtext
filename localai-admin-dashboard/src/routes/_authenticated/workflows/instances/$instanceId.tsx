@@ -18,7 +18,8 @@ import {
   Activity,
   FileText,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Pencil
 } from 'lucide-react';
 import { WorkflowInstance } from '@/types/workflows';
 import { WorkflowInstanceService } from '@/lib/workflow-instance-service';
@@ -81,7 +82,7 @@ export const Route = createFileRoute('/_authenticated/workflows/instances/$insta
   component: WorkflowInstanceEditorPage,
 });
 
-function WorkflowInstanceEditorPage() {
+export function WorkflowInstanceEditorPage() {
   const { instanceId } = useParams({ from: '/_authenticated/workflows/instances/$instanceId' });
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
@@ -706,6 +707,164 @@ function LogsContent({ deploymentLogs }: {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export function InstancePage({ instance }: { instance: any }) {
+  const tabs = [
+    { id: 'editor', label: 'Visual Editor', icon: <Pencil className="w-4 h-4" /> },
+  ] as const;
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => navigate({ to: '/workflows/instances' })}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back
+          </Button>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">{instance.name}</h1>
+              {getStatusBadge()}
+            </div>
+            <p className="text-muted-foreground">
+              Template: {instance.workflow_templates?.name || 'Unknown'}
+              {instance.workflow_templates?.template_type && (
+                <Badge variant="outline" className="ml-2">
+                  {instance.workflow_templates.template_type}
+                </Badge>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {instance.deploymentStatus === 'active' && (
+            <Button
+              onClick={handleExecuteInstance}
+              disabled={executing}
+              className="gap-2"
+            >
+              {executing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              Execute
+            </Button>
+          )}
+          
+          {instance.deploymentStatus === 'draft' || instance.deploymentStatus === 'error' ? (
+            <Button
+              onClick={handleDeployInstance}
+              disabled={saving}
+              className="gap-2"
+            >
+              {saving ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <ExternalLink className="w-4 h-4" />
+              )}
+              Deploy
+            </Button>
+          ) : (
+            <Button
+              onClick={handleToggleActivation}
+              variant="outline"
+              className="gap-2"
+            >
+              {instance.isActive ? (
+                <>
+                  <Pause className="w-4 h-4" />
+                  Deactivate
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Activate
+                </>
+              )}
+            </Button>
+          )}
+
+          <Button
+            onClick={handleSaveInstance}
+            disabled={saving}
+            className="gap-2"
+          >
+            {saving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            Save
+          </Button>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b">
+        <nav className="flex space-x-8">
+          {tabs.map((tabConfig) => {
+            const Icon = tabConfig.icon;
+            const isActive = tab === tabConfig.id;
+            
+            return (
+              <button
+                key={tabConfig.id}
+                onClick={() => navigateToTab(tabConfig.id)}
+                className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  isActive
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tabConfig.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div className="min-h-[600px]">
+        {tab === 'configuration' && (
+          <ConfigurationContent 
+            instance={instance} 
+            setInstance={setInstance} 
+          />
+        )}
+        {tab === 'editor' && (
+          <EditorContent 
+            instance={instance} 
+            setInstance={setInstance} 
+          />
+        )}
+        {tab === 'execution' && (
+          <ExecutionContent 
+            instance={instance} 
+            executionHistory={executionHistory}
+            handleExecuteInstance={handleExecuteInstance}
+            executing={executing}
+          />
+        )}
+        {tab === 'monitor' && (
+          <MonitorContent instance={instance} />
+        )}
+        {tab === 'logs' && (
+          <LogsContent 
+            deploymentLogs={deploymentLogs} 
+          />
+        )}
+      </div>
     </div>
   );
 }
