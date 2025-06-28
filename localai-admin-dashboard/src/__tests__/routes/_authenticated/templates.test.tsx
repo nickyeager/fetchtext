@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Import the actual component
-import { TemplateGalleryPage } from '../templates'
+import { TemplateGalleryPage } from '../../../routes/_authenticated/templates'
 
 // Mock all the dependencies
 vi.mock('@/lib/template-service', () => ({

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-describe('TemplateService', () => {
+describe('Database Integration Tests', () => {
   it('should be implemented', () => {
-    // TODO: Implement TemplateService tests
+    // TODO: Add database integration tests
     expect(true).toBe(true);
   });
 });

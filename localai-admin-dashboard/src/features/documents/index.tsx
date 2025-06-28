@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +15,6 @@ import {
   Plus
 } from 'lucide-react';
 import { TemplateGallery } from './components/TemplateGallery';
-import { DocumentProcessor } from './components/DocumentProcessor';
 
 // Define interfaces
 interface SmartVariable {
@@ -45,9 +45,10 @@ interface GeneratedDocument {
 }
 
 export default function DocumentsPage() {
-  const [currentView, setCurrentView] = useState<'gallery' | 'processor' | 'history'>('gallery');
-  const [selectedTemplate, setSelectedTemplate] = useState<SmartTemplate | null>(null);
-  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocument[]>([]);
+  console.log('📄 DOCUMENTS PAGE COMPONENT RENDERING');
+  const navigate = useNavigate();
+  const [currentView, setCurrentView] = useState<'gallery' | 'history'>('gallery');
+  const [generatedDocuments] = useState<GeneratedDocument[]>([]);
 
   // Mock data for recent documents
   const recentDocuments: GeneratedDocument[] = [
@@ -74,27 +75,10 @@ export default function DocumentsPage() {
     }
   ];
 
-  const handleTemplateSelect = (template: SmartTemplate) => {
-    setSelectedTemplate(template);
-    setCurrentView('processor');
-  };
-
-  const handleGenerationComplete = (generatedContent: string) => {
-    const newDocument: GeneratedDocument = {
-      id: Date.now().toString(),
-      template_name: selectedTemplate?.name || 'Untitled',
-      content: generatedContent,
-      created_at: new Date().toISOString(),
-      status: 'completed'
-    };
-    
-    setGeneratedDocuments(prev => [newDocument, ...prev]);
-    setCurrentView('history');
-  };
-
-  const handleBackToGallery = () => {
-    setSelectedTemplate(null);
-    setCurrentView('gallery');
+  const handleTemplateSelect = (_template: SmartTemplate) => {
+    // Navigate to the document processor route with template data
+    console.log('Navigating to /documents-process');
+    navigate({ to: '/documents-process' });
   };
 
   const handleCreateTemplate = () => {
@@ -131,18 +115,11 @@ export default function DocumentsPage() {
     }
   };
 
-  if (currentView === 'processor' && selectedTemplate) {
-    return (
-      <DocumentProcessor
-        selectedTemplate={selectedTemplate}
-        onGenerationComplete={handleGenerationComplete}
-        onBack={handleBackToGallery}
-      />
-    );
-  }
-
   return (
     <div className="container mx-auto p-6 space-y-6">
+      <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4">
+        <strong>DEBUG:</strong> This is the DOCUMENTS route (/documents)
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -210,14 +187,10 @@ export default function DocumentsPage() {
 
       {/* Main Content Tabs */}
       <Tabs value={currentView} onValueChange={(value) => setCurrentView(value as typeof currentView)}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="gallery" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Template Gallery
-          </TabsTrigger>
-          <TabsTrigger value="processor" disabled={!selectedTemplate} className="flex items-center gap-2">
-            <Brain className="h-4 w-4" />
-            Document Processor
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2">
             <History className="h-4 w-4" />
@@ -230,29 +203,6 @@ export default function DocumentsPage() {
             onSelectTemplate={handleTemplateSelect}
             onCreateTemplate={handleCreateTemplate}
           />
-        </TabsContent>
-
-        <TabsContent value="processor" className="space-y-6">
-          {selectedTemplate ? (
-            <DocumentProcessor
-              selectedTemplate={selectedTemplate}
-              onGenerationComplete={handleGenerationComplete}
-              onBack={handleBackToGallery}
-            />
-          ) : (
-            <Card>
-              <CardContent className="flex items-center justify-center h-64">
-                <div className="text-center">
-                  <Brain className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Template Selected</h3>
-                  <p className="text-gray-600 mb-4">Choose a template from the gallery to start processing</p>
-                  <Button onClick={() => setCurrentView('gallery')}>
-                    Browse Templates
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">

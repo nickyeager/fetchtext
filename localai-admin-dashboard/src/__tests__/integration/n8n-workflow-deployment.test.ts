@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-describe('TemplateService', () => {
+describe('N8N Workflow Deployment Tests', () => {
   it('should be implemented', () => {
-    // TODO: Implement TemplateService tests
+    // TODO: Add N8N workflow deployment integration tests
     expect(true).toBe(true);
   });
 });

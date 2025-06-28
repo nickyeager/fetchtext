@@ -65,7 +65,7 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       } else if (authData.user) {
         toast.success('Successfully logged in!')
         // Redirect to the intended page or dashboard
-        const redirectTo = (search as any)?.redirect || '/'
+        const redirectTo = (search as any)?.redirect || '/dashboard'
         navigate({ to: redirectTo })
       }
     } finally {

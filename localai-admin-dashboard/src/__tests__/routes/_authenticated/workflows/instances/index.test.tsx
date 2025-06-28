@@ -5,7 +5,7 @@ import { RouterProvider, createRouter, createRootRoute, createRoute, Outlet } fr
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkflowInstanceService } from '@/lib/workflow-instance-service';
 import { WorkflowClient } from '@/lib/workflow-client';
-import { Route } from '../index';
+import { Route } from '@/routes/_authenticated/workflows/instances/index';
 
 // Mock the services
 vi.mock('@/lib/workflow-instance-service');

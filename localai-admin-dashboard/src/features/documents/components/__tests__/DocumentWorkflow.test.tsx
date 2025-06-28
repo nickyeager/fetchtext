@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-describe('TemplateService', () => {
+describe('DocumentWorkflow', () => {
   it('should be implemented', () => {
-    // TODO: Implement TemplateService tests
+    // TODO: Implement DocumentWorkflow tests
     expect(true).toBe(true);
   });
 });
