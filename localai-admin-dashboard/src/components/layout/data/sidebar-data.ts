@@ -4,6 +4,7 @@ import {
   IconBug,
   IconChecklist,
   IconError404,
+  IconFile,
   IconHelp,
   IconLayoutDashboard,
   IconLock,
@@ -54,8 +55,13 @@ export const sidebarData: SidebarData = {
       items: [
         {
           title: 'Dashboard',
-          url: '/',
+          url: '/dashboard',
           icon: IconLayoutDashboard,
+        },
+        {
+          title: 'Documents',
+          url: '/documents',
+          icon: IconFile,
         },
         {
           title: 'Templates',

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 
-describe('TemplateService', () => {
+describe('Real Database Error Tests', () => {
   it('should be implemented', () => {
-    // TODO: Implement TemplateService tests
+    // TODO: Add real database error handling tests
     expect(true).toBe(true);
   });
 });

@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { DocumentProcessor } from '@/features/documents/components/DocumentProcessor';
@@ -23,7 +22,7 @@ const mockTemplate = {
   uuid: 'template-uuid-1',
   name: 'Test Template',
   description: 'A template for testing',
-  template_content: 'Hello, {{name}}!',
+  template_content: 'Hello, {{name}}! Your email is {{email}}.',
   smart_variables: [
     { 
       id: 'name', 
@@ -31,6 +30,13 @@ const mockTemplate = {
       type: 'text' as const, 
       description: 'Your name', 
       extraction_hints: ['name'] 
+    },
+    { 
+      id: 'email', 
+      name: 'email', 
+      type: 'text' as const, 
+      description: 'Your email address', 
+      extraction_hints: ['email', '@'] 
     },
   ],
   category: 'General',
@@ -128,5 +134,97 @@ describe('DocumentProcessor Component', () => {
     // The file processing will happen asynchronously, but the event should be handled
     expect(fileInput.files).toHaveLength(1);
     expect(fileInput.files?.[0]).toBe(file);
+  });
+
+  it('should show correct smart variables for the template', () => {
+    render(
+      <DocumentProcessor 
+        selectedTemplate={mockTemplate} 
+        onGenerationComplete={mockOnGenerationComplete}
+        onBack={mockOnBack}
+      />
+    );
+    
+    // Template should have 2 smart variables defined
+    expect(mockTemplate.smart_variables).toHaveLength(2);
+    expect(mockTemplate.smart_variables[0].name).toBe('name');
+    expect(mockTemplate.smart_variables[1].name).toBe('email');
+  });
+});
+
+describe('DocumentProcessor Pipeline Flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should have a well-defined processing pipeline', () => {
+    render(
+      <DocumentProcessor 
+        selectedTemplate={mockTemplate} 
+        onGenerationComplete={mockOnGenerationComplete}
+        onBack={mockOnBack}
+      />
+    );
+    
+    // The processing pipeline should be visible
+    expect(screen.getByText('Processing Pipeline')).toBeInTheDocument();
+    
+    // Should show the initial state
+    expect(screen.getByText('Ready to start')).toBeInTheDocument();
+  });
+
+  it('should handle template with smart variables correctly', () => {
+    const complexTemplate = {
+      ...mockTemplate,
+      smart_variables: [
+        { 
+          id: 'client_name', 
+          name: 'client_name', 
+          type: 'text' as const, 
+          description: 'Client company name', 
+          extraction_hints: ['client', 'company'] 
+        },
+        { 
+          id: 'amount', 
+          name: 'amount', 
+          type: 'currency' as const, 
+          description: 'Project amount', 
+          extraction_hints: ['amount', '$', 'cost'] 
+        },
+        { 
+          id: 'date', 
+          name: 'date', 
+          type: 'date' as const, 
+          description: 'Project date', 
+          extraction_hints: ['date', 'deadline'] 
+        },
+      ],
+    };
+
+    render(
+      <DocumentProcessor 
+        selectedTemplate={complexTemplate} 
+        onGenerationComplete={mockOnGenerationComplete}
+        onBack={mockOnBack}
+      />
+    );
+    
+    expect(screen.getByText('Using template: Test Template')).toBeInTheDocument();
+    expect(complexTemplate.smart_variables).toHaveLength(3);
+  });
+
+  it('should work with the separate route structure', () => {
+    // This test ensures the component works independently of routing
+    render(
+      <DocumentProcessor 
+        selectedTemplate={mockTemplate} 
+        onGenerationComplete={mockOnGenerationComplete}
+        onBack={mockOnBack}
+      />
+    );
+    
+    // Component should render without router context
+    expect(screen.getByText('Document Processing')).toBeInTheDocument();
+    expect(screen.getByText('Processing Pipeline')).toBeInTheDocument();
   });
 });

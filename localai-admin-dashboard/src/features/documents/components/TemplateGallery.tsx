@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,14 +71,13 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
     queryFn: DocumentTemplateService.getTemplates,
   });
 
+  const [filteredTemplates, setFilteredTemplates] = useState<SmartTemplate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const categories = ['all', 'business', 'legal', 'marketing', 'hr', 'finance', 'technical'];
 
-  const filteredTemplates = useMemo(() => {
-    if (!templates) return [];
-    
+  const filterTemplates = useCallback(() => {
     let filtered = templates;
 
     if (searchQuery) {
@@ -93,8 +92,12 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
       filtered = filtered.filter((template) => template.category.toLowerCase() === selectedCategory);
     }
 
-    return filtered;
+    setFilteredTemplates(filtered);
   }, [templates, searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    filterTemplates();
+  }, [filterTemplates]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);

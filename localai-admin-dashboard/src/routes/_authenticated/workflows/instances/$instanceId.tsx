@@ -82,7 +82,7 @@ export const Route = createFileRoute('/_authenticated/workflows/instances/$insta
   component: WorkflowInstanceEditorPage,
 });
 
-export function WorkflowInstanceEditorPage() {
+function WorkflowInstanceEditorPage() {
   const { instanceId } = useParams({ from: '/_authenticated/workflows/instances/$instanceId' });
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
