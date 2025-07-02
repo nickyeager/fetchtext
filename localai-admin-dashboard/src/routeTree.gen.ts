@@ -11,21 +11,22 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as DebugImport } from './routes/debug'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
 import { Route as AuthenticatedTemplatesImport } from './routes/_authenticated/templates'
-import { Route as AuthenticatedDocumentsProcessImport } from './routes/_authenticated/documents-process'
-import { Route as AuthenticatedDocumentsImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardImport } from './routes/_authenticated/dashboard'
 import { Route as errors503Import } from './routes/(errors)/503'
 import { Route as errors500Import } from './routes/(errors)/500'
 import { Route as errors404Import } from './routes/(errors)/404'
 import { Route as errors403Import } from './routes/(errors)/403'
 import { Route as errors401Import } from './routes/(errors)/401'
+import { Route as authSignupConfirmationImport } from './routes/(auth)/signup-confirmation'
 import { Route as authSignUpImport } from './routes/(auth)/sign-up'
 import { Route as authSignIn2Import } from './routes/(auth)/sign-in-2'
 import { Route as authSignInImport } from './routes/(auth)/sign-in'
+import { Route as authResetPasswordImport } from './routes/(auth)/reset-password'
 import { Route as authOtpImport } from './routes/(auth)/otp'
 import { Route as authForgotPasswordImport } from './routes/(auth)/forgot-password'
 import { Route as ClerkAuthenticatedRouteImport } from './routes/clerk/_authenticated/route'
@@ -35,6 +36,7 @@ import { Route as AuthenticatedUsersIndexImport } from './routes/_authenticated/
 import { Route as AuthenticatedTasksIndexImport } from './routes/_authenticated/tasks/index'
 import { Route as AuthenticatedSettingsIndexImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedHelpCenterIndexImport } from './routes/_authenticated/help-center/index'
+import { Route as AuthenticatedDocumentsIndexImport } from './routes/_authenticated/documents/index'
 import { Route as AuthenticatedChatsIndexImport } from './routes/_authenticated/chats/index'
 import { Route as AuthenticatedAppsIndexImport } from './routes/_authenticated/apps/index'
 import { Route as ClerkAuthenticatedUserManagementImport } from './routes/clerk/_authenticated/user-management'
@@ -44,10 +46,10 @@ import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_aut
 import { Route as AuthenticatedSettingsDisplayImport } from './routes/_authenticated/settings/display'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
+import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
 import { Route as AuthenticatedDocumentsProcessImport } from './routes/_authenticated/documents/process'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdImport } from './routes/_authenticated/workflows/instances/$instanceId'
-import { Route as AuthenticatedtestsDocumentsTestImport } from './routes/_authenticated/__tests__/documents.test'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdMonitorImport } from './routes/_authenticated/workflows/instances/$instanceId.monitor'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdLogsImport } from './routes/_authenticated/workflows/instances/$instanceId.logs'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdExecutionImport } from './routes/_authenticated/workflows/instances/$instanceId.execution'
@@ -55,6 +57,12 @@ import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from '
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
 
 // Create/Update Routes
+
+const DebugRoute = DebugImport.update({
+  id: '/debug',
+  path: '/debug',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const ClerkRouteRoute = ClerkRouteImport.update({
   id: '/clerk',
@@ -76,19 +84,6 @@ const IndexRoute = IndexImport.update({
 const AuthenticatedTemplatesRoute = AuthenticatedTemplatesImport.update({
   id: '/templates',
   path: '/templates',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-
-const AuthenticatedDocumentsProcessRoute =
-  AuthenticatedDocumentsProcessImport.update({
-    id: '/documents-process',
-    path: '/documents-process',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-
-const AuthenticatedDocumentsRoute = AuthenticatedDocumentsImport.update({
-  id: '/documents',
-  path: '/documents',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
@@ -128,6 +123,12 @@ const errors401Route = errors401Import.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const authSignupConfirmationRoute = authSignupConfirmationImport.update({
+  id: '/(auth)/signup-confirmation',
+  path: '/signup-confirmation',
+  getParentRoute: () => rootRoute,
+} as any)
+
 const authSignUpRoute = authSignUpImport.update({
   id: '/(auth)/sign-up',
   path: '/sign-up',
@@ -143,6 +144,12 @@ const authSignIn2Route = authSignIn2Import.update({
 const authSignInRoute = authSignInImport.update({
   id: '/(auth)/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const authResetPasswordRoute = authResetPasswordImport.update({
+  id: '/(auth)/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -200,6 +207,13 @@ const AuthenticatedHelpCenterIndexRoute =
   AuthenticatedHelpCenterIndexImport.update({
     id: '/help-center/',
     path: '/help-center/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+
+const AuthenticatedDocumentsIndexRoute =
+  AuthenticatedDocumentsIndexImport.update({
+    id: '/documents/',
+    path: '/documents/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
@@ -262,11 +276,18 @@ const AuthenticatedSettingsAccountRoute =
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
+const AuthenticatedDocumentsProcessDocumentRoute =
+  AuthenticatedDocumentsProcessDocumentImport.update({
+    id: '/documents/process-document',
+    path: '/documents/process-document',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+
 const AuthenticatedDocumentsProcessRoute =
   AuthenticatedDocumentsProcessImport.update({
-    id: '/process',
-    path: '/process',
-    getParentRoute: () => AuthenticatedDocumentsRoute,
+    id: '/documents/process',
+    path: '/documents/process',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
 const AuthenticatedWorkflowsInstancesIndexRoute =
@@ -280,13 +301,6 @@ const AuthenticatedWorkflowsInstancesInstanceIdRoute =
   AuthenticatedWorkflowsInstancesInstanceIdImport.update({
     id: '/workflows/instances/$instanceId',
     path: '/workflows/instances/$instanceId',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-
-const AuthenticatedtestsDocumentsTestRoute =
-  AuthenticatedtestsDocumentsTestImport.update({
-    id: '/__tests__/documents/test',
-    path: '/documents/test',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
@@ -350,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClerkRouteImport
       parentRoute: typeof rootRoute
     }
+    '/debug': {
+      id: '/debug'
+      path: '/debug'
+      fullPath: '/debug'
+      preLoaderRoute: typeof DebugImport
+      parentRoute: typeof rootRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -385,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authOtpImport
       parentRoute: typeof rootRoute
     }
+    '/(auth)/reset-password': {
+      id: '/(auth)/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof authResetPasswordImport
+      parentRoute: typeof rootRoute
+    }
     '/(auth)/sign-in': {
       id: '/(auth)/sign-in'
       path: '/sign-in'
@@ -404,6 +432,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-up'
       fullPath: '/sign-up'
       preLoaderRoute: typeof authSignUpImport
+      parentRoute: typeof rootRoute
+    }
+    '/(auth)/signup-confirmation': {
+      id: '/(auth)/signup-confirmation'
+      path: '/signup-confirmation'
+      fullPath: '/signup-confirmation'
+      preLoaderRoute: typeof authSignupConfirmationImport
       parentRoute: typeof rootRoute
     }
     '/(errors)/401': {
@@ -448,20 +483,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardImport
       parentRoute: typeof AuthenticatedRouteImport
     }
-    '/_authenticated/documents': {
-      id: '/_authenticated/documents'
-      path: '/documents'
-      fullPath: '/documents'
-      preLoaderRoute: typeof AuthenticatedDocumentsImport
-      parentRoute: typeof AuthenticatedRouteImport
-    }
-    '/_authenticated/documents-process': {
-      id: '/_authenticated/documents-process'
-      path: '/documents-process'
-      fullPath: '/documents-process'
-      preLoaderRoute: typeof AuthenticatedDocumentsProcessImport
-      parentRoute: typeof AuthenticatedRouteImport
-    }
     '/_authenticated/templates': {
       id: '/_authenticated/templates'
       path: '/templates'
@@ -471,10 +492,17 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/documents/process': {
       id: '/_authenticated/documents/process'
-      path: '/process'
+      path: '/documents/process'
       fullPath: '/documents/process'
       preLoaderRoute: typeof AuthenticatedDocumentsProcessImport
-      parentRoute: typeof AuthenticatedDocumentsImport
+      parentRoute: typeof AuthenticatedRouteImport
+    }
+    '/_authenticated/documents/process-document': {
+      id: '/_authenticated/documents/process-document'
+      path: '/documents/process-document'
+      fullPath: '/documents/process-document'
+      preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
+      parentRoute: typeof AuthenticatedRouteImport
     }
     '/_authenticated/settings/account': {
       id: '/_authenticated/settings/account'
@@ -539,6 +567,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatsIndexImport
       parentRoute: typeof AuthenticatedRouteImport
     }
+    '/_authenticated/documents/': {
+      id: '/_authenticated/documents/'
+      path: '/documents'
+      fullPath: '/documents'
+      preLoaderRoute: typeof AuthenticatedDocumentsIndexImport
+      parentRoute: typeof AuthenticatedRouteImport
+    }
     '/_authenticated/help-center/': {
       id: '/_authenticated/help-center/'
       path: '/help-center'
@@ -565,13 +600,6 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof AuthenticatedUsersIndexImport
-      parentRoute: typeof AuthenticatedRouteImport
-    }
-    '/_authenticated/__tests__/documents/test': {
-      id: '/_authenticated/__tests__/documents/test'
-      path: '/documents/test'
-      fullPath: '/documents/test'
-      preLoaderRoute: typeof AuthenticatedtestsDocumentsTestImport
       parentRoute: typeof AuthenticatedRouteImport
     }
     '/_authenticated/workflows/instances/$instanceId': {
@@ -651,20 +679,6 @@ const AuthenticatedSettingsRouteRouteWithChildren =
     AuthenticatedSettingsRouteRouteChildren,
   )
 
-interface AuthenticatedDocumentsRouteChildren {
-  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
-}
-
-const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
-  {
-    AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
-  }
-
-const AuthenticatedDocumentsRouteWithChildren =
-  AuthenticatedDocumentsRoute._addFileChildren(
-    AuthenticatedDocumentsRouteChildren,
-  )
-
 interface AuthenticatedWorkflowsInstancesInstanceIdRouteChildren {
   AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
   AuthenticatedWorkflowsInstancesInstanceIdEditorRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdEditorRoute
@@ -695,15 +709,15 @@ const AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
-  AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
-  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
   AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
+  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
+  AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
+  AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
-  AuthenticatedtestsDocumentsTestRoute: typeof AuthenticatedtestsDocumentsTestRoute
   AuthenticatedWorkflowsInstancesInstanceIdRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   AuthenticatedWorkflowsInstancesIndexRoute: typeof AuthenticatedWorkflowsInstancesIndexRoute
 }
@@ -711,15 +725,16 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,
-  AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
   AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
+  AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
+  AuthenticatedDocumentsProcessDocumentRoute:
+    AuthenticatedDocumentsProcessDocumentRoute,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
+  AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
-  AuthenticatedtestsDocumentsTestRoute: AuthenticatedtestsDocumentsTestRoute,
   AuthenticatedWorkflowsInstancesInstanceIdRoute:
     AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren,
   AuthenticatedWorkflowsInstancesIndexRoute:
@@ -776,23 +791,25 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
+  '/debug': typeof DebugRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
+  '/reset-password': typeof authResetPasswordRoute
   '/sign-in': typeof authSignInRoute
   '/sign-in-2': typeof authSignIn2Route
   '/sign-up': typeof authSignUpRoute
+  '/signup-confirmation': typeof authSignupConfirmationRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/documents': typeof AuthenticatedDocumentsRouteWithChildren
-  '/documents-process': typeof AuthenticatedDocumentsProcessRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -802,11 +819,11 @@ export interface FileRoutesByFullPath {
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
+  '/documents': typeof AuthenticatedDocumentsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
-  '/documents/test': typeof AuthenticatedtestsDocumentsTestRoute
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
   '/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
@@ -819,22 +836,24 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
+  '/debug': typeof DebugRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
+  '/reset-password': typeof authResetPasswordRoute
   '/sign-in': typeof authSignInRoute
   '/sign-in-2': typeof authSignIn2Route
   '/sign-up': typeof authSignUpRoute
+  '/signup-confirmation': typeof authSignupConfirmationRoute
   '/401': typeof errors401Route
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/documents': typeof AuthenticatedDocumentsRouteWithChildren
-  '/documents-process': typeof AuthenticatedDocumentsProcessRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -844,11 +863,11 @@ export interface FileRoutesByTo {
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
+  '/documents': typeof AuthenticatedDocumentsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
-  '/documents/test': typeof AuthenticatedtestsDocumentsTestRoute
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
   '/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
@@ -863,24 +882,26 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkRouteRouteWithChildren
+  '/debug': typeof DebugRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
   '/clerk/_authenticated': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/otp': typeof authOtpRoute
+  '/(auth)/reset-password': typeof authResetPasswordRoute
   '/(auth)/sign-in': typeof authSignInRoute
   '/(auth)/sign-in-2': typeof authSignIn2Route
   '/(auth)/sign-up': typeof authSignUpRoute
+  '/(auth)/signup-confirmation': typeof authSignupConfirmationRoute
   '/(errors)/401': typeof errors401Route
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
-  '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
-  '/_authenticated/documents-process': typeof AuthenticatedDocumentsProcessRoute
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -890,11 +911,11 @@ export interface FileRoutesById {
   '/clerk/_authenticated/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/_authenticated/apps/': typeof AuthenticatedAppsIndexRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
+  '/_authenticated/documents/': typeof AuthenticatedDocumentsIndexRoute
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
-  '/_authenticated/__tests__/documents/test': typeof AuthenticatedtestsDocumentsTestRoute
   '/_authenticated/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   '/_authenticated/workflows/instances/': typeof AuthenticatedWorkflowsInstancesIndexRoute
   '/_authenticated/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
@@ -910,23 +931,25 @@ export interface FileRouteTypes {
     | '/'
     | ''
     | '/clerk'
+    | '/debug'
     | '/settings'
     | '/clerk/'
     | '/forgot-password'
     | '/otp'
+    | '/reset-password'
     | '/sign-in'
     | '/sign-in-2'
     | '/sign-up'
+    | '/signup-confirmation'
     | '/401'
     | '/403'
     | '/404'
     | '/500'
     | '/503'
     | '/dashboard'
-    | '/documents'
-    | '/documents-process'
     | '/templates'
     | '/documents/process'
+    | '/documents/process-document'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/display'
@@ -936,11 +959,11 @@ export interface FileRouteTypes {
     | '/clerk/user-management'
     | '/apps'
     | '/chats'
+    | '/documents'
     | '/help-center'
     | '/settings/'
     | '/tasks'
     | '/users'
-    | '/documents/test'
     | '/workflows/instances/$instanceId'
     | '/workflows/instances'
     | '/workflows/instances/$instanceId/configuration'
@@ -952,22 +975,24 @@ export interface FileRouteTypes {
   to:
     | '/'
     | ''
+    | '/debug'
     | '/clerk'
     | '/forgot-password'
     | '/otp'
+    | '/reset-password'
     | '/sign-in'
     | '/sign-in-2'
     | '/sign-up'
+    | '/signup-confirmation'
     | '/401'
     | '/403'
     | '/404'
     | '/500'
     | '/503'
     | '/dashboard'
-    | '/documents'
-    | '/documents-process'
     | '/templates'
     | '/documents/process'
+    | '/documents/process-document'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/display'
@@ -977,11 +1002,11 @@ export interface FileRouteTypes {
     | '/clerk/user-management'
     | '/apps'
     | '/chats'
+    | '/documents'
     | '/help-center'
     | '/settings'
     | '/tasks'
     | '/users'
-    | '/documents/test'
     | '/workflows/instances/$instanceId'
     | '/workflows/instances'
     | '/workflows/instances/$instanceId/configuration'
@@ -994,24 +1019,26 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/clerk'
+    | '/debug'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
     | '/clerk/_authenticated'
     | '/(auth)/forgot-password'
     | '/(auth)/otp'
+    | '/(auth)/reset-password'
     | '/(auth)/sign-in'
     | '/(auth)/sign-in-2'
     | '/(auth)/sign-up'
+    | '/(auth)/signup-confirmation'
     | '/(errors)/401'
     | '/(errors)/403'
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/dashboard'
-    | '/_authenticated/documents'
-    | '/_authenticated/documents-process'
     | '/_authenticated/templates'
     | '/_authenticated/documents/process'
+    | '/_authenticated/documents/process-document'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/display'
@@ -1021,11 +1048,11 @@ export interface FileRouteTypes {
     | '/clerk/_authenticated/user-management'
     | '/_authenticated/apps/'
     | '/_authenticated/chats/'
+    | '/_authenticated/documents/'
     | '/_authenticated/help-center/'
     | '/_authenticated/settings/'
     | '/_authenticated/tasks/'
     | '/_authenticated/users/'
-    | '/_authenticated/__tests__/documents/test'
     | '/_authenticated/workflows/instances/$instanceId'
     | '/_authenticated/workflows/instances/'
     | '/_authenticated/workflows/instances/$instanceId/configuration'
@@ -1040,11 +1067,14 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   ClerkRouteRoute: typeof ClerkRouteRouteWithChildren
+  DebugRoute: typeof DebugRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
+  authResetPasswordRoute: typeof authResetPasswordRoute
   authSignInRoute: typeof authSignInRoute
   authSignIn2Route: typeof authSignIn2Route
   authSignUpRoute: typeof authSignUpRoute
+  authSignupConfirmationRoute: typeof authSignupConfirmationRoute
   errors401Route: typeof errors401Route
   errors403Route: typeof errors403Route
   errors404Route: typeof errors404Route
@@ -1056,11 +1086,14 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   ClerkRouteRoute: ClerkRouteRouteWithChildren,
+  DebugRoute: DebugRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
+  authResetPasswordRoute: authResetPasswordRoute,
   authSignInRoute: authSignInRoute,
   authSignIn2Route: authSignIn2Route,
   authSignUpRoute: authSignUpRoute,
+  authSignupConfirmationRoute: authSignupConfirmationRoute,
   errors401Route: errors401Route,
   errors403Route: errors403Route,
   errors404Route: errors404Route,
@@ -1081,11 +1114,14 @@ export const routeTree = rootRoute
         "/",
         "/_authenticated",
         "/clerk",
+        "/debug",
         "/(auth)/forgot-password",
         "/(auth)/otp",
+        "/(auth)/reset-password",
         "/(auth)/sign-in",
         "/(auth)/sign-in-2",
         "/(auth)/sign-up",
+        "/(auth)/signup-confirmation",
         "/(errors)/401",
         "/(errors)/403",
         "/(errors)/404",
@@ -1101,15 +1137,15 @@ export const routeTree = rootRoute
       "children": [
         "/_authenticated/settings",
         "/_authenticated/dashboard",
-        "/_authenticated/documents",
-        "/_authenticated/documents-process",
         "/_authenticated/templates",
+        "/_authenticated/documents/process",
+        "/_authenticated/documents/process-document",
         "/_authenticated/apps/",
         "/_authenticated/chats/",
+        "/_authenticated/documents/",
         "/_authenticated/help-center/",
         "/_authenticated/tasks/",
         "/_authenticated/users/",
-        "/_authenticated/__tests__/documents/test",
         "/_authenticated/workflows/instances/$instanceId",
         "/_authenticated/workflows/instances/"
       ]
@@ -1120,6 +1156,9 @@ export const routeTree = rootRoute
         "/clerk/(auth)",
         "/clerk/_authenticated"
       ]
+    },
+    "/debug": {
+      "filePath": "debug.tsx"
     },
     "/_authenticated/settings": {
       "filePath": "_authenticated/settings/route.tsx",
@@ -1153,6 +1192,9 @@ export const routeTree = rootRoute
     "/(auth)/otp": {
       "filePath": "(auth)/otp.tsx"
     },
+    "/(auth)/reset-password": {
+      "filePath": "(auth)/reset-password.tsx"
+    },
     "/(auth)/sign-in": {
       "filePath": "(auth)/sign-in.tsx"
     },
@@ -1161,6 +1203,9 @@ export const routeTree = rootRoute
     },
     "/(auth)/sign-up": {
       "filePath": "(auth)/sign-up.tsx"
+    },
+    "/(auth)/signup-confirmation": {
+      "filePath": "(auth)/signup-confirmation.tsx"
     },
     "/(errors)/401": {
       "filePath": "(errors)/401.tsx"
@@ -1181,24 +1226,17 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/dashboard.tsx",
       "parent": "/_authenticated"
     },
-    "/_authenticated/documents": {
-      "filePath": "_authenticated/documents.tsx",
-      "parent": "/_authenticated",
-      "children": [
-        "/_authenticated/documents/process"
-      ]
-    },
-    "/_authenticated/documents-process": {
-      "filePath": "_authenticated/documents-process.tsx",
-      "parent": "/_authenticated"
-    },
     "/_authenticated/templates": {
       "filePath": "_authenticated/templates.tsx",
       "parent": "/_authenticated"
     },
     "/_authenticated/documents/process": {
       "filePath": "_authenticated/documents/process.tsx",
-      "parent": "/_authenticated/documents"
+      "parent": "/_authenticated"
+    },
+    "/_authenticated/documents/process-document": {
+      "filePath": "_authenticated/documents/process-document.tsx",
+      "parent": "/_authenticated"
     },
     "/_authenticated/settings/account": {
       "filePath": "_authenticated/settings/account.tsx",
@@ -1236,6 +1274,10 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/chats/index.tsx",
       "parent": "/_authenticated"
     },
+    "/_authenticated/documents/": {
+      "filePath": "_authenticated/documents/index.tsx",
+      "parent": "/_authenticated"
+    },
     "/_authenticated/help-center/": {
       "filePath": "_authenticated/help-center/index.tsx",
       "parent": "/_authenticated"
@@ -1250,10 +1292,6 @@ export const routeTree = rootRoute
     },
     "/_authenticated/users/": {
       "filePath": "_authenticated/users/index.tsx",
-      "parent": "/_authenticated"
-    },
-    "/_authenticated/__tests__/documents/test": {
-      "filePath": "_authenticated/__tests__/documents.test.tsx",
       "parent": "/_authenticated"
     },
     "/_authenticated/workflows/instances/$instanceId": {

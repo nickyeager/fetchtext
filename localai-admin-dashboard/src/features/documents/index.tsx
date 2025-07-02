@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,6 @@ import {
   FileText, 
   Zap, 
   History, 
-  Settings,
-  Brain,
   Download,
   Eye,
   Plus
@@ -45,7 +43,6 @@ interface GeneratedDocument {
 }
 
 export default function DocumentsPage() {
-  console.log('📄 DOCUMENTS PAGE COMPONENT RENDERING');
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<'gallery' | 'history'>('gallery');
   const [generatedDocuments] = useState<GeneratedDocument[]>([]);
@@ -75,18 +72,21 @@ export default function DocumentsPage() {
     }
   ];
 
-  const handleTemplateSelect = (_template: SmartTemplate) => {
+  const handleTemplateSelect = useCallback((template: SmartTemplate) => {
     // Navigate to the document processor route with template data
-    console.log('Navigating to /documents-process');
-    navigate({ to: '/documents-process' });
-  };
+    console.log('Navigating to /documents/process-document with template:', template.name);
+    navigate({ 
+      to: '/documents/process-document',
+      search: { templateId: template.id.toString() }
+    });
+  }, [navigate]);
 
-  const handleCreateTemplate = () => {
+  const handleCreateTemplate = useCallback(() => {
     // TODO: Implement template creation modal
     console.log('Create new template'); // eslint-disable-line no-console
-  };
+  }, []);
 
-  const downloadDocument = (document: GeneratedDocument) => {
+  const downloadDocument = useCallback((document: GeneratedDocument) => {
     const blob = new Blob([document.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = window.document.createElement('a');
@@ -94,9 +94,9 @@ export default function DocumentsPage() {
     a.download = `${document.template_name}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -104,27 +104,24 @@ export default function DocumentsPage() {
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
+  }, []);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
       case 'processing': return 'bg-blue-100 text-blue-800';
       case 'failed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
-  };
+  }, []);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4">
-        <strong>DEBUG:</strong> This is the DOCUMENTS route (/documents)
-      </div>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Document Automation</h1>
-          <p className="text-gray-600 mt-1">Create intelligent documents using AI-powered templates</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Document Automation</h1>
+          <p className="text-gray-600 dark:text-gray-300 mt-1">Create intelligent documents using AI-powered templates</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleCreateTemplate}>
@@ -136,53 +133,6 @@ export default function DocumentsPage() {
             Start Processing
           </Button>
         </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Templates Available</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-muted-foreground">+3 new this week</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Documents Generated</CardTitle>
-            <Brain className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">157</div>
-            <p className="text-xs text-muted-foreground">+12 this month</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-            <Zap className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">94.2%</div>
-            <p className="text-xs text-muted-foreground">+2.1% from last month</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Time Saved</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">42.3h</div>
-            <p className="text-xs text-muted-foreground">this month</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Main Content Tabs */}
