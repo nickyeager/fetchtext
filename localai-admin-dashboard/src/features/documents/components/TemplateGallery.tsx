@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -77,7 +77,8 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
 
   const categories = ['all', 'business', 'legal', 'marketing', 'hr', 'finance', 'technical'];
 
-  const filterTemplates = useCallback(() => {
+  // Filter templates whenever dependencies change
+  useEffect(() => {
     let filtered = templates;
 
     if (searchQuery) {
@@ -94,10 +95,6 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
 
     setFilteredTemplates(filtered);
   }, [templates, searchQuery, selectedCategory]);
-
-  useEffect(() => {
-    filterTemplates();
-  }, [filterTemplates]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);

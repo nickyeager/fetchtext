@@ -1,5 +1,5 @@
 {
-  "name": "shadcn-admin",
+  "name": "fetchtext-admin",
   "private": false,
   "version": "1.4.0",
   "type": "module",
@@ -34,6 +34,7 @@
     "@radix-ui/react-switch": "^1.1.4",
     "@radix-ui/react-tabs": "^1.1.4",
     "@radix-ui/react-tooltip": "^1.2.0",
+    "@sendgrid/mail": "^8.1.5",
     "@supabase/supabase-js": "^2.50.0",
     "@tabler/icons-react": "^3.31.0",
     "@tailwindcss/vite": "^4.1.4",

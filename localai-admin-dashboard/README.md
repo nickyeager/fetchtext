@@ -1,22 +1,50 @@
-# Shadcn Admin Dashboard
+# Local AI Admin Dashboard
 
-Admin Dashboard UI crafted with Shadcn and Vite. Built with responsiveness and accessibility in mind.
+Admin Dashboard for the Local AI document processing system. Built with Shadcn/UI and integrated with N8N, Ollama, and Supabase for ## Contributing
+
+This project is part of the Local AI ecosystem. Contributions are welcome!
+
+### Development Guidelines
+- Follow the existing code style and conventions
+- Write tests for new features and bug fixes
+- Use Vitest for all testing needs
+- Ensure E2E tests pass before submitting PRs
+- Update documentation for significant changes
+
+### Codebase Cleanup
+Recent improvements include:
+- Removed redundant and unused files
+- Consolidated duplicate monitoring scripts
+- Implemented comprehensive E2E testing
+- Enhanced error handling and graceful degradation
+- Updated documentation and README
+
+## License
+
+Licensed under the [MIT License](https://choosealicense.com/licenses/mit/)
+
+## Acknowledgments
+
+Built on top of the excellent [Shadcn Admin](https://github.com/satnaing/shadcn-admin) template by [@satnaing](https://github.com/satnaing).powered document workflows.
 
 ![alt text](public/images/shadcn-admin.png)
 
-I've been creating dashboard UIs at work and for my personal projects. I always wanted to make a reusable collection of dashboard UI for future projects; and here it is now. While I've created a few custom components, some of the code is directly adapted from ShadcnUI examples.
-
-> This is not a starter project (template) though. I'll probably make one in the future.
+This dashboard provides a modern interface for managing AI document processing workflows, including document upload, processing automation via N8N, AI-powered extraction using Ollama models, and data storage with Supabase.
 
 ## Features
 
 - Light/dark mode
-- Responsive
-- Accessible
-- With built-in Sidebar component
+- Responsive design with mobile support
+- Accessible components following WCAG guidelines
+- Document upload and processing interface
+- AI model management and monitoring
+- N8N workflow integration and management
+- Real-time processing status updates
+- Comprehensive E2E testing suite
 - Global Search Command
-- 10+ pages
-- Extra custom components
+- Built-in Sidebar navigation
+- 10+ pages including document management
+- Extra custom components for AI workflows
 
 ## Tech Stack
 
@@ -28,36 +56,130 @@ I've been creating dashboard UIs at work and for my personal projects. I always 
 
 **Type Checking:** [TypeScript](https://www.typescriptlang.org/)
 
+**Testing:** [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/)
+
 **Linting/Formatting:** [Eslint](https://eslint.org/) & [Prettier](https://prettier.io/)
 
 **Icons:** [Tabler Icons](https://tabler.io/icons)
 
-**Auth (partial):** [Clerk](https://go.clerk.com/GttUAaK)
+**AI Integration:** [Ollama](https://ollama.ai/) for local AI models
 
-## Run Locally
+**Workflow Engine:** [N8N](https://n8n.io/) for document processing automation
 
-Clone the project
+**Database:** [Supabase](https://supabase.com/) for data storage and authentication
+
+**Containerization:** [Docker](https://docker.com/) for service orchestration
+
+## Quick Start
+
+### Prerequisites
+- Node.js 18+ and PNPM
+- Docker and Docker Compose
+- Local AI services running (N8N, Ollama, Supabase)
+
+### Installation
+
+Clone the project and navigate to the admin dashboard:
 
 ```bash
-  git clone https://github.com/satnaing/shadcn-admin.git
+cd localai-admin-dashboard
 ```
 
-Go to the project directory
+Install dependencies:
 
 ```bash
-  cd shadcn-admin
+pnpm install
 ```
 
-Install dependencies
+Start the development server:
 
 ```bash
-  pnpm install
+pnpm run dev
 ```
 
-Start the server
+The dashboard will be available at `http://localhost:3000`
+
+### Testing
+
+This project includes comprehensive testing with unit, integration, and E2E tests.
 
 ```bash
-  pnpm run dev
+# Run all tests
+pnpm test
+
+# Run E2E tests with service checks
+./scripts/run-e2e-tests-simple.sh
+
+# Run tests with coverage
+pnpm test -- --coverage
+```
+
+For detailed testing information, see [TESTING.md](./TESTING.md).
+
+### Environment Configuration
+
+Create a `.env.local` file with the following variables:
+
+```env
+VITE_SUPABASE_URL=http://localhost:54321
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_N8N_URL=http://localhost:5678
+VITE_OLLAMA_URL=http://localhost:11434
+```
+
+## Project Structure
+
+```
+localai-admin-dashboard/
+├── src/
+│   ├── components/          # UI components
+│   ├── features/           # Feature-specific components
+│   ├── lib/               # Utilities and configurations
+│   ├── pages/             # Page components
+│   ├── types/             # TypeScript type definitions
+│   └── __tests__/         # Test files
+│       ├── unit/          # Unit tests
+│       ├── integration/   # Integration tests
+│       └── e2e/          # End-to-end tests
+├── scripts/               # Build and utility scripts
+├── public/               # Static assets
+└── docs/                # Additional documentation
+```
+
+## Testing Strategy
+
+This project implements a comprehensive testing strategy:
+
+### Test Types
+- **Unit Tests**: Component and utility function tests
+- **Integration Tests**: Feature workflow tests
+- **E2E Tests**: Full system integration tests
+
+### Test Coverage
+- ✅ Service health monitoring (N8N, Ollama, Supabase)
+- ✅ AI model management and text generation
+- ✅ Document processing workflows
+- ✅ Admin dashboard accessibility
+- ✅ Error handling and graceful degradation
+
+See [E2E_TESTING_SUMMARY.md](./E2E_TESTING_SUMMARY.md) for detailed testing documentation.
+
+## Development
+
+### Code Quality
+- ESLint for code linting
+- Prettier for code formatting
+- TypeScript for type safety
+- Vitest for testing
+
+### Key Scripts
+```bash
+pnpm dev          # Start development server
+pnpm build        # Build for production
+pnpm preview      # Preview production build
+pnpm test         # Run all tests
+pnpm lint         # Run ESLint
+pnpm format       # Format code with Prettier
 ```
 
 ## Sponsoring this project ❤️
