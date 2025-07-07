@@ -4,10 +4,10 @@ export const EMAIL_CONFIG = {
   // SendGrid Configuration
   SENDGRID_API_KEY: import.meta.env.VITE_SENDGRID_API_KEY || 'REDACTED_SENDGRID_KEY',
   
-  // Email Settings
-  FROM_EMAIL: import.meta.env.VITE_SENDGRID_FROM_EMAIL || 'support@fetchtext.io',
+  // Email Settings - Using verified sender email
+  FROM_EMAIL: import.meta.env.VITE_SENDGRID_FROM_EMAIL || 'yeag123@gmail.com',
   FROM_NAME: import.meta.env.VITE_SENDGRID_FROM_NAME || 'FetchText Support',
-  REPLY_TO: import.meta.env.VITE_SENDGRID_REPLY_TO || 'noreply@fetchtext.io',
+  REPLY_TO: import.meta.env.VITE_SENDGRID_REPLY_TO || 'yeag123@gmail.com',
   
   // SendGrid Template IDs
   TEMPLATES: {

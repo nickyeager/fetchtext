@@ -40,6 +40,11 @@
     reverse_proxy neo4j:7474
 }
 
+# Document Processor
+{$DOCUMENT_PROCESSOR_HOSTNAME} {
+    reverse_proxy document-processor:8090
+}
+
 # # SearXNG
 # {$SEARXNG_HOSTNAME} {
 #     encode zstd gzip

@@ -19,8 +19,7 @@ export default function ResetPassword() {
             Reset Password
           </CardTitle>
           <CardDescription>
-            Enter your new password below. <br />
-            Make sure it's strong and secure.
+            Enter your new password below.
           </CardDescription>
         </CardHeader>
         <CardContent>

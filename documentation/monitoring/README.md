@@ -1,6 +1,6 @@
-# LocalAI Stack Monitoring Tools
+# FetchText Stack Monitoring Tools
 
-This directory contains comprehensive monitoring tools for the LocalAI Docker stack, including container health checks, port verification, resource monitoring, and alerting capabilities.
+This directory contains comprehensive monitoring tools for the FetchText Docker stack, including container health checks, port verification, resource monitoring, and alerting capabilities.
 
 ## 🛠️ Available Monitoring Tools
 
@@ -96,7 +96,7 @@ See `monitoring/config.yaml` for detailed configuration options.
 
 ### Prometheus + Grafana
 - Metrics collection and visualization
-- Custom dashboards for LocalAI stack
+- Custom dashboards for FetchText stack
 - Alerting rules and notifications
 
 ### ELK Stack (Elasticsearch, Logstash, Kibana)
@@ -174,4 +174,4 @@ docker events
 
 ---
 
-For more information about the LocalAI stack configuration, see the main project documentation.
+For more information about the FetchText stack configuration, see the main project documentation.
