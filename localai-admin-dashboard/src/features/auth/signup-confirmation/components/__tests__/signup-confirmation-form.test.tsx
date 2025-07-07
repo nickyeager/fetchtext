@@ -12,8 +12,8 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-// Mock email client
-vi.mock('@/lib/email-client', () => ({
+// Mock N8N email client
+vi.mock('@/lib/n8n-email-client', () => ({
   sendWelcomeEmail: vi.fn(),
 }));
 
@@ -31,7 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 import { supabase } from '@/lib/supabase';
-import { sendWelcomeEmail } from '@/lib/email-client';
+import { sendWelcomeEmail } from '@/lib/n8n-email-client';
 import { toast } from 'sonner';
 
 const mockVerifyOtp = supabase.auth.verifyOtp as ReturnType<typeof vi.fn>;

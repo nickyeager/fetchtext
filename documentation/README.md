@@ -1,11 +1,11 @@
-# LocalAI Stack Documentation
+# FetchText Stack Documentation
 
-Welcome to the LocalAI Stack documentation! This folder contains all the documentation for the LocalAI project, organized by category.
+Welcome to the FetchText Stack documentation! This folder contains all the documentation for the FetchText project, organized by category.
 
 ## 📁 Documentation Structure
 
 ### 🚀 Setup & Configuration
-- [`setup/SETUP_VERIFICATION.md`](setup/SETUP_VERIFICATION.md) - Verify your LocalAI stack installation
+- [`setup/SETUP_VERIFICATION.md`](setup/SETUP_VERIFICATION.md) - Verify your FetchText stack installation
 - [`configuration/PORT_CONFIGURATION.md`](configuration/PORT_CONFIGURATION.md) - Port mappings and network configuration
 
 ### 📊 Monitoring & Operations

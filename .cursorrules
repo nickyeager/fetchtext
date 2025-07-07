@@ -1,0 +1,55 @@
+# Cursor Rules
+
+## Testing Framework
+- **Always use Vitest** for all testing needs
+- When writing tests, use Vitest syntax and utilities
+- For test configuration, prefer vitest.config.ts over other test runners
+- Use Vitest's built-in mocking, assertions, and testing utilities
+- When setting up new test files, use Vitest's describe, it, expect syntax
+- For React component testing, use @testing-library/react with Vitest
+- Use Vitest's vi.mock() for mocking instead of jest.mock()
+
+## Test File Conventions
+- Test files should use `.test.ts`, `.test.tsx`, or `.spec.ts`, `.spec.tsx` extensions
+- Place test files either:
+  - Adjacent to the source file (recommended)
+  - In `__tests__` directories
+  - In dedicated `test` or `tests` directories
+
+## Testing Best Practices
+- Write unit tests for individual functions and components
+- Use integration tests for feature workflows
+- Prefer explicit imports over globals when possible
+- Use Vitest's built-in coverage reporting with `--coverage` flag
+- Leverage Vitest's watch mode for development with `--watch`
+
+## Configuration
+- Use vitest.config.ts for test configuration
+- Extend from vite.config.ts when possible for consistency
+- Configure test environment (jsdom for React, node for backend)
+- Set up proper path mapping and aliases in test config 
+
+## Supabase Infrastructure
+- **Supabase is already running** in the parent directory Docker setup (`../docker-compose.yml`)
+- **DO NOT create new Supabase projects** - use the existing infrastructure
+- Supabase is included via: `include: - ./supabase/docker/docker-compose.yml`
+- Environment variables are set in parent `.env` file:
+  - `VITE_SUPABASE_URL: http://kong:8000` (via Docker internal network)
+  - `VITE_SUPABASE_ANON_KEY: ${ANON_KEY}` (from parent .env)
+- Local Supabase URL: `http://localhost:8000` (Kong gateway)
+- Edge Functions run in: `supabase-edge-functions` container
+- Use existing Supabase containers: `supabase-db`, `supabase-auth`, `supabase-storage`, etc.
+
+## Email Service Configuration
+- **Always use N8N workflows for all email delivery** - DO NOT use Supabase Edge Functions
+- **DO NOT create or use Supabase Edge Functions** for email services
+- **DO NOT use direct SendGrid API calls** from the frontend
+- Use N8N webhook endpoints for email integration: `http://localhost:5678/webhook/[email-type]`
+- Email configuration handled via N8N workflow variables and parent environment
+- SendGrid API Key: Store in parent `.env` file for N8N workflow access
+- Verified sender: `yeag123@gmail.com`
+- N8N workflows are deployed in the existing N8N container
+- Use N8N development mode for testing, production N8N workflows for real emails
+- Frontend should call N8N webhook endpoints directly (e.g., `http://localhost:5678/webhook/password-reset-email`)
+- N8N provides better email template management, workflow automation, and debugging capabilities
+- All email types (password reset, welcome, two-factor) should use dedicated N8N workflows 

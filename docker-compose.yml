@@ -14,6 +14,9 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
+  document_uploads:
+  document_processed:
+  document_temp:
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
@@ -86,13 +89,13 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - USE_OLLAMA_DOCKER=false
       # Branding customizations
-      - WEBUI_NAME=LocalAI Assistant
+      - WEBUI_NAME=FetchText Assistant
       - WEBUI_URL=http://localhost:3000
-      - WEBUI_DESCRIPTION=Your Personal AI Assistant powered by LocalAI
+      - WEBUI_DESCRIPTION=Your Personal AI Assistant powered by FetchText
       # Optional: Custom favicon and static files
       # - STATIC_DIR=/app/static
       # Optional: Custom banners (JSON format)
-      # - WEBUI_BANNERS=[{"id": "welcome", "type": "info", "title": "Welcome!", "content": "Welcome to your LocalAI Assistant"}]
+      # - WEBUI_BANNERS=[{"id": "welcome", "type": "info", "title": "Welcome!", "content": "Welcome to your FetchText Assistant"}]
     volumes:
       - open-webui:/app/backend/data
       # Uncomment the line below if you want to mount custom static files (favicon, etc.)
@@ -172,6 +175,7 @@ services:
       - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
       - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
+      - DOCUMENT_PROCESSOR_HOSTNAME=${DOCUMENT_PROCESSOR_HOSTNAME:-":8009"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -430,3 +434,25 @@ services:
     restart: unless-stopped
     ports:
       - "5174:3005"
+
+  document-processor:
+    build:
+      context: ./document-processor
+    container_name: localai-document-processor
+    restart: unless-stopped
+    expose:
+      - 8090/tcp
+    volumes:
+      - ./shared:/app/shared
+      - document_uploads:/app/uploads
+      - document_processed:/app/processed
+      - document_temp:/app/temp
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 10s

@@ -1,30 +1,100 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, AlertTriangle, Info } from 'lucide-react';
 
 interface ResetPasswordFormProps {
   onResetComplete?: () => void;
 }
 
-export function ResetPasswordForm({ onResetComplete }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ onResetComplete: _onResetComplete }: ResetPasswordFormProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errors, setErrors] = useState<{ password?: string; confirmPassword?: string }>({});
+  const [errors, setErrors] = useState<{ password?: string; confirmPassword?: string; session?: string }>({});
+  const [email, setEmail] = useState('');
+  const [hasValidSession, setHasValidSession] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
   const navigate = useNavigate();
   
-  // Get URL parameters for reset token
-  const urlParams = new URLSearchParams(window.location.search);
-  const token = urlParams.get('token') || '';
+  useEffect(() => {
+    // Check for valid password reset session
+    const checkSession = async () => {
+      try {
+        // Check URL parameters first
+        const urlParams = new URLSearchParams(window.location.search);
+        const emailFromUrl = urlParams.get('email');
+        
+        // Check for Supabase auth session (from resetPasswordForEmail)
+        const { data: session } = await supabase.auth.getSession();
+        
+        if (session?.session) {
+          // We have a valid session from password reset
+          setHasValidSession(true);
+          setEmail(session.session.user?.email || emailFromUrl || '');
+        } else {
+          // Check for URL hash parameters (Supabase sometimes uses these)
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+          const tokenType = hashParams.get('type');
+          
+          if (accessToken && refreshToken && tokenType === 'recovery') {
+            // Set the session from URL parameters
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            
+            if (!error) {
+              setHasValidSession(true);
+              // Get the user email from the session
+              const { data: user } = await supabase.auth.getUser();
+              setEmail(user.user?.email || emailFromUrl || '');
+            } else {
+              setErrors({ session: 'Invalid or expired reset link.' });
+            }
+          } else if (emailFromUrl) {
+            // Fall back to email-based validation (simple time check)
+            const timestamp = urlParams.get('t');
+            if (timestamp) {
+              const linkAge = Date.now() - parseInt(timestamp);
+              const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+              
+              if (linkAge < oneHour) {
+                // Link is less than 1 hour old, consider it valid
+                setHasValidSession(true);
+                setEmail(emailFromUrl);
+              } else {
+                setErrors({ session: 'Reset link has expired. Please request a new one.' });
+              }
+            } else {
+              setErrors({ session: 'Invalid reset link. Please request a new one.' });
+            }
+          } else {
+            setErrors({ session: 'Invalid reset link. Please request a new password reset.' });
+          }
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Error checking session:', error);
+        setErrors({ session: 'Unable to validate reset link. Please try again.' });
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+    
+    checkSession();
+  }, []);
 
   const validatePassword = (password: string): string | null => {
     if (password.length < 8) {
@@ -42,6 +112,13 @@ export function ResetPasswordForm({ onResetComplete }: ResetPasswordFormProps) {
     // Clear previous errors
     setErrors({});
     
+    // Check if we have a valid session
+    if (!hasValidSession) {
+      toast.error('Invalid reset session. Please request a new password reset.');
+      navigate({ to: '/forgot-password' });
+      return;
+    }
+    
     // Validation
     const passwordError = validatePassword(password);
     if (passwordError) {
@@ -57,45 +134,73 @@ export function ResetPasswordForm({ onResetComplete }: ResetPasswordFormProps) {
     setIsLoading(true);
     
     try {
-      // First verify the reset token
-      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-        token_hash: token,
-        type: 'recovery',
-      });
-
-      if (verifyError || !verifyData.user) {
-        toast.error('Reset token is invalid or expired. Please request a new password reset.');
-        return;
-      }
-
-      // Update the password
-      const { error: updateError } = await supabase.auth.updateUser({
+      // Use Supabase's built-in updateUser method (works with valid session)
+      const { error } = await supabase.auth.updateUser({
         password: password,
       });
 
-      if (updateError) {
-        toast.error(`Failed to update password: ${updateError.message}`);
+      if (error) {
+        toast.error(`Failed to update password: ${error.message}`);
       } else {
         toast.success('Password updated successfully! You can now sign in.');
-        onResetComplete?.();
         navigate({ to: '/sign-in' });
       }
-    } catch (_error) {
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Password reset error:', error);
       toast.error('An unexpected error occurred');
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (isCheckingSession) {
+    return (
+      <Card className="w-full max-w-md mx-auto">
+        <CardContent className="pt-6">
+          <div className="text-center">
+            <p>Validating reset link...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!hasValidSession) {
+    return (
+      <Card className="w-full max-w-md mx-auto">
+        <CardContent className="pt-6">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {errors.session || 'This password reset link is invalid or has expired. Please request a new password reset.'}
+            </AlertDescription>
+          </Alert>
+          <div className="mt-4">
+            <Button 
+              onClick={() => navigate({ to: '/forgot-password' })}
+              className="w-full"
+            >
+              Request New Reset Link
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Reset Password</CardTitle>
-        <CardDescription>
-          Enter your new password below.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
+        {email && (
+          <Alert className="mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              Resetting password for: <strong>{email}</strong>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="password">New Password</Label>

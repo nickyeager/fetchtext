@@ -518,7 +518,7 @@ class WebMonitoringDashboard:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LocalAI Stack Monitor</title>
+    <title>FetchText Stack Monitor</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -630,7 +630,7 @@ class WebMonitoringDashboard:
 </head>
 <body>
     <div class="header">
-        <h1>🔍 LocalAI Stack Monitor</h1>
+        <h1>🔍 FetchText Stack Monitor</h1>
         <span id="lastUpdate">Last updated: Never</span>
         <span id="connectionStatus" class="connection-status disconnected">Disconnected</span>
     </div>

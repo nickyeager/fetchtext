@@ -1,6 +1,6 @@
 # Port Configuration Summary
 
-This document outlines the port mappings for the LocalAI stack after resolving port conflicts with system-level services.
+This document outlines the port mappings for the FetchText stack after resolving port conflicts with system-level services.
 
 ## Port Mappings
 

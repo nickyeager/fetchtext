@@ -2,14 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { 
   sendPasswordResetEmail, 
   sendWelcomeEmail,
-  sendTwoFactorEmail,
-  validateEmail,
-  sanitizeEmail 
+  sendTwoFactorEmail
 } from '../email-client';
+import { validateEmail, sanitizeEmail } from '../email-service';
 
 // Integration tests for email service with real SendGrid API calls
 // These tests make actual API requests to SendGrid
-describe('Email Service Integration (Real API)', () => {
+// Set VITE_RUN_INTEGRATION_TESTS=true to enable these tests
+const shouldRunIntegrationTests = import.meta.env.VITE_RUN_INTEGRATION_TESTS === 'true';
+
+describe.skipIf(!shouldRunIntegrationTests)('Email Service Integration (Real API)', () => {
   // Use a test email that won't go to real users
   const TEST_EMAIL = 'fetchtext.test@example.com';
   const TEST_TOKEN = 'test-reset-token-123';
@@ -92,8 +94,6 @@ describe('Email Service Integration (Real API)', () => {
       expect(result.error).toBeTruthy();
       expect(typeof result.error).toBe('string');
     });
-
-
 
     it('should handle rate limiting gracefully', async () => {
       // Send multiple emails quickly to test rate limiting

@@ -23,4 +23,20 @@ export default defineConfig({
       '@tabler/icons-react': '@tabler/icons-react/dist/esm/icons/index.mjs',
     },
   },
+  server: {
+    proxy: {
+      // Proxy N8N webhook requests to avoid CORS issues
+      '/n8n-webhook': {
+        target: 'http://localhost:5678',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/n8n-webhook/, '/webhook'),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            // eslint-disable-next-line no-console
+            console.log('N8N proxy error:', err);
+          });
+        },
+      },
+    },
+  },
 })
