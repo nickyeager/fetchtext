@@ -1,7 +1,7 @@
 # GitHub Copilot Instructions
 
 ## Project Overview
-This is a FetchText admin dashboard with Docker-based services including Supabase, N8N, Flowise, and monitoring stack.
+This is a FetchText admin dashboard with Docker-based services including Supabase, N8N, Flowise, and monitoring stack. Built with Vite + React + TanStack Router + shadcn/ui.
 
 ## Testing Framework
 - **Always use Vitest** for all testing needs in this project
@@ -11,6 +11,9 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - When creating new test files, use Vitest's `describe`, `it`, `expect` syntax
 - For React component testing, use `@testing-library/react` with Vitest
 - Use Vitest's `vi.mock()` for mocking instead of `jest.mock()`
+- **Always run vitest without the watcher flag**: Use `npx vitest` instead of `npx vitest --watch`
+- For single test files: `npx vitest [test-file] --reporter=verbose`
+- For all tests: `npx vitest --reporter=verbose`
 
 ## Test File Conventions
 - Test files should use `.test.ts`, `.test.tsx`, or `.spec.ts`, `.spec.tsx` extensions
@@ -24,7 +27,7 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - Use integration tests for feature workflows
 - Prefer explicit imports over globals when possible
 - Use Vitest's built-in coverage reporting with `--coverage` flag
-- Leverage Vitest's watch mode for development with `--watch`
+- **Never use watch mode in CI or automated testing**
 
 ## Configuration Guidelines
 - Use `vitest.config.ts` for test configuration
@@ -38,11 +41,33 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - When writing Docker-related scripts, use the modern syntax
 - Container names should follow the pattern: `localai-<service-name>`
 
-## Authentication & Supabase
+## Supabase Infrastructure
+- **Supabase is already running** in the parent directory Docker setup (`../docker-compose.yml`)
+- **DO NOT create new Supabase projects** - use the existing infrastructure
+- Supabase is included via: `include: - ./supabase/docker/docker-compose.yml`
+- Environment variables are set in parent `.env` file:
+  - `VITE_SUPABASE_URL: http://kong:8000` (via Docker internal network)
+  - `VITE_SUPABASE_ANON_KEY: ${ANON_KEY}` (from parent .env)
+- Local Supabase URL: `http://localhost:8000` (Kong gateway)
+- Edge Functions run in: `supabase-edge-functions` container
+- Use existing Supabase containers: `supabase-db`, `supabase-auth`, `supabase-storage`, etc.
 - Use Supabase client from `@/lib/supabase` for all auth operations
 - Authentication context is in `@/context/auth-context.tsx`
 - Always check user session before protected operations
-- Use environment variables: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+
+## Email Service Configuration
+- **Always use N8N workflows for all email delivery** - DO NOT use Supabase Edge Functions
+- **DO NOT create or use Supabase Edge Functions** for email services
+- **DO NOT use direct SendGrid API calls** from the frontend
+- Use N8N webhook endpoints for email integration: `http://localhost:5678/webhook/[email-type]`
+- Email configuration handled via N8N workflow variables and parent environment
+- SendGrid API Key: Store in parent `.env` file for N8N workflow access
+- Verified sender: `yeag123@gmail.com`
+- N8N workflows are deployed in the existing N8N container
+- Use N8N development mode for testing, production N8N workflows for real emails
+- Frontend should call N8N webhook endpoints directly (e.g., `http://localhost:5678/webhook/password-reset-email`)
+- N8N provides better email template management, workflow automation, and debugging capabilities
+- All email types (password reset, welcome, two-factor) should use dedicated N8N workflows
 
 ## React & TypeScript Patterns
 - Use TanStack Router for routing (not React Router)
@@ -50,12 +75,16 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - Use TypeScript strictly - always type props and state
 - Prefer function components over class components
 - Use React hooks for state management
+- Use `@tanstack/react-query` for data fetching and caching
+- Use `@tanstack/react-table` for complex table functionality
 
 ## UI Component Library
 - Use shadcn/ui components from `@/components/ui/`
 - Follow the existing component patterns
 - Use Tailwind CSS for styling
 - Maintain consistent spacing and typography
+- Use Radix UI primitives as the foundation for components
+- Use Lucide React for icons
 
 ## File Organization
 - Components go in `src/components/`
@@ -63,6 +92,7 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - Utilities go in `src/lib/`
 - Types go in `src/types/`
 - Tests should be co-located with source files
+- Routes go in `src/routes/` (auto-generated routeTree.gen.ts)
 
 ## Code Generation Preferences
 When suggesting code, always:
@@ -73,9 +103,21 @@ When suggesting code, always:
 - Use the project's established folder structure
 - Include proper error handling and loading states
 - Use async/await instead of .then() for promises
+- Use TanStack Router navigation patterns
+- Include proper form validation with react-hook-form and zod
 
 ## Security & Environment
 - Never hardcode sensitive values - use environment variables
 - Always validate environment variables in code
 - Use proper CORS settings for API calls
-- Implement proper error boundaries in React components 
+- Implement proper error boundaries in React components
+- Use Supabase RLS (Row Level Security) for data access control
+- Validate all user inputs on both client and server side
+
+## Development Workflow
+- Use `pnpm` as the package manager
+- Run `pnpm dev` for development server
+- Use `pnpm test` for running tests
+- Use `pnpm lint` for code linting
+- Use `pnpm format` for code formatting
+- Integration tests expect services to be running via Docker Compose 

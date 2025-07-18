@@ -440,8 +440,8 @@ services:
       context: ./document-processor
     container_name: localai-document-processor
     restart: unless-stopped
-    expose:
-      - 8090/tcp
+    ports:
+      - "8090:8090"
     volumes:
       - ./shared:/app/shared
       - document_uploads:/app/uploads
