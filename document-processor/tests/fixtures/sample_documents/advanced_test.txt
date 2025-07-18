@@ -1,0 +1,30 @@
+Document Title: Advanced Test Document
+
+Section 1: Introduction
+This document tests various formatting elements including bold text, italic text, and underlined text. It contains multiple paragraphs with different styles and structures.
+
+Section 2: Lists and Numbers
+Here are some numbered items:
+1. First numbered item with text
+2. Second item containing data: 42
+3. Third item with special chars: $99.99
+
+Bullet points:
+• Point A with basic text
+• Point B with numbers: 123, 456
+• Point C with symbols: @, #, %
+
+Section 3: Mixed Content
+This section contains mixed content including:
+- Technical terms: API, JSON, HTTP
+- Measurements: 100MB, 5.5GB, 3.14159
+- Dates: 2025-07-07, July 7th, 2025
+
+Section 4: Special Characters
+Testing extraction of special characters and symbols:
+Copyright © 2025, Trademark ™, Registered ®
+Mathematical: α, β, γ, π, Σ, ∆
+Currency: $, €, £, ¥, ₹
+
+Conclusion
+This document provides comprehensive test coverage for text extraction accuracy across different content types and formatting styles.
