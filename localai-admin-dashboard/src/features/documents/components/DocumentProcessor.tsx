@@ -179,8 +179,9 @@ Please return a JSON object with the field names as keys and extracted values. I
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`N8N webhook failed: ${response.status} ${response.statusText}`);
+      // Check if response exists before accessing properties
+      if (!response || !response.ok) {
+        throw new Error(`N8N webhook failed: ${response?.status || 'No response'} ${response?.statusText || 'Network error'}`);
       }
 
       const result = await response.json();
@@ -197,20 +198,17 @@ Please return a JSON object with the field names as keys and extracted values. I
           extractedData = JSON.parse(result.data);
         } catch {
           // If parsing fails, fall back to mock data
-          console.warn('Failed to parse AI response, falling back to mock data');
           extractedData = createMockExtractedData();
         }
       } else if (result.data && typeof result.data === 'object') {
         extractedData = result.data;
       } else {
         // Fallback to mock data if no valid response
-        console.warn('No valid AI response, falling back to mock data');
         extractedData = createMockExtractedData();
       }
 
       return extractedData;
-    } catch (error) {
-      console.warn('N8N webhook failed, falling back to mock data:', error);
+    } catch (_error) {
       // Fall back to mock data if N8N is not available
       return createMockExtractedData();
     }
@@ -351,6 +349,53 @@ Please return a JSON object with the field names as keys and extracted values. I
               Error: {processingSteps.find(s => s.status === 'error')?.message}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Template Information Card - Always Visible */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-blue-600" />
+            Template: {selectedTemplate.name}
+          </CardTitle>
+          <CardDescription>
+            {selectedTemplate.description}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-medium text-sm text-gray-700 mb-2">
+                Data to Extract ({selectedTemplate.smart_variables.length} fields):
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {selectedTemplate.smart_variables.map((variable) => (
+                  <div key={variable.id} className="bg-gray-50 p-3 rounded-lg">
+                    <div className="font-medium text-sm text-gray-900">
+                      {variable.name} 
+                      <span className="ml-1 text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                        {variable.type}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">{variable.description}</p>
+                    {variable.extraction_hints.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Hints: {variable.extraction_hints.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <h4 className="font-medium text-sm text-blue-900 mb-1">Template Preview:</h4>
+              <div className="bg-white p-2 rounded text-xs font-mono max-h-20 overflow-y-auto">
+                {selectedTemplate.template_content.substring(0, 200)}...
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

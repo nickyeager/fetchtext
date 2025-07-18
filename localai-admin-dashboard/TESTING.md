@@ -1,223 +1,219 @@
-# Testing Documentation
+# Testing Guidelines
 
-## Overview
+This document outlines the testing strategy and rules for the Local AI Admin Dashboard.
 
-This project has a comprehensive testing infrastructure with multiple layers of testing to ensure reliability and integration between all services.
+## ⚠️ Critical Testing Rules
 
-## Test Structure
+### No Watch Mode Policy
+- **Always run tests without the watcher** - Use `pnpm test` (runs once) instead of watch mode
+- **Never use watch mode in CI or automated testing**
+- **Use explicit run commands** for all test execution
+- **Watch mode is only for development debugging** - use `pnpm test:ui` instead
+
+### Test Execution Commands
+
+```bash
+# ✅ CORRECT - Run tests once (recommended)
+pnpm test
+
+# ✅ CORRECT - Run specific test file
+npx vitest path/to/test.test.ts --run
+
+# ✅ CORRECT - Run with verbose output
+npx vitest --run --reporter=verbose
+
+# ✅ CORRECT - Run with coverage
+pnpm test:coverage
+
+# ✅ CORRECT - UI mode for debugging (dev only)
+pnpm test:ui
+
+# ❌ WRONG - Don't use watch mode in CI
+npx vitest --watch
+
+# ❌ WRONG - Don't use watch mode in scripts
+pnpm test --watch
+```
+
+## Test Types
 
 ### Unit Tests
-- **Location**: `src/components/**/*.test.tsx`, `src/lib/**/*.test.ts`
-- **Purpose**: Test individual components and utilities in isolation
-- **Framework**: Vitest with React Testing Library
+- Test individual components and functions
+- Located in `src/__tests__/` directories
+- Use Vitest + Testing Library
+- Fast execution (< 1 second per test)
 
 ### Integration Tests
-- **Location**: `src/__tests__/integration/`
-- **Purpose**: Test interactions between components and services
-- **Examples**:
-  - `documents-route-comparison.test.tsx` - Route and component integration
-  - `ollama-document-extraction.test.tsx` - Ollama service integration
+- Test feature workflows and service interactions
+- Located in `src/__tests__/integration/`
+- Test real service connections (N8N, Supabase, Ollama)
+- May take longer due to external dependencies
 
-### End-to-End Tests
-- **Location**: `src/__tests__/e2e/`
-- **Purpose**: Test complete workflows across all services
-- **Examples**:
-  - `document-processing-e2e.test.tsx` - Full document processing pipeline
+### E2E Tests
+- Test complete user workflows
+- Located in `src/__tests__/e2e/`
+- Require all services to be running
+- Use comprehensive service health checks
 
-## Service Dependencies
+## Test Configuration
 
-### Required Services for E2E Tests
-- **N8N** (localhost:5678) - Workflow automation
-- **Ollama** (localhost:11434) - AI model serving
-- **Admin Dashboard** (localhost:5174) - Web interface
-- **Supabase** (localhost:8000) - Database and authentication
+### Vitest Configuration
+- **Watch mode disabled by default** in `vitest.config.ts`
+- Single fork execution for stability
+- 10-second timeout for all tests
+- JSDOM environment for React components
 
-### Docker Services Status
-Check service status with:
-```bash
-docker compose ps
+### Environment Variables
+Tests use the following environment variables:
+```env
+VITE_SUPABASE_URL=http://localhost:8000
+VITE_SUPABASE_ANON_KEY=test_anon_key
 ```
 
 ## Running Tests
 
-### All Tests
+### Development
 ```bash
-npm test
+# Run all tests once
+pnpm test
+
+# Run with coverage
+pnpm test:coverage
+
+# Run specific test file
+npx vitest src/__tests__/path/to/test.test.ts --run
+
+# Debug with UI (development only)
+pnpm test:ui
 ```
 
-### Specific Test Types
+### CI/CD
 ```bash
-# Unit tests only
-npm test -- --run src/components/
+# Always use --run flag in CI
+npx vitest --run
 
-# Integration tests
-npm test -- --run src/__tests__/integration/
+# With coverage
+npx vitest --run --coverage
 
-# E2E tests
-npm test -- --run src/__tests__/e2e/
+# With verbose output
+npx vitest --run --reporter=verbose
 ```
 
-### E2E Test Runner Script
-For comprehensive E2E testing with service health checks:
+### E2E Testing
 ```bash
+# Run E2E tests with service checks
 ./scripts/run-e2e-tests-simple.sh
+
+# Run comprehensive E2E tests
+./scripts/run-e2e-tests.sh
 ```
 
-This script:
-1. Verifies Docker is running
-2. Checks all required services are responding
-3. Runs the E2E test suite
-4. Provides detailed feedback on failures
+## Test Writing Guidelines
 
-## Test Configuration
+### Vitest Best Practices
+- Use `describe`, `it`, `expect` syntax
+- Use `vi.mock()` for mocking (not `jest.mock()`)
+- Use `vi.fn()` for function mocks
+- Use `vi.spyOn()` for method spies
+- Use `beforeEach` and `afterEach` for setup/teardown
 
-### Vitest Config
-- **File**: `vitest.config.ts`
-- **Environment**: jsdom for React component testing
-- **Setup**: `vitest.setup.ts` for global test configuration
+### Component Testing
+```typescript
+import { render, screen } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { MyComponent } from './MyComponent'
 
-### Mocking Strategy
-- **External Services**: Mocked in unit/integration tests
-- **React Components**: Mocked for isolation when needed
-- **API Calls**: Real calls in E2E tests, mocked otherwise
+describe('MyComponent', () => {
+  it('renders correctly', () => {
+    render(<MyComponent />)
+    expect(screen.getByText('Hello')).toBeInTheDocument()
+  })
+})
+```
 
-## E2E Test Features
+### Service Testing
+```typescript
+import { describe, it, expect, vi } from 'vitest'
+import { myService } from './myService'
 
-### Service Health Checks
-- Validates all required services are running and responsive
-- Tests actual API endpoints with real network calls
-- Provides clear feedback on which services are down
+describe('myService', () => {
+  it('handles API calls correctly', async () => {
+    const mockResponse = { data: 'test' }
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      json: () => Promise.resolve(mockResponse)
+    } as Response)
 
-### N8N Integration
-- Tests N8N API accessibility
-- Validates webhook endpoints (when workflows are configured)
-- Handles authentication requirements gracefully
+    const result = await myService.fetchData()
+    expect(result).toEqual(mockResponse)
+  })
+})
+```
 
-### Ollama Integration
-- Lists available models
-- Tests actual text generation (can be slow)
-- Validates model responses
+## Coverage Requirements
 
-### Admin Dashboard
-- Tests web interface accessibility
-- Validates core application functionality
-- Checks authentication flows
+- **Minimum 80% coverage** for new code
+- **100% coverage** for critical business logic
+- **Integration tests** for all external service interactions
+- **E2E tests** for all user workflows
 
-### Supabase Integration
-- Tests database connectivity through Kong gateway
-- Validates REST API endpoints
-- Checks authentication services
-
-## Troubleshooting
+## Debugging Tests
 
 ### Common Issues
-
-#### Services Not Running
-```
-✗ Some services are not responding. Tests may fail.
-```
-**Solution**: Start Docker services with `docker compose up -d`
-
-#### N8N Authentication Required
-```
-Failed to create N8N workflow: Unauthorized
-```
-**Note**: This is expected in secure environments. E2E tests fall back to basic API checks.
-
-#### Ollama Model Loading
-```
-should test Ollama API directly (slow)
-```
-**Note**: First-time model loading can take 10-30 seconds. This is normal.
-
-#### Test Timeouts
-If tests hang or timeout:
-1. Check Docker memory allocation (recommend 4GB+)
-2. Verify no port conflicts
-3. Restart Docker services
+1. **Tests hanging**: Check for unhandled promises or async operations
+2. **Mock not working**: Ensure mocks are set up before the code under test runs
+3. **Environment variables**: Verify test environment is properly configured
+4. **Service dependencies**: Ensure required services are running for integration tests
 
 ### Debug Commands
-
 ```bash
-# Check service logs
-docker compose logs [service-name]
+# Run single test with verbose output
+npx vitest path/to/test.test.ts --run --reporter=verbose
 
-# Test individual services
-curl http://localhost:5678/healthz  # N8N
-curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:5174/  # Admin Dashboard
-curl http://localhost:8000/rest/v1/  # Supabase
+# Run tests in UI mode for debugging
+pnpm test:ui
 
-# Run specific test with verbose output
-npm test -- --run src/__tests__/e2e/document-processing-e2e.test.tsx --reporter=verbose
+# Run with debug logging
+DEBUG=* npx vitest --run
 ```
+
+## Performance Guidelines
+
+- **Unit tests**: Should complete in < 1 second
+- **Integration tests**: Should complete in < 10 seconds
+- **E2E tests**: Should complete in < 30 seconds
+- **Total test suite**: Should complete in < 2 minutes
 
 ## Continuous Integration
 
-### Prerequisites for CI/CD
-1. Docker environment with sufficient resources
-2. All required ports available (5678, 11434, 5174, 8000)
-3. Network access for model downloads (Ollama)
+### GitHub Actions
+- Tests run on every push and PR
+- **No watch mode** in CI environment
+- Coverage reports generated automatically
+- E2E tests run on main branch only
 
-### Environment Variables
-Tests respect these environment variables:
-- `CI=true` - Adjusts timeouts and behavior for CI environments
-- `NODE_ENV=test` - Enables test-specific configurations
+### Pre-commit Hooks
+- Lint and format code
+- Run unit tests
+- Check test coverage
+- **No watch mode** in hooks
 
-## Adding New Tests
+## Troubleshooting
 
-### Unit Tests
-1. Create test file next to component: `Component.test.tsx`
-2. Import from `vitest` and `@testing-library/react`
-3. Mock external dependencies
-4. Test component behavior in isolation
+### Test Failures
+1. Check if all required services are running
+2. Verify environment variables are set correctly
+3. Ensure mocks are properly configured
+4. Check for timing issues with async operations
 
-### Integration Tests
-1. Create test in `src/__tests__/integration/`
-2. Test interactions between real components
-3. Mock external services only
-4. Focus on data flow and state management
+### Performance Issues
+1. Use `vi.useFakeTimers()` for time-dependent tests
+2. Mock heavy operations and external APIs
+3. Use `vi.spyOn()` instead of full mocks when possible
+4. Consider test parallelization for large test suites
 
-### E2E Tests
-1. Create test in `src/__tests__/e2e/`
-2. Use real services (no mocking)
-3. Test complete user workflows
-4. Include setup and cleanup steps
+## Resources
 
-## Best Practices
-
-### Test Writing
-- Use descriptive test names
-- Group related tests with `describe`
-- Set appropriate timeouts for different operations
-- Clean up resources in `afterEach` or `afterAll`
-
-### Service Integration
-- Always check service health before running tests
-- Provide fallback behavior for service failures
-- Use realistic test data
-- Respect service rate limits
-
-### Maintenance
-- Keep test dependencies up to date
-- Review and update mocks when APIs change
-- Monitor test execution times
-- Document any special requirements
-
-## Performance Notes
-
-### Test Execution Times
-- **Unit Tests**: < 1 second each
-- **Integration Tests**: 1-5 seconds each
-- **E2E Tests**: 10-30 seconds each (due to real service calls)
-
-### Resource Usage
-- **Memory**: 2-4 GB recommended for full test suite
-- **CPU**: Tests are mostly I/O bound, moderate CPU usage
-- **Network**: E2E tests make real HTTP requests
-
-### Optimization Tips
-- Run unit tests in parallel (default)
-- Run E2E tests sequentially to avoid resource conflicts
-- Use test filtering to run specific test suites during development
-- Consider test data cleanup strategies for large test suites
+- [Vitest Documentation](https://vitest.dev/)
+- [Testing Library Documentation](https://testing-library.com/)
+- [React Testing Best Practices](https://testing-library.com/docs/react-testing-library/intro/)
+- [Jest to Vitest Migration Guide](https://vitest.dev/guide/migration.html)

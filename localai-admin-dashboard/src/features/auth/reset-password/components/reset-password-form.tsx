@@ -13,7 +13,7 @@ interface ResetPasswordFormProps {
   onResetComplete?: () => void;
 }
 
-export function ResetPasswordForm({ onResetComplete: _onResetComplete }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ onResetComplete }: ResetPasswordFormProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -143,6 +143,7 @@ export function ResetPasswordForm({ onResetComplete: _onResetComplete }: ResetPa
         toast.error(`Failed to update password: ${error.message}`);
       } else {
         toast.success('Password updated successfully! You can now sign in.');
+        onResetComplete?.();
         navigate({ to: '/sign-in' });
       }
     } catch (error) {

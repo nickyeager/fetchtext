@@ -11,7 +11,10 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "knip": "knip",
-    "test": "npx vitest --environment jsdom"
+    "test": "npx vitest --environment jsdom",
+    "test:watch": "npx vitest --environment jsdom --watch",
+    "test:coverage": "npx vitest --environment jsdom --run --coverage",
+    "test:ui": "npx vitest --environment jsdom --ui"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.31.4",
@@ -51,6 +54,7 @@
     "express": "^5.1.0",
     "input-otp": "^1.4.2",
     "js-cookie": "^3.0.5",
+    "lottie-react": "^2.4.1",
     "lucide-react": "^0.488.0",
     "react": "^19.1.0",
     "react-day-picker": "9.6.6",

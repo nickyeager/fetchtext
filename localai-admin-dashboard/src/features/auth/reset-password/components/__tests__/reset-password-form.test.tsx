@@ -216,7 +216,7 @@ describe('ResetPasswordForm', () => {
     render(<ResetPasswordForm />);
 
     await waitFor(() => {
-      expect(screen.getByText(/password reset link is invalid or has expired/i)).toBeInTheDocument();
+      expect(screen.getByText(/Invalid reset link. Please request a new one./i)).toBeInTheDocument();
       expect(screen.getByText(/Request New Reset Link/i)).toBeInTheDocument();
     });
 
