@@ -23,7 +23,13 @@ function DebugPage() {
           search={{ templateId: "1" }}
           className="block text-blue-600 hover:underline"
         >
-          → Go to /documents/process-document?templateId=1
+          → Go to /documents/process-document?templateId=1 (Requires auth)
+        </Link>
+        <Link 
+          to="/test-document-processor"
+          className="block text-green-600 hover:underline font-medium"
+        >
+          → Go to /test-document-processor (TEST - No auth needed)
         </Link>
       </div>
     </div>

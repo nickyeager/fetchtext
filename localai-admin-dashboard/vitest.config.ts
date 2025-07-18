@@ -25,6 +25,8 @@ export default defineConfig({
     testTimeout: 10000,
     hookTimeout: 10000,
     teardownTimeout: 5000,
+    // Explicitly disable watch mode by default
+    watch: false,
     env: {
       VITE_SUPABASE_URL: 'http://localhost:8000',
       VITE_SUPABASE_ANON_KEY: 'test_anon_key',

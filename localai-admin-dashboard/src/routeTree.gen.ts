@@ -11,11 +11,14 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as TestDocumentProcessorImport } from './routes/test-document-processor'
+import { Route as DocumentsTestImport } from './routes/documents-test'
 import { Route as DebugImport } from './routes/debug'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
 import { Route as AuthenticatedTemplatesImport } from './routes/_authenticated/templates'
+import { Route as AuthenticatedDocumentsImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardImport } from './routes/_authenticated/dashboard'
 import { Route as errors503Import } from './routes/(errors)/503'
 import { Route as errors500Import } from './routes/(errors)/500'
@@ -46,6 +49,9 @@ import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_aut
 import { Route as AuthenticatedSettingsDisplayImport } from './routes/_authenticated/settings/display'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
+import { Route as AuthenticatedDocumentsWorkflowImport } from './routes/_authenticated/documents/workflow'
+import { Route as AuthenticatedDocumentsProcessTestImport } from './routes/_authenticated/documents/process-test'
+import { Route as AuthenticatedDocumentsProcessNewImport } from './routes/_authenticated/documents/process-new'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
 import { Route as AuthenticatedDocumentsProcessImport } from './routes/_authenticated/documents/process'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
@@ -57,6 +63,18 @@ import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from '
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
 
 // Create/Update Routes
+
+const TestDocumentProcessorRoute = TestDocumentProcessorImport.update({
+  id: '/test-document-processor',
+  path: '/test-document-processor',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const DocumentsTestRoute = DocumentsTestImport.update({
+  id: '/documents-test',
+  path: '/documents-test',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const DebugRoute = DebugImport.update({
   id: '/debug',
@@ -84,6 +102,12 @@ const IndexRoute = IndexImport.update({
 const AuthenticatedTemplatesRoute = AuthenticatedTemplatesImport.update({
   id: '/templates',
   path: '/templates',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+
+const AuthenticatedDocumentsRoute = AuthenticatedDocumentsImport.update({
+  id: '/documents',
+  path: '/documents',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
@@ -212,9 +236,9 @@ const AuthenticatedHelpCenterIndexRoute =
 
 const AuthenticatedDocumentsIndexRoute =
   AuthenticatedDocumentsIndexImport.update({
-    id: '/documents/',
-    path: '/documents/',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
 const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexImport.update({
@@ -276,18 +300,39 @@ const AuthenticatedSettingsAccountRoute =
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
+const AuthenticatedDocumentsWorkflowRoute =
+  AuthenticatedDocumentsWorkflowImport.update({
+    id: '/workflow',
+    path: '/workflow',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
+const AuthenticatedDocumentsProcessTestRoute =
+  AuthenticatedDocumentsProcessTestImport.update({
+    id: '/process-test',
+    path: '/process-test',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
+const AuthenticatedDocumentsProcessNewRoute =
+  AuthenticatedDocumentsProcessNewImport.update({
+    id: '/process-new',
+    path: '/process-new',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
 const AuthenticatedDocumentsProcessDocumentRoute =
   AuthenticatedDocumentsProcessDocumentImport.update({
-    id: '/documents/process-document',
-    path: '/documents/process-document',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/process-document',
+    path: '/process-document',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
 const AuthenticatedDocumentsProcessRoute =
   AuthenticatedDocumentsProcessImport.update({
-    id: '/documents/process',
-    path: '/documents/process',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/process',
+    path: '/process',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
 const AuthenticatedWorkflowsInstancesIndexRoute =
@@ -369,6 +414,20 @@ declare module '@tanstack/react-router' {
       path: '/debug'
       fullPath: '/debug'
       preLoaderRoute: typeof DebugImport
+      parentRoute: typeof rootRoute
+    }
+    '/documents-test': {
+      id: '/documents-test'
+      path: '/documents-test'
+      fullPath: '/documents-test'
+      preLoaderRoute: typeof DocumentsTestImport
+      parentRoute: typeof rootRoute
+    }
+    '/test-document-processor': {
+      id: '/test-document-processor'
+      path: '/test-document-processor'
+      fullPath: '/test-document-processor'
+      preLoaderRoute: typeof TestDocumentProcessorImport
       parentRoute: typeof rootRoute
     }
     '/_authenticated/settings': {
@@ -483,6 +542,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardImport
       parentRoute: typeof AuthenticatedRouteImport
     }
+    '/_authenticated/documents': {
+      id: '/_authenticated/documents'
+      path: '/documents'
+      fullPath: '/documents'
+      preLoaderRoute: typeof AuthenticatedDocumentsImport
+      parentRoute: typeof AuthenticatedRouteImport
+    }
     '/_authenticated/templates': {
       id: '/_authenticated/templates'
       path: '/templates'
@@ -492,17 +558,38 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/documents/process': {
       id: '/_authenticated/documents/process'
-      path: '/documents/process'
+      path: '/process'
       fullPath: '/documents/process'
       preLoaderRoute: typeof AuthenticatedDocumentsProcessImport
-      parentRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/documents/process-document': {
       id: '/_authenticated/documents/process-document'
-      path: '/documents/process-document'
+      path: '/process-document'
       fullPath: '/documents/process-document'
       preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
-      parentRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
+    '/_authenticated/documents/process-new': {
+      id: '/_authenticated/documents/process-new'
+      path: '/process-new'
+      fullPath: '/documents/process-new'
+      preLoaderRoute: typeof AuthenticatedDocumentsProcessNewImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
+    '/_authenticated/documents/process-test': {
+      id: '/_authenticated/documents/process-test'
+      path: '/process-test'
+      fullPath: '/documents/process-test'
+      preLoaderRoute: typeof AuthenticatedDocumentsProcessTestImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
+    '/_authenticated/documents/workflow': {
+      id: '/_authenticated/documents/workflow'
+      path: '/workflow'
+      fullPath: '/documents/workflow'
+      preLoaderRoute: typeof AuthenticatedDocumentsWorkflowImport
+      parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/settings/account': {
       id: '/_authenticated/settings/account'
@@ -569,10 +656,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/documents/': {
       id: '/_authenticated/documents/'
-      path: '/documents'
-      fullPath: '/documents'
+      path: '/'
+      fullPath: '/documents/'
       preLoaderRoute: typeof AuthenticatedDocumentsIndexImport
-      parentRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/help-center/': {
       id: '/_authenticated/help-center/'
@@ -679,6 +766,33 @@ const AuthenticatedSettingsRouteRouteWithChildren =
     AuthenticatedSettingsRouteRouteChildren,
   )
 
+interface AuthenticatedDocumentsRouteChildren {
+  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
+  AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
+  AuthenticatedDocumentsProcessNewRoute: typeof AuthenticatedDocumentsProcessNewRoute
+  AuthenticatedDocumentsProcessTestRoute: typeof AuthenticatedDocumentsProcessTestRoute
+  AuthenticatedDocumentsWorkflowRoute: typeof AuthenticatedDocumentsWorkflowRoute
+  AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
+}
+
+const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
+  {
+    AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
+    AuthenticatedDocumentsProcessDocumentRoute:
+      AuthenticatedDocumentsProcessDocumentRoute,
+    AuthenticatedDocumentsProcessNewRoute:
+      AuthenticatedDocumentsProcessNewRoute,
+    AuthenticatedDocumentsProcessTestRoute:
+      AuthenticatedDocumentsProcessTestRoute,
+    AuthenticatedDocumentsWorkflowRoute: AuthenticatedDocumentsWorkflowRoute,
+    AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
+  }
+
+const AuthenticatedDocumentsRouteWithChildren =
+  AuthenticatedDocumentsRoute._addFileChildren(
+    AuthenticatedDocumentsRouteChildren,
+  )
+
 interface AuthenticatedWorkflowsInstancesInstanceIdRouteChildren {
   AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
   AuthenticatedWorkflowsInstancesInstanceIdEditorRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdEditorRoute
@@ -709,12 +823,10 @@ const AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
   AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRoute
-  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
-  AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
-  AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
@@ -725,13 +837,10 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,
   AuthenticatedTemplatesRoute: AuthenticatedTemplatesRoute,
-  AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
-  AuthenticatedDocumentsProcessDocumentRoute:
-    AuthenticatedDocumentsProcessDocumentRoute,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
-  AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
@@ -792,6 +901,8 @@ export interface FileRoutesByFullPath {
   '': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/debug': typeof DebugRoute
+  '/documents-test': typeof DocumentsTestRoute
+  '/test-document-processor': typeof TestDocumentProcessorRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -807,9 +918,13 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
+  '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
+  '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -819,7 +934,7 @@ export interface FileRoutesByFullPath {
   '/clerk/user-management': typeof ClerkAuthenticatedUserManagementRoute
   '/apps': typeof AuthenticatedAppsIndexRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
-  '/documents': typeof AuthenticatedDocumentsIndexRoute
+  '/documents/': typeof AuthenticatedDocumentsIndexRoute
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
@@ -837,6 +952,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
   '/debug': typeof DebugRoute
+  '/documents-test': typeof DocumentsTestRoute
+  '/test-document-processor': typeof TestDocumentProcessorRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
@@ -854,6 +971,9 @@ export interface FileRoutesByTo {
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
+  '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
+  '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -883,6 +1003,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkRouteRouteWithChildren
   '/debug': typeof DebugRoute
+  '/documents-test': typeof DocumentsTestRoute
+  '/test-document-processor': typeof TestDocumentProcessorRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
   '/clerk/_authenticated': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -899,9 +1021,13 @@ export interface FileRoutesById {
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/_authenticated/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
+  '/_authenticated/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
+  '/_authenticated/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/display': typeof AuthenticatedSettingsDisplayRoute
@@ -932,6 +1058,8 @@ export interface FileRouteTypes {
     | ''
     | '/clerk'
     | '/debug'
+    | '/documents-test'
+    | '/test-document-processor'
     | '/settings'
     | '/clerk/'
     | '/forgot-password'
@@ -947,9 +1075,13 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/dashboard'
+    | '/documents'
     | '/templates'
     | '/documents/process'
     | '/documents/process-document'
+    | '/documents/process-new'
+    | '/documents/process-test'
+    | '/documents/workflow'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/display'
@@ -959,7 +1091,7 @@ export interface FileRouteTypes {
     | '/clerk/user-management'
     | '/apps'
     | '/chats'
-    | '/documents'
+    | '/documents/'
     | '/help-center'
     | '/settings/'
     | '/tasks'
@@ -976,6 +1108,8 @@ export interface FileRouteTypes {
     | '/'
     | ''
     | '/debug'
+    | '/documents-test'
+    | '/test-document-processor'
     | '/clerk'
     | '/forgot-password'
     | '/otp'
@@ -993,6 +1127,9 @@ export interface FileRouteTypes {
     | '/templates'
     | '/documents/process'
     | '/documents/process-document'
+    | '/documents/process-new'
+    | '/documents/process-test'
+    | '/documents/workflow'
     | '/settings/account'
     | '/settings/appearance'
     | '/settings/display'
@@ -1020,6 +1157,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/clerk'
     | '/debug'
+    | '/documents-test'
+    | '/test-document-processor'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
     | '/clerk/_authenticated'
@@ -1036,9 +1175,13 @@ export interface FileRouteTypes {
     | '/(errors)/500'
     | '/(errors)/503'
     | '/_authenticated/dashboard'
+    | '/_authenticated/documents'
     | '/_authenticated/templates'
     | '/_authenticated/documents/process'
     | '/_authenticated/documents/process-document'
+    | '/_authenticated/documents/process-new'
+    | '/_authenticated/documents/process-test'
+    | '/_authenticated/documents/workflow'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/display'
@@ -1068,6 +1211,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   ClerkRouteRoute: typeof ClerkRouteRouteWithChildren
   DebugRoute: typeof DebugRoute
+  DocumentsTestRoute: typeof DocumentsTestRoute
+  TestDocumentProcessorRoute: typeof TestDocumentProcessorRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
   authResetPasswordRoute: typeof authResetPasswordRoute
@@ -1087,6 +1232,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   ClerkRouteRoute: ClerkRouteRouteWithChildren,
   DebugRoute: DebugRoute,
+  DocumentsTestRoute: DocumentsTestRoute,
+  TestDocumentProcessorRoute: TestDocumentProcessorRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
   authResetPasswordRoute: authResetPasswordRoute,
@@ -1115,6 +1262,8 @@ export const routeTree = rootRoute
         "/_authenticated",
         "/clerk",
         "/debug",
+        "/documents-test",
+        "/test-document-processor",
         "/(auth)/forgot-password",
         "/(auth)/otp",
         "/(auth)/reset-password",
@@ -1137,12 +1286,10 @@ export const routeTree = rootRoute
       "children": [
         "/_authenticated/settings",
         "/_authenticated/dashboard",
+        "/_authenticated/documents",
         "/_authenticated/templates",
-        "/_authenticated/documents/process",
-        "/_authenticated/documents/process-document",
         "/_authenticated/apps/",
         "/_authenticated/chats/",
-        "/_authenticated/documents/",
         "/_authenticated/help-center/",
         "/_authenticated/tasks/",
         "/_authenticated/users/",
@@ -1159,6 +1306,12 @@ export const routeTree = rootRoute
     },
     "/debug": {
       "filePath": "debug.tsx"
+    },
+    "/documents-test": {
+      "filePath": "documents-test.tsx"
+    },
+    "/test-document-processor": {
+      "filePath": "test-document-processor.tsx"
     },
     "/_authenticated/settings": {
       "filePath": "_authenticated/settings/route.tsx",
@@ -1226,17 +1379,41 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/dashboard.tsx",
       "parent": "/_authenticated"
     },
+    "/_authenticated/documents": {
+      "filePath": "_authenticated/documents.tsx",
+      "parent": "/_authenticated",
+      "children": [
+        "/_authenticated/documents/process",
+        "/_authenticated/documents/process-document",
+        "/_authenticated/documents/process-new",
+        "/_authenticated/documents/process-test",
+        "/_authenticated/documents/workflow",
+        "/_authenticated/documents/"
+      ]
+    },
     "/_authenticated/templates": {
       "filePath": "_authenticated/templates.tsx",
       "parent": "/_authenticated"
     },
     "/_authenticated/documents/process": {
       "filePath": "_authenticated/documents/process.tsx",
-      "parent": "/_authenticated"
+      "parent": "/_authenticated/documents"
     },
     "/_authenticated/documents/process-document": {
       "filePath": "_authenticated/documents/process-document.tsx",
-      "parent": "/_authenticated"
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/process-new": {
+      "filePath": "_authenticated/documents/process-new.tsx",
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/process-test": {
+      "filePath": "_authenticated/documents/process-test.tsx",
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/workflow": {
+      "filePath": "_authenticated/documents/workflow.tsx",
+      "parent": "/_authenticated/documents"
     },
     "/_authenticated/settings/account": {
       "filePath": "_authenticated/settings/account.tsx",
@@ -1276,7 +1453,7 @@ export const routeTree = rootRoute
     },
     "/_authenticated/documents/": {
       "filePath": "_authenticated/documents/index.tsx",
-      "parent": "/_authenticated"
+      "parent": "/_authenticated/documents"
     },
     "/_authenticated/help-center/": {
       "filePath": "_authenticated/help-center/index.tsx",

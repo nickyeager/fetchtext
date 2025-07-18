@@ -103,16 +103,36 @@ The dashboard will be available at `http://localhost:3000`
 
 This project includes comprehensive testing with unit, integration, and E2E tests.
 
+**⚠️ Important Testing Rules:**
+- **Always run tests without the watcher** - Use `pnpm test` (runs once) instead of watch mode
+- **Never use watch mode in CI or automated testing**
+- **Use explicit run commands** for all test execution
+
 ```bash
-# Run all tests
+# Run all tests (recommended - no watcher)
 pnpm test
 
-# Run E2E tests with service checks
+# Run tests with coverage
+pnpm test:coverage
+
+# Run specific test file
+npx vitest path/to/test.test.ts --run
+
+# Run tests with verbose output
+npx vitest --run --reporter=verbose
+
+# E2E tests with service checks
 ./scripts/run-e2e-tests-simple.sh
 
-# Run tests with coverage
-pnpm test -- --coverage
+# UI mode (for debugging, not CI)
+pnpm test:ui
 ```
+
+**Available Test Scripts:**
+- `pnpm test` - Run all tests once (no watcher)
+- `pnpm test:coverage` - Run tests with coverage report
+- `pnpm test:ui` - Open Vitest UI (development only)
+- `pnpm test:watch` - Watch mode (development only, not for CI)
 
 For detailed testing information, see [TESTING.md](./TESTING.md).
 
@@ -177,7 +197,9 @@ See [E2E_TESTING_SUMMARY.md](./E2E_TESTING_SUMMARY.md) for detailed testing docu
 pnpm dev          # Start development server
 pnpm build        # Build for production
 pnpm preview      # Preview production build
-pnpm test         # Run all tests
+pnpm test         # Run all tests (no watcher)
+pnpm test:coverage # Run tests with coverage
+pnpm test:ui      # Open Vitest UI (dev only)
 pnpm lint         # Run ESLint
 pnpm format       # Format code with Prettier
 ```
