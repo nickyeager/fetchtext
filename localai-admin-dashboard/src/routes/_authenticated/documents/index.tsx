@@ -2,9 +2,5 @@ import { createFileRoute } from '@tanstack/react-router'
 import DocumentsPage from '@/features/documents'
 
 export const Route = createFileRoute('/_authenticated/documents/')({
-  component: RouteComponent,
+  component: DocumentsPage,
 })
-
-function RouteComponent() {
-  return <DocumentsPage />
-}

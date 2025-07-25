@@ -34,7 +34,6 @@ x-n8n: &service-n8n
 
 x-ollama: &service-ollama
   image: ollama/ollama:latest
-  container_name: ollama
   restart: unless-stopped
   ports:
     - 11434:11434/tcp
@@ -48,7 +47,6 @@ x-ollama: &service-ollama
 
 x-init-ollama: &init-ollama
   image: ollama/ollama:latest
-  container_name: ollama-pull-llama
   volumes:
     - ollama_storage:/root/.ollama
   entrypoint: /bin/sh
@@ -383,12 +381,14 @@ services:
   ollama-cpu:
     profiles: ["cpu"]
     <<: *service-ollama
+    container_name: ollama-cpu
     ports:
       - 11434:11434/tcp
 
   ollama-gpu:
     profiles: ["gpu-nvidia"]
     <<: *service-ollama
+    container_name: ollama-gpu
     deploy:
       resources:
         reservations:
@@ -400,6 +400,7 @@ services:
   ollama-gpu-amd:
     profiles: ["gpu-amd"]
     <<: *service-ollama
+    container_name: ollama-gpu-amd
     image: ollama/ollama:rocm
     devices:
       - "/dev/kfd"
@@ -408,18 +409,21 @@ services:
   ollama-pull-llama-cpu:
     profiles: ["cpu"]
     <<: *init-ollama
+    container_name: ollama-pull-llama-cpu
     depends_on:
       - ollama-cpu
 
   ollama-pull-llama-gpu:
     profiles: ["gpu-nvidia"]
     <<: *init-ollama
+    container_name: ollama-pull-llama-gpu
     depends_on:
       - ollama-gpu
 
   ollama-pull-llama-gpu-amd:
     profiles: [gpu-amd]
     <<: *init-ollama
+    container_name: ollama-pull-llama-gpu-amd
     image: ollama/ollama:rocm
     depends_on:
      - ollama-gpu-amd
@@ -428,7 +432,7 @@ services:
     build:
       context: ./localai-admin-dashboard
       args:
-        VITE_SUPABASE_URL: http://kong:8000
+        VITE_SUPABASE_URL: http://localhost:8000
         VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
     container_name: localai-admin-dashboard
     restart: unless-stopped

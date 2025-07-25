@@ -13,6 +13,7 @@ import {
   Plus
 } from 'lucide-react';
 import { TemplateGallery } from './components/TemplateGallery';
+import { CreateTemplateModal } from './components/CreateTemplateModal';
 
 // Define interfaces
 interface SmartVariable {
@@ -46,6 +47,7 @@ export default function DocumentsPage() {
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<'gallery' | 'history'>('gallery');
   const [generatedDocuments] = useState<GeneratedDocument[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Mock data for recent documents
   const recentDocuments: GeneratedDocument[] = [
@@ -82,8 +84,7 @@ export default function DocumentsPage() {
   }, [navigate]);
 
   const handleCreateTemplate = useCallback(() => {
-    // TODO: Implement template creation modal
-    console.log('Create new template'); // eslint-disable-line no-console
+    setIsModalOpen(true);
   }, []);
 
   const downloadDocument = useCallback((document: GeneratedDocument) => {
@@ -134,6 +135,8 @@ export default function DocumentsPage() {
           </Button>
         </div>
       </div>
+
+      <CreateTemplateModal open={isModalOpen} onOpenChange={setIsModalOpen} />
 
       {/* Main Content Tabs */}
       <Tabs value={currentView} onValueChange={(value) => setCurrentView(value as typeof currentView)}>
@@ -226,4 +229,4 @@ export default function DocumentsPage() {
       </Tabs>
     </div>
   );
-} 
+}
