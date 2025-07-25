@@ -11,6 +11,7 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as WorkflowTestImport } from './routes/workflow-test'
 import { Route as TestDocumentProcessorImport } from './routes/test-document-processor'
 import { Route as DocumentsTestImport } from './routes/documents-test'
 import { Route as DebugImport } from './routes/debug'
@@ -52,6 +53,7 @@ import { Route as AuthenticatedSettingsAccountImport } from './routes/_authentic
 import { Route as AuthenticatedDocumentsWorkflowImport } from './routes/_authenticated/documents/workflow'
 import { Route as AuthenticatedDocumentsProcessTestImport } from './routes/_authenticated/documents/process-test'
 import { Route as AuthenticatedDocumentsProcessNewImport } from './routes/_authenticated/documents/process-new'
+import { Route as AuthenticatedDocumentsProcessDocumentNewImport } from './routes/_authenticated/documents/process-document-new'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
 import { Route as AuthenticatedDocumentsProcessImport } from './routes/_authenticated/documents/process'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
@@ -63,6 +65,12 @@ import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from '
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
 
 // Create/Update Routes
+
+const WorkflowTestRoute = WorkflowTestImport.update({
+  id: '/workflow-test',
+  path: '/workflow-test',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const TestDocumentProcessorRoute = TestDocumentProcessorImport.update({
   id: '/test-document-processor',
@@ -321,6 +329,13 @@ const AuthenticatedDocumentsProcessNewRoute =
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
+const AuthenticatedDocumentsProcessDocumentNewRoute =
+  AuthenticatedDocumentsProcessDocumentNewImport.update({
+    id: '/process-document-new',
+    path: '/process-document-new',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
 const AuthenticatedDocumentsProcessDocumentRoute =
   AuthenticatedDocumentsProcessDocumentImport.update({
     id: '/process-document',
@@ -428,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/test-document-processor'
       fullPath: '/test-document-processor'
       preLoaderRoute: typeof TestDocumentProcessorImport
+      parentRoute: typeof rootRoute
+    }
+    '/workflow-test': {
+      id: '/workflow-test'
+      path: '/workflow-test'
+      fullPath: '/workflow-test'
+      preLoaderRoute: typeof WorkflowTestImport
       parentRoute: typeof rootRoute
     }
     '/_authenticated/settings': {
@@ -568,6 +590,13 @@ declare module '@tanstack/react-router' {
       path: '/process-document'
       fullPath: '/documents/process-document'
       preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
+    '/_authenticated/documents/process-document-new': {
+      id: '/_authenticated/documents/process-document-new'
+      path: '/process-document-new'
+      fullPath: '/documents/process-document-new'
+      preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentNewImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/documents/process-new': {
@@ -769,6 +798,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 interface AuthenticatedDocumentsRouteChildren {
   AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
   AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
+  AuthenticatedDocumentsProcessDocumentNewRoute: typeof AuthenticatedDocumentsProcessDocumentNewRoute
   AuthenticatedDocumentsProcessNewRoute: typeof AuthenticatedDocumentsProcessNewRoute
   AuthenticatedDocumentsProcessTestRoute: typeof AuthenticatedDocumentsProcessTestRoute
   AuthenticatedDocumentsWorkflowRoute: typeof AuthenticatedDocumentsWorkflowRoute
@@ -780,6 +810,8 @@ const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
     AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
     AuthenticatedDocumentsProcessDocumentRoute:
       AuthenticatedDocumentsProcessDocumentRoute,
+    AuthenticatedDocumentsProcessDocumentNewRoute:
+      AuthenticatedDocumentsProcessDocumentNewRoute,
     AuthenticatedDocumentsProcessNewRoute:
       AuthenticatedDocumentsProcessNewRoute,
     AuthenticatedDocumentsProcessTestRoute:
@@ -903,6 +935,7 @@ export interface FileRoutesByFullPath {
   '/debug': typeof DebugRoute
   '/documents-test': typeof DocumentsTestRoute
   '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/workflow-test': typeof WorkflowTestRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -922,6 +955,7 @@ export interface FileRoutesByFullPath {
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
   '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
   '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
   '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
@@ -954,6 +988,7 @@ export interface FileRoutesByTo {
   '/debug': typeof DebugRoute
   '/documents-test': typeof DocumentsTestRoute
   '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/workflow-test': typeof WorkflowTestRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
@@ -971,6 +1006,7 @@ export interface FileRoutesByTo {
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
   '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
   '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
   '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
@@ -1005,6 +1041,7 @@ export interface FileRoutesById {
   '/debug': typeof DebugRoute
   '/documents-test': typeof DocumentsTestRoute
   '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/workflow-test': typeof WorkflowTestRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
   '/clerk/_authenticated': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -1025,6 +1062,7 @@ export interface FileRoutesById {
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/documents/process': typeof AuthenticatedDocumentsProcessRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/_authenticated/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
   '/_authenticated/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
   '/_authenticated/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
   '/_authenticated/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
@@ -1060,6 +1098,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/documents-test'
     | '/test-document-processor'
+    | '/workflow-test'
     | '/settings'
     | '/clerk/'
     | '/forgot-password'
@@ -1079,6 +1118,7 @@ export interface FileRouteTypes {
     | '/templates'
     | '/documents/process'
     | '/documents/process-document'
+    | '/documents/process-document-new'
     | '/documents/process-new'
     | '/documents/process-test'
     | '/documents/workflow'
@@ -1110,6 +1150,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/documents-test'
     | '/test-document-processor'
+    | '/workflow-test'
     | '/clerk'
     | '/forgot-password'
     | '/otp'
@@ -1127,6 +1168,7 @@ export interface FileRouteTypes {
     | '/templates'
     | '/documents/process'
     | '/documents/process-document'
+    | '/documents/process-document-new'
     | '/documents/process-new'
     | '/documents/process-test'
     | '/documents/workflow'
@@ -1159,6 +1201,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/documents-test'
     | '/test-document-processor'
+    | '/workflow-test'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
     | '/clerk/_authenticated'
@@ -1179,6 +1222,7 @@ export interface FileRouteTypes {
     | '/_authenticated/templates'
     | '/_authenticated/documents/process'
     | '/_authenticated/documents/process-document'
+    | '/_authenticated/documents/process-document-new'
     | '/_authenticated/documents/process-new'
     | '/_authenticated/documents/process-test'
     | '/_authenticated/documents/workflow'
@@ -1213,6 +1257,7 @@ export interface RootRouteChildren {
   DebugRoute: typeof DebugRoute
   DocumentsTestRoute: typeof DocumentsTestRoute
   TestDocumentProcessorRoute: typeof TestDocumentProcessorRoute
+  WorkflowTestRoute: typeof WorkflowTestRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
   authResetPasswordRoute: typeof authResetPasswordRoute
@@ -1234,6 +1279,7 @@ const rootRouteChildren: RootRouteChildren = {
   DebugRoute: DebugRoute,
   DocumentsTestRoute: DocumentsTestRoute,
   TestDocumentProcessorRoute: TestDocumentProcessorRoute,
+  WorkflowTestRoute: WorkflowTestRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
   authResetPasswordRoute: authResetPasswordRoute,
@@ -1264,6 +1310,7 @@ export const routeTree = rootRoute
         "/debug",
         "/documents-test",
         "/test-document-processor",
+        "/workflow-test",
         "/(auth)/forgot-password",
         "/(auth)/otp",
         "/(auth)/reset-password",
@@ -1312,6 +1359,9 @@ export const routeTree = rootRoute
     },
     "/test-document-processor": {
       "filePath": "test-document-processor.tsx"
+    },
+    "/workflow-test": {
+      "filePath": "workflow-test.tsx"
     },
     "/_authenticated/settings": {
       "filePath": "_authenticated/settings/route.tsx",
@@ -1385,6 +1435,7 @@ export const routeTree = rootRoute
       "children": [
         "/_authenticated/documents/process",
         "/_authenticated/documents/process-document",
+        "/_authenticated/documents/process-document-new",
         "/_authenticated/documents/process-new",
         "/_authenticated/documents/process-test",
         "/_authenticated/documents/workflow",
@@ -1401,6 +1452,10 @@ export const routeTree = rootRoute
     },
     "/_authenticated/documents/process-document": {
       "filePath": "_authenticated/documents/process-document.tsx",
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/process-document-new": {
+      "filePath": "_authenticated/documents/process-document-new.tsx",
       "parent": "/_authenticated/documents"
     },
     "/_authenticated/documents/process-new": {

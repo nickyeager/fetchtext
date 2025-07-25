@@ -46,7 +46,7 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - **DO NOT create new Supabase projects** - use the existing infrastructure
 - Supabase is included via: `include: - ./supabase/docker/docker-compose.yml`
 - Environment variables are set in parent `.env` file:
-  - `VITE_SUPABASE_URL: http://kong:8000` (via Docker internal network)
+  - `VITE_SUPABASE_URL: http://localhost:8000` (via Docker internal network)
   - `VITE_SUPABASE_ANON_KEY: ${ANON_KEY}` (from parent .env)
 - Local Supabase URL: `http://localhost:8000` (Kong gateway)
 - Edge Functions run in: `supabase-edge-functions` container

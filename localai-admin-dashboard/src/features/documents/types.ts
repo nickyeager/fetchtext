@@ -46,3 +46,10 @@ export interface SmartTemplate {
   created_at: string;
   updated_at: string;
 }
+
+export interface NewTemplate {
+  name: string;
+  description: string;
+  category: string;
+  template_content: string;
+}

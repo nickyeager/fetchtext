@@ -8,4 +8,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('[Supabase] Missing URL or Anon key in environment variables')
 }
 
+// Debug: Log configuration for verification
+// eslint-disable-next-line no-console
+console.log('[Supabase Debug] URL:', supabaseUrl)
+// eslint-disable-next-line no-console  
+console.log('[Supabase Debug] Anon Key (first 20 chars):', supabaseAnonKey?.substring(0, 20) + '...')
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey) 

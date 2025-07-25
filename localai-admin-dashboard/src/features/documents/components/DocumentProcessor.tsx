@@ -52,6 +52,164 @@ interface DocumentProcessorProps {
   onBack: () => void;
 }
 
+// Exported for testing purposes
+export const extractTextFromFile = async (file: File): Promise<string> => {
+  // For demo purposes, we'll handle text files directly
+  // In production, you'd use your N8N workflow or a proper text extraction service
+  if (file.type.startsWith('text/')) {
+    // Handle both browser and test environments
+    if (typeof file.text === 'function') {
+      return await file.text();
+    } else {
+      // Fallback for test environments where File.text() is not available
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.onabort = () => reject(new Error('File read aborted'));
+        reader.readAsText(file);
+      });
+    }
+  }
+  
+  // For other file types, you could call your N8N workflow
+  // This is a simplified implementation
+  return `[Extracted text from ${file.name}]\n\nThis is placeholder text that would normally be extracted from your ${file.type} file using the N8N workflow with extractFromFile node.`;
+};
+
+// Exported for testing purposes
+export const performAIExtraction = async (
+  text: string, 
+  selectedTemplate: SmartTemplate,
+  updateStepStatus: (stepId: string, status: ProcessingStep['status'], message?: string) => void,
+  setExtractedData: (data: ExtractedData) => void,
+  setManualAdjustments: (data: ExtractedData) => void,
+  setCurrentStep: (step: number) => void
+) => {
+  try {
+    updateStepStatus('analyze', 'processing');
+    
+    // Simulate AI extraction using Ollama via N8N webhook
+    const extractionPrompt = createExtractionPrompt(text, selectedTemplate.smart_variables);
+    
+    // Call your N8N webhook endpoint for AI processing
+    const extracted = await callAIExtractionWorkflow(extractionPrompt, selectedTemplate);
+    
+    setExtractedData(extracted);
+    setManualAdjustments(extracted);
+    updateStepStatus('analyze', 'completed');
+    setCurrentStep(3);
+  } catch (error) {
+    updateStepStatus('analyze', 'error', (error as Error).message);
+  }
+};
+
+// Exported for testing purposes
+export const createExtractionPrompt = (text: string, variables: SmartVariable[]): string => {
+  const fieldDescriptions = variables.map(v => 
+    `- ${v.name} (${v.type}): ${v.description}${v.extraction_hints.length > 0 ? ` [Hints: ${v.extraction_hints.join(', ')}]` : ''}`
+  ).join('\n');
+
+  return `
+Extract the following information from this document text and return as JSON:
+
+${fieldDescriptions}
+
+Document text:
+${text}
+
+Please return a JSON object with the field names as keys and extracted values. If a field cannot be found, use null.
+  `.trim();
+};
+
+// Exported for testing purposes
+export const callAIExtractionWorkflow = async (prompt: string, selectedTemplate: SmartTemplate): Promise<ExtractedData> => {
+  try {
+    // Call the real N8N webhook endpoint for AI processing
+    const webhookUrl = 'http://localhost:5678/webhook/document-processing';
+    
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        template: {
+          id: selectedTemplate.id,
+          name: selectedTemplate.name,
+          variables: selectedTemplate.smart_variables,
+        },
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    // Check if response exists before accessing properties
+    if (!response || !response.ok) {
+      throw new Error(`N8N webhook failed: ${response?.status || 'No response'} ${response?.statusText || 'Network error'}`);
+    }
+
+    const result = await response.json();
+    
+    // Handle the response from N8N/Ollama
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
+    // Parse the AI response (could be a JSON string or object)
+    let extractedData: ExtractedData = {};
+    if (typeof result.data === 'string') {
+      try {
+        extractedData = JSON.parse(result.data);
+      } catch {
+        // If parsing fails, fall back to mock data
+        extractedData = createMockExtractedData(selectedTemplate);
+      }
+    } else if (result.data && typeof result.data === 'object') {
+      extractedData = result.data;
+    } else {
+      // Fallback to mock data if no valid response
+      extractedData = createMockExtractedData(selectedTemplate);
+    }
+
+    return extractedData;
+  } catch (_error) {
+    // Fall back to mock data if N8N is not available
+    return createMockExtractedData(selectedTemplate);
+  }
+};
+
+// Exported for testing purposes
+export const createMockExtractedData = (selectedTemplate: SmartTemplate): ExtractedData => {
+  const mockResponse: ExtractedData = {};
+  
+  selectedTemplate.smart_variables.forEach(variable => {
+    // Simulate extraction based on variable type
+    switch (variable.type) {
+      case 'text':
+        mockResponse[variable.name] = `Sample ${variable.name}`;
+        break;
+      case 'number':
+        mockResponse[variable.name] = Math.floor(Math.random() * 1000);
+        break;
+      case 'date':
+        mockResponse[variable.name] = new Date().toISOString().split('T')[0];
+        break;
+      case 'currency':
+        mockResponse[variable.name] = `$${(Math.random() * 10000).toFixed(2)}`;
+        break;
+      case 'percentage':
+        mockResponse[variable.name] = `${(Math.random() * 100).toFixed(1)}%`;
+        break;
+      default:
+        mockResponse[variable.name] = variable.default_value || '';
+    }
+  });
+
+  return mockResponse;
+};
+
+
 export function DocumentProcessor({ selectedTemplate, onGenerationComplete, onBack }: DocumentProcessorProps) {
   const [_uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [extractedText, setExtractedText] = useState<string>('');
@@ -60,7 +218,8 @@ export function DocumentProcessor({ selectedTemplate, onGenerationComplete, onBa
   const [generatedDocument, setGeneratedDocument] = useState<string>('');
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [processing, setProcessing] = useState(false);
-  
+  // const [jobId, setJobId] = useState<string | null>(null);
+
   const steps: ProcessingStep[] = [
     { id: 'upload', name: 'Upload Source Document', status: 'pending' },
     { id: 'extract', name: 'Extract Text Content', status: 'pending' },
@@ -78,169 +237,46 @@ export function DocumentProcessor({ selectedTemplate, onGenerationComplete, onBa
   };
 
   const handleFileUpload = async (file: File) => {
+    setUploadedFile(file);
+    updateStepStatus('upload', 'processing');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
     try {
-      setUploadedFile(file);
+      const response = await fetch('http://localhost:8090/documents/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`File upload failed: ${response.statusText}`);
+      }
+
+      await response.json();
+      // setJobId(result.job_id);
       updateStepStatus('upload', 'completed');
       setCurrentStep(1);
-      
-      // Extract text using the same logic as your existing extractFromFile
+
+      // The rest of the processing will be handled by polling based on the job_id
+      // For now, we can proceed with the old logic for demonstration
       updateStepStatus('extract', 'processing');
       const text = await extractTextFromFile(file);
       setExtractedText(text);
       updateStepStatus('extract', 'completed');
       setCurrentStep(2);
-      
-      // Start AI extraction in a separate try-catch block
-      // so that AI extraction errors don't affect the text extraction status
-      performAIExtraction(text);
+      await performAIExtraction(
+        text, 
+        selectedTemplate, 
+        updateStepStatus, 
+        setExtractedData, 
+        setManualAdjustments, 
+        setCurrentStep
+      );
+
     } catch (error) {
-      updateStepStatus('extract', 'error', (error as Error).message);
+      updateStepStatus('upload', 'error', (error as Error).message);
     }
-  };
-
-  const extractTextFromFile = async (file: File): Promise<string> => {
-    // For demo purposes, we'll handle text files directly
-    // In production, you'd use your N8N workflow or a proper text extraction service
-    if (file.type.startsWith('text/')) {
-      // Handle both browser and test environments
-      if (typeof file.text === 'function') {
-        return await file.text();
-      } else {
-        // Fallback for test environments where File.text() is not available
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('Failed to read file'));
-          reader.onabort = () => reject(new Error('File read aborted'));
-          reader.readAsText(file);
-        });
-      }
-    }
-    
-    // For other file types, you could call your N8N workflow
-    // This is a simplified implementation
-    return `[Extracted text from ${file.name}]\n\nThis is placeholder text that would normally be extracted from your ${file.type} file using the N8N workflow with extractFromFile node.`;
-  };
-
-  const performAIExtraction = async (text: string) => {
-    try {
-      updateStepStatus('analyze', 'processing');
-      
-      // Simulate AI extraction using Ollama via N8N webhook
-      const extractionPrompt = createExtractionPrompt(text, selectedTemplate.smart_variables);
-      
-      // Call your N8N webhook endpoint for AI processing
-      const extracted = await callAIExtractionWorkflow(extractionPrompt);
-      
-      setExtractedData(extracted);
-      setManualAdjustments(extracted);
-      updateStepStatus('analyze', 'completed');
-      setCurrentStep(3);
-    } catch (error) {
-      updateStepStatus('analyze', 'error', (error as Error).message);
-    }
-  };
-
-  const createExtractionPrompt = (text: string, variables: SmartVariable[]): string => {
-    const fieldDescriptions = variables.map(v => 
-      `- ${v.name} (${v.type}): ${v.description}${v.extraction_hints.length > 0 ? ` [Hints: ${v.extraction_hints.join(', ')}]` : ''}`
-    ).join('\n');
-
-    return `
-Extract the following information from this document text and return as JSON:
-
-${fieldDescriptions}
-
-Document text:
-${text}
-
-Please return a JSON object with the field names as keys and extracted values. If a field cannot be found, use null.
-    `.trim();
-  };
-
-  const callAIExtractionWorkflow = async (prompt: string): Promise<ExtractedData> => {
-    try {
-      // Call the real N8N webhook endpoint for AI processing
-      const webhookUrl = 'http://localhost:5678/webhook/document-processing';
-      
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt,
-          template: {
-            id: selectedTemplate.id,
-            name: selectedTemplate.name,
-            variables: selectedTemplate.smart_variables,
-          },
-          timestamp: new Date().toISOString(),
-        }),
-      });
-
-      // Check if response exists before accessing properties
-      if (!response || !response.ok) {
-        throw new Error(`N8N webhook failed: ${response?.status || 'No response'} ${response?.statusText || 'Network error'}`);
-      }
-
-      const result = await response.json();
-      
-      // Handle the response from N8N/Ollama
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      // Parse the AI response (could be a JSON string or object)
-      let extractedData: ExtractedData = {};
-      if (typeof result.data === 'string') {
-        try {
-          extractedData = JSON.parse(result.data);
-        } catch {
-          // If parsing fails, fall back to mock data
-          extractedData = createMockExtractedData();
-        }
-      } else if (result.data && typeof result.data === 'object') {
-        extractedData = result.data;
-      } else {
-        // Fallback to mock data if no valid response
-        extractedData = createMockExtractedData();
-      }
-
-      return extractedData;
-    } catch (_error) {
-      // Fall back to mock data if N8N is not available
-      return createMockExtractedData();
-    }
-  };
-
-  const createMockExtractedData = (): ExtractedData => {
-    const mockResponse: ExtractedData = {};
-    
-    selectedTemplate.smart_variables.forEach(variable => {
-      // Simulate extraction based on variable type
-      switch (variable.type) {
-        case 'text':
-          mockResponse[variable.name] = `Sample ${variable.name}`;
-          break;
-        case 'number':
-          mockResponse[variable.name] = Math.floor(Math.random() * 1000);
-          break;
-        case 'date':
-          mockResponse[variable.name] = new Date().toISOString().split('T')[0];
-          break;
-        case 'currency':
-          mockResponse[variable.name] = `$${(Math.random() * 10000).toFixed(2)}`;
-          break;
-        case 'percentage':
-          mockResponse[variable.name] = `${(Math.random() * 100).toFixed(1)}%`;
-          break;
-        default:
-          mockResponse[variable.name] = variable.default_value || '';
-      }
-    });
-
-    return mockResponse;
   };
 
   const generateDocument = async () => {
@@ -424,6 +460,7 @@ Please return a JSON object with the field names as keys and extracted values. I
                       </span>
                       <input
                         id="file-upload"
+                        aria-label="Upload Source Document"
                         name="file-upload"
                         type="file"
                         className="sr-only"
@@ -504,7 +541,14 @@ Please return a JSON object with the field names as keys and extracted values. I
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => performAIExtraction(extractedText)}
+                      onClick={() => performAIExtraction(
+                        extractedText, 
+                        selectedTemplate, 
+                        updateStepStatus, 
+                        setExtractedData, 
+                        setManualAdjustments, 
+                        setCurrentStep
+                      )}
                     >
                       <Brain className="h-4 w-4 mr-1" />
                       Re-extract
@@ -564,4 +608,4 @@ Please return a JSON object with the field names as keys and extracted values. I
       </div>
     </div>
   );
-} 
+}

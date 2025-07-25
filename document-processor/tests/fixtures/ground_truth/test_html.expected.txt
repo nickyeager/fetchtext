@@ -1,0 +1,21 @@
+HTML Test Document
+
+Introduction
+This is an HTML document for testing text extraction from web content.
+
+Text Formatting
+Testing various HTML formatting:
+- Bold text
+- Italic text
+- Code elements
+- Links
+
+Table Content
+Header 1 | Header 2 | Header 3
+Row 1 Cell 1 | Row 1 Cell 2 | 100
+Row 2 Cell 1 | Row 2 Cell 2 | 200
+
+Special Characters
+Testing special characters: © ™ ® & < >
+
+This document tests HTML parsing and text extraction accuracy.

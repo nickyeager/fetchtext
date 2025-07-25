@@ -242,50 +242,14 @@ export class WorkflowClient {
     documentData: any;
     parameters?: any;
   }): Promise<{ workflowId: string; status: string; result: any }> {
-    const { templateId, documentData, parameters } = options;
-    
-    try {
-      // Simulate async workflow execution with progress
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing time
-      
-      // In a real implementation, this would:
-      // 1. Create a workflow instance from the template
-      // 2. Deploy it to N8N/Flowise
-      // 3. Execute with the document data
-      // 4. Return the results
-      
-      const workflowId = `workflow-${Date.now()}-${templateId}`;
-      
-      // Simulate different outcomes based on template
-      const successRate = 0.9; // 90% success rate
-      const isSuccess = Math.random() < successRate;
-      
-      if (isSuccess) {
-        return {
-          workflowId,
-          status: 'completed',
-          result: {
-            documentId: `doc-${Date.now()}`,
-            processedContent: `Generated content from ${templateId}`,
-            extractedData: {
-              title: documentData.metadata?.title || 'Untitled Document',
-              summary: 'AI-generated summary of the document',
-              keyPoints: ['Point 1', 'Point 2', 'Point 3'],
-              recommendations: ['Recommendation 1', 'Recommendation 2']
-            },
-            template: {
-              id: templateId,
-              name: `Template ${templateId}`,
-              applied: true
-            }
-          }
-        };
-      } else {
-        throw new Error('Workflow execution failed due to processing error');
-      }
-    } catch (error) {
-      throw new Error(`Workflow execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    // For now, return a mock response
+    // In a real implementation, this would create a workflow instance and execute it
+    const { templateId } = options;
+    return {
+      workflowId: `workflow-${Date.now()}-${templateId}`,
+      status: 'completed',
+      result: { documentId: `doc-${Date.now()}` }
+    };
   }
 
   /**

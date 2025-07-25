@@ -4,8 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ThemeSwitch } from '@/components/theme-switch';
 import { useAuth } from '@/context/auth-context';
-import { LottieAnimation } from '@/components/ui/lottie';
-import { getLottieAnimation, animationConfigs } from '@/lib/lottie-animations';
 
 export function LandingPage() {
   const navigate = useNavigate();
@@ -84,11 +82,6 @@ export function LandingPage() {
           {/* Hero Section with Lottie Animation */}
           <div className="mb-12">
             <div className="max-w-md mx-auto mb-8">
-              <LottieAnimation
-                animationData={getLottieAnimation('hero')}
-                className="w-full h-64"
-                {...animationConfigs.hero}
-              />
             </div>
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-6">
               Welcome to FetchText
@@ -102,11 +95,6 @@ export function LandingPage() {
             <Card>
               <CardHeader>
                 <div className="mb-4">
-                  <LottieAnimation
-                    animationData={getLottieAnimation('documentProcessing')}
-                    className="w-full h-20"
-                    {...animationConfigs.card}
-                  />
                 </div>
                 <CardTitle className="flex items-center gap-2">
                   <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,11 +113,6 @@ export function LandingPage() {
             <Card>
               <CardHeader>
                 <div className="mb-4">
-                  <LottieAnimation
-                    animationData={getLottieAnimation('workflowAutomation')}
-                    className="w-full h-20"
-                    {...animationConfigs.card}
-                  />
                 </div>
                 <CardTitle className="flex items-center gap-2">
                   <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,11 +131,6 @@ export function LandingPage() {
             <Card>
               <CardHeader>
                 <div className="mb-4">
-                  <LottieAnimation
-                    animationData={getLottieAnimation('aiIntegration')}
-                    className="w-full h-20"
-                    {...animationConfigs.card}
-                  />
                 </div>
                 <CardTitle className="flex items-center gap-2">
                   <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,4 +163,4 @@ export function LandingPage() {
       </div>
     </div>
   );
-} 
+}
