@@ -12,8 +12,8 @@
 
 import { Route as rootRoute } from './routes/__root'
 import { Route as WorkflowTestImport } from './routes/workflow-test'
-import { Route as TestDocumentProcessorImport } from './routes/test-document-processor'
-import { Route as DocumentsTestImport } from './routes/documents-test'
+import { Route as TestStorageDebugImport } from './routes/test-storage-debug'
+import { Route as DebugExampleImport } from './routes/debug-example'
 import { Route as DebugImport } from './routes/debug'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
@@ -49,13 +49,11 @@ import { Route as ClerkauthSignInImport } from './routes/clerk/(auth)/sign-in'
 import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_authenticated/settings/notifications'
 import { Route as AuthenticatedSettingsDisplayImport } from './routes/_authenticated/settings/display'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
+import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
-import { Route as AuthenticatedDocumentsWorkflowImport } from './routes/_authenticated/documents/workflow'
-import { Route as AuthenticatedDocumentsProcessTestImport } from './routes/_authenticated/documents/process-test'
-import { Route as AuthenticatedDocumentsProcessNewImport } from './routes/_authenticated/documents/process-new'
-import { Route as AuthenticatedDocumentsProcessDocumentNewImport } from './routes/_authenticated/documents/process-document-new'
+import { Route as AuthenticatedDocumentsUploadImport } from './routes/_authenticated/documents/upload'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
-import { Route as AuthenticatedDocumentsProcessImport } from './routes/_authenticated/documents/process'
+import { Route as AuthenticatedDocumentsDocumentIdImport } from './routes/_authenticated/documents/$documentId'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdImport } from './routes/_authenticated/workflows/instances/$instanceId'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdMonitorImport } from './routes/_authenticated/workflows/instances/$instanceId.monitor'
@@ -72,15 +70,15 @@ const WorkflowTestRoute = WorkflowTestImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
-const TestDocumentProcessorRoute = TestDocumentProcessorImport.update({
-  id: '/test-document-processor',
-  path: '/test-document-processor',
+const TestStorageDebugRoute = TestStorageDebugImport.update({
+  id: '/test-storage-debug',
+  path: '/test-storage-debug',
   getParentRoute: () => rootRoute,
 } as any)
 
-const DocumentsTestRoute = DocumentsTestImport.update({
-  id: '/documents-test',
-  path: '/documents-test',
+const DebugExampleRoute = DebugExampleImport.update({
+  id: '/debug-example',
+  path: '/debug-example',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -301,6 +299,13 @@ const AuthenticatedSettingsAppearanceRoute =
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
+const AuthenticatedSettingsAiModelsRoute =
+  AuthenticatedSettingsAiModelsImport.update({
+    id: '/ai-models',
+    path: '/ai-models',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+
 const AuthenticatedSettingsAccountRoute =
   AuthenticatedSettingsAccountImport.update({
     id: '/account',
@@ -308,31 +313,10 @@ const AuthenticatedSettingsAccountRoute =
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
-const AuthenticatedDocumentsWorkflowRoute =
-  AuthenticatedDocumentsWorkflowImport.update({
-    id: '/workflow',
-    path: '/workflow',
-    getParentRoute: () => AuthenticatedDocumentsRoute,
-  } as any)
-
-const AuthenticatedDocumentsProcessTestRoute =
-  AuthenticatedDocumentsProcessTestImport.update({
-    id: '/process-test',
-    path: '/process-test',
-    getParentRoute: () => AuthenticatedDocumentsRoute,
-  } as any)
-
-const AuthenticatedDocumentsProcessNewRoute =
-  AuthenticatedDocumentsProcessNewImport.update({
-    id: '/process-new',
-    path: '/process-new',
-    getParentRoute: () => AuthenticatedDocumentsRoute,
-  } as any)
-
-const AuthenticatedDocumentsProcessDocumentNewRoute =
-  AuthenticatedDocumentsProcessDocumentNewImport.update({
-    id: '/process-document-new',
-    path: '/process-document-new',
+const AuthenticatedDocumentsUploadRoute =
+  AuthenticatedDocumentsUploadImport.update({
+    id: '/upload',
+    path: '/upload',
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
@@ -343,10 +327,10 @@ const AuthenticatedDocumentsProcessDocumentRoute =
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
-const AuthenticatedDocumentsProcessRoute =
-  AuthenticatedDocumentsProcessImport.update({
-    id: '/process',
-    path: '/process',
+const AuthenticatedDocumentsDocumentIdRoute =
+  AuthenticatedDocumentsDocumentIdImport.update({
+    id: '/$documentId',
+    path: '/$documentId',
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
@@ -431,18 +415,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DebugImport
       parentRoute: typeof rootRoute
     }
-    '/documents-test': {
-      id: '/documents-test'
-      path: '/documents-test'
-      fullPath: '/documents-test'
-      preLoaderRoute: typeof DocumentsTestImport
+    '/debug-example': {
+      id: '/debug-example'
+      path: '/debug-example'
+      fullPath: '/debug-example'
+      preLoaderRoute: typeof DebugExampleImport
       parentRoute: typeof rootRoute
     }
-    '/test-document-processor': {
-      id: '/test-document-processor'
-      path: '/test-document-processor'
-      fullPath: '/test-document-processor'
-      preLoaderRoute: typeof TestDocumentProcessorImport
+    '/test-storage-debug': {
+      id: '/test-storage-debug'
+      path: '/test-storage-debug'
+      fullPath: '/test-storage-debug'
+      preLoaderRoute: typeof TestStorageDebugImport
       parentRoute: typeof rootRoute
     }
     '/workflow-test': {
@@ -578,11 +562,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTemplatesImport
       parentRoute: typeof AuthenticatedRouteImport
     }
-    '/_authenticated/documents/process': {
-      id: '/_authenticated/documents/process'
-      path: '/process'
-      fullPath: '/documents/process'
-      preLoaderRoute: typeof AuthenticatedDocumentsProcessImport
+    '/_authenticated/documents/$documentId': {
+      id: '/_authenticated/documents/$documentId'
+      path: '/$documentId'
+      fullPath: '/documents/$documentId'
+      preLoaderRoute: typeof AuthenticatedDocumentsDocumentIdImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/documents/process-document': {
@@ -592,32 +576,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
-    '/_authenticated/documents/process-document-new': {
-      id: '/_authenticated/documents/process-document-new'
-      path: '/process-document-new'
-      fullPath: '/documents/process-document-new'
-      preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentNewImport
-      parentRoute: typeof AuthenticatedDocumentsImport
-    }
-    '/_authenticated/documents/process-new': {
-      id: '/_authenticated/documents/process-new'
-      path: '/process-new'
-      fullPath: '/documents/process-new'
-      preLoaderRoute: typeof AuthenticatedDocumentsProcessNewImport
-      parentRoute: typeof AuthenticatedDocumentsImport
-    }
-    '/_authenticated/documents/process-test': {
-      id: '/_authenticated/documents/process-test'
-      path: '/process-test'
-      fullPath: '/documents/process-test'
-      preLoaderRoute: typeof AuthenticatedDocumentsProcessTestImport
-      parentRoute: typeof AuthenticatedDocumentsImport
-    }
-    '/_authenticated/documents/workflow': {
-      id: '/_authenticated/documents/workflow'
-      path: '/workflow'
-      fullPath: '/documents/workflow'
-      preLoaderRoute: typeof AuthenticatedDocumentsWorkflowImport
+    '/_authenticated/documents/upload': {
+      id: '/_authenticated/documents/upload'
+      path: '/upload'
+      fullPath: '/documents/upload'
+      preLoaderRoute: typeof AuthenticatedDocumentsUploadImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/settings/account': {
@@ -625,6 +588,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/settings/account'
       preLoaderRoute: typeof AuthenticatedSettingsAccountImport
+      parentRoute: typeof AuthenticatedSettingsRouteImport
+    }
+    '/_authenticated/settings/ai-models': {
+      id: '/_authenticated/settings/ai-models'
+      path: '/ai-models'
+      fullPath: '/settings/ai-models'
+      preLoaderRoute: typeof AuthenticatedSettingsAiModelsImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
     '/_authenticated/settings/appearance': {
@@ -774,6 +744,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAccountRoute: typeof AuthenticatedSettingsAccountRoute
+  AuthenticatedSettingsAiModelsRoute: typeof AuthenticatedSettingsAiModelsRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
   AuthenticatedSettingsDisplayRoute: typeof AuthenticatedSettingsDisplayRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
@@ -783,6 +754,7 @@ interface AuthenticatedSettingsRouteRouteChildren {
 const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
   {
     AuthenticatedSettingsAccountRoute: AuthenticatedSettingsAccountRoute,
+    AuthenticatedSettingsAiModelsRoute: AuthenticatedSettingsAiModelsRoute,
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
     AuthenticatedSettingsDisplayRoute: AuthenticatedSettingsDisplayRoute,
     AuthenticatedSettingsNotificationsRoute:
@@ -796,27 +768,19 @@ const AuthenticatedSettingsRouteRouteWithChildren =
   )
 
 interface AuthenticatedDocumentsRouteChildren {
-  AuthenticatedDocumentsProcessRoute: typeof AuthenticatedDocumentsProcessRoute
+  AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
   AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
-  AuthenticatedDocumentsProcessDocumentNewRoute: typeof AuthenticatedDocumentsProcessDocumentNewRoute
-  AuthenticatedDocumentsProcessNewRoute: typeof AuthenticatedDocumentsProcessNewRoute
-  AuthenticatedDocumentsProcessTestRoute: typeof AuthenticatedDocumentsProcessTestRoute
-  AuthenticatedDocumentsWorkflowRoute: typeof AuthenticatedDocumentsWorkflowRoute
+  AuthenticatedDocumentsUploadRoute: typeof AuthenticatedDocumentsUploadRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
 }
 
 const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
   {
-    AuthenticatedDocumentsProcessRoute: AuthenticatedDocumentsProcessRoute,
+    AuthenticatedDocumentsDocumentIdRoute:
+      AuthenticatedDocumentsDocumentIdRoute,
     AuthenticatedDocumentsProcessDocumentRoute:
       AuthenticatedDocumentsProcessDocumentRoute,
-    AuthenticatedDocumentsProcessDocumentNewRoute:
-      AuthenticatedDocumentsProcessDocumentNewRoute,
-    AuthenticatedDocumentsProcessNewRoute:
-      AuthenticatedDocumentsProcessNewRoute,
-    AuthenticatedDocumentsProcessTestRoute:
-      AuthenticatedDocumentsProcessTestRoute,
-    AuthenticatedDocumentsWorkflowRoute: AuthenticatedDocumentsWorkflowRoute,
+    AuthenticatedDocumentsUploadRoute: AuthenticatedDocumentsUploadRoute,
     AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
   }
 
@@ -933,8 +897,8 @@ export interface FileRoutesByFullPath {
   '': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/debug': typeof DebugRoute
-  '/documents-test': typeof DocumentsTestRoute
-  '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/debug-example': typeof DebugExampleRoute
+  '/test-storage-debug': typeof TestStorageDebugRoute
   '/workflow-test': typeof WorkflowTestRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
@@ -953,13 +917,11 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/templates': typeof AuthenticatedTemplatesRoute
-  '/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
-  '/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
-  '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
-  '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
-  '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
+  '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
@@ -986,8 +948,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
   '/debug': typeof DebugRoute
-  '/documents-test': typeof DocumentsTestRoute
-  '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/debug-example': typeof DebugExampleRoute
+  '/test-storage-debug': typeof TestStorageDebugRoute
   '/workflow-test': typeof WorkflowTestRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -1004,13 +966,11 @@ export interface FileRoutesByTo {
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/templates': typeof AuthenticatedTemplatesRoute
-  '/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
-  '/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
-  '/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
-  '/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
-  '/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
+  '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/display': typeof AuthenticatedSettingsDisplayRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
@@ -1039,8 +999,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkRouteRouteWithChildren
   '/debug': typeof DebugRoute
-  '/documents-test': typeof DocumentsTestRoute
-  '/test-document-processor': typeof TestDocumentProcessorRoute
+  '/debug-example': typeof DebugExampleRoute
+  '/test-storage-debug': typeof TestStorageDebugRoute
   '/workflow-test': typeof WorkflowTestRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
@@ -1060,13 +1020,11 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
-  '/_authenticated/documents/process': typeof AuthenticatedDocumentsProcessRoute
+  '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
-  '/_authenticated/documents/process-document-new': typeof AuthenticatedDocumentsProcessDocumentNewRoute
-  '/_authenticated/documents/process-new': typeof AuthenticatedDocumentsProcessNewRoute
-  '/_authenticated/documents/process-test': typeof AuthenticatedDocumentsProcessTestRoute
-  '/_authenticated/documents/workflow': typeof AuthenticatedDocumentsWorkflowRoute
+  '/_authenticated/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
+  '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/display': typeof AuthenticatedSettingsDisplayRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
@@ -1096,8 +1054,8 @@ export interface FileRouteTypes {
     | ''
     | '/clerk'
     | '/debug'
-    | '/documents-test'
-    | '/test-document-processor'
+    | '/debug-example'
+    | '/test-storage-debug'
     | '/workflow-test'
     | '/settings'
     | '/clerk/'
@@ -1116,13 +1074,11 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/documents'
     | '/templates'
-    | '/documents/process'
+    | '/documents/$documentId'
     | '/documents/process-document'
-    | '/documents/process-document-new'
-    | '/documents/process-new'
-    | '/documents/process-test'
-    | '/documents/workflow'
+    | '/documents/upload'
     | '/settings/account'
+    | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/display'
     | '/settings/notifications'
@@ -1148,8 +1104,8 @@ export interface FileRouteTypes {
     | '/'
     | ''
     | '/debug'
-    | '/documents-test'
-    | '/test-document-processor'
+    | '/debug-example'
+    | '/test-storage-debug'
     | '/workflow-test'
     | '/clerk'
     | '/forgot-password'
@@ -1166,13 +1122,11 @@ export interface FileRouteTypes {
     | '/503'
     | '/dashboard'
     | '/templates'
-    | '/documents/process'
+    | '/documents/$documentId'
     | '/documents/process-document'
-    | '/documents/process-document-new'
-    | '/documents/process-new'
-    | '/documents/process-test'
-    | '/documents/workflow'
+    | '/documents/upload'
     | '/settings/account'
+    | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/display'
     | '/settings/notifications'
@@ -1199,8 +1153,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/clerk'
     | '/debug'
-    | '/documents-test'
-    | '/test-document-processor'
+    | '/debug-example'
+    | '/test-storage-debug'
     | '/workflow-test'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
@@ -1220,13 +1174,11 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
     | '/_authenticated/templates'
-    | '/_authenticated/documents/process'
+    | '/_authenticated/documents/$documentId'
     | '/_authenticated/documents/process-document'
-    | '/_authenticated/documents/process-document-new'
-    | '/_authenticated/documents/process-new'
-    | '/_authenticated/documents/process-test'
-    | '/_authenticated/documents/workflow'
+    | '/_authenticated/documents/upload'
     | '/_authenticated/settings/account'
+    | '/_authenticated/settings/ai-models'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/display'
     | '/_authenticated/settings/notifications'
@@ -1255,8 +1207,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   ClerkRouteRoute: typeof ClerkRouteRouteWithChildren
   DebugRoute: typeof DebugRoute
-  DocumentsTestRoute: typeof DocumentsTestRoute
-  TestDocumentProcessorRoute: typeof TestDocumentProcessorRoute
+  DebugExampleRoute: typeof DebugExampleRoute
+  TestStorageDebugRoute: typeof TestStorageDebugRoute
   WorkflowTestRoute: typeof WorkflowTestRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
@@ -1277,8 +1229,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   ClerkRouteRoute: ClerkRouteRouteWithChildren,
   DebugRoute: DebugRoute,
-  DocumentsTestRoute: DocumentsTestRoute,
-  TestDocumentProcessorRoute: TestDocumentProcessorRoute,
+  DebugExampleRoute: DebugExampleRoute,
+  TestStorageDebugRoute: TestStorageDebugRoute,
   WorkflowTestRoute: WorkflowTestRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
@@ -1308,8 +1260,8 @@ export const routeTree = rootRoute
         "/_authenticated",
         "/clerk",
         "/debug",
-        "/documents-test",
-        "/test-document-processor",
+        "/debug-example",
+        "/test-storage-debug",
         "/workflow-test",
         "/(auth)/forgot-password",
         "/(auth)/otp",
@@ -1354,11 +1306,11 @@ export const routeTree = rootRoute
     "/debug": {
       "filePath": "debug.tsx"
     },
-    "/documents-test": {
-      "filePath": "documents-test.tsx"
+    "/debug-example": {
+      "filePath": "debug-example.tsx"
     },
-    "/test-document-processor": {
-      "filePath": "test-document-processor.tsx"
+    "/test-storage-debug": {
+      "filePath": "test-storage-debug.tsx"
     },
     "/workflow-test": {
       "filePath": "workflow-test.tsx"
@@ -1368,6 +1320,7 @@ export const routeTree = rootRoute
       "parent": "/_authenticated",
       "children": [
         "/_authenticated/settings/account",
+        "/_authenticated/settings/ai-models",
         "/_authenticated/settings/appearance",
         "/_authenticated/settings/display",
         "/_authenticated/settings/notifications",
@@ -1433,12 +1386,9 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/documents.tsx",
       "parent": "/_authenticated",
       "children": [
-        "/_authenticated/documents/process",
+        "/_authenticated/documents/$documentId",
         "/_authenticated/documents/process-document",
-        "/_authenticated/documents/process-document-new",
-        "/_authenticated/documents/process-new",
-        "/_authenticated/documents/process-test",
-        "/_authenticated/documents/workflow",
+        "/_authenticated/documents/upload",
         "/_authenticated/documents/"
       ]
     },
@@ -1446,32 +1396,24 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/templates.tsx",
       "parent": "/_authenticated"
     },
-    "/_authenticated/documents/process": {
-      "filePath": "_authenticated/documents/process.tsx",
+    "/_authenticated/documents/$documentId": {
+      "filePath": "_authenticated/documents/$documentId.tsx",
       "parent": "/_authenticated/documents"
     },
     "/_authenticated/documents/process-document": {
       "filePath": "_authenticated/documents/process-document.tsx",
       "parent": "/_authenticated/documents"
     },
-    "/_authenticated/documents/process-document-new": {
-      "filePath": "_authenticated/documents/process-document-new.tsx",
-      "parent": "/_authenticated/documents"
-    },
-    "/_authenticated/documents/process-new": {
-      "filePath": "_authenticated/documents/process-new.tsx",
-      "parent": "/_authenticated/documents"
-    },
-    "/_authenticated/documents/process-test": {
-      "filePath": "_authenticated/documents/process-test.tsx",
-      "parent": "/_authenticated/documents"
-    },
-    "/_authenticated/documents/workflow": {
-      "filePath": "_authenticated/documents/workflow.tsx",
+    "/_authenticated/documents/upload": {
+      "filePath": "_authenticated/documents/upload.tsx",
       "parent": "/_authenticated/documents"
     },
     "/_authenticated/settings/account": {
       "filePath": "_authenticated/settings/account.tsx",
+      "parent": "/_authenticated/settings"
+    },
+    "/_authenticated/settings/ai-models": {
+      "filePath": "_authenticated/settings/ai-models.tsx",
       "parent": "/_authenticated/settings"
     },
     "/_authenticated/settings/appearance": {

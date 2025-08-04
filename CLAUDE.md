@@ -7,6 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a comprehensive self-hosted AI platform called "FetchText" that combines multiple AI services into a unified stack. The system consists of three main components:
 
 1. **LocalAI Admin Dashboard** (`localai-admin-dashboard/`) - React/TypeScript frontend with TanStack Router
+
+Always regenerate routes using the `pnpm run build` command
+
 2. **Document Processor** (`document-processor/`) - Python FastAPI service for document processing using Docling
 3. **Service Infrastructure** - Docker Compose orchestrated services including Supabase, N8N, Ollama, and monitoring
 
@@ -86,6 +89,7 @@ pnpm setup:cli        # Setup CLI environment
 - Services follow `localai-<service-name>` naming pattern
 - Supabase runs in parent Docker setup, DO NOT create new instances
 - Document processor has health checks at `/health` endpoint
+- **macOS Storage Solution**: Uses MinIO S3-compatible storage via docker-compose.override.yml to avoid extended attributes issues
 
 ### Frontend Architecture (localai-admin-dashboard/)
 - **TanStack Router** for routing (not React Router)
@@ -132,6 +136,7 @@ All services use environment variables from root `.env` file:
 - Local URL: `http://localhost:8000` (Kong gateway)
 - Auth context in `@/context/auth-context.tsx`
 - Use Row Level Security (RLS) for data access control
+- **Storage**: Uses MinIO S3 backend (port 9010) instead of file storage to resolve macOS extended attributes issues
 
 ### Monitoring Stack
 - Langfuse for AI observability on port :8007

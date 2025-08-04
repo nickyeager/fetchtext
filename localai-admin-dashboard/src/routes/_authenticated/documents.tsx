@@ -1,10 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
-import DocumentsPage from '@/features/documents'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authenticated/documents')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  return <DocumentsPage />
+  return <Outlet />
 }

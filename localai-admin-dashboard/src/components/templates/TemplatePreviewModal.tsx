@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Play, Star, Clock, Users, Tag, Download, Share2, Heart } from 'lucide-react'
+import { X, Play, Clock, Users, Tag, Download, Share2, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -21,7 +21,6 @@ interface TemplatePreviewModalProps {
   onClose: () => void
   onUse?: (template: WorkflowTemplate) => void
   onDuplicate?: (template: WorkflowTemplate) => void
-  onRate?: (template: WorkflowTemplate, rating: number) => void
 }
 
 export function TemplatePreviewModal({
@@ -30,9 +29,7 @@ export function TemplatePreviewModal({
   onClose,
   onUse,
   onDuplicate,
-  onRate,
 }: TemplatePreviewModalProps) {
-  const [selectedRating, setSelectedRating] = useState<number>(0)
 
   if (!template) return null
 
@@ -62,10 +59,6 @@ export function TemplatePreviewModal({
     }
   }
 
-  const handleRating = (rating: number) => {
-    setSelectedRating(rating)
-    onRate?.(template, rating)
-  }
 
   const renderWorkflowNodes = () => {
     if (!template.nodes || template.nodes.length === 0) {
@@ -152,13 +145,6 @@ export function TemplatePreviewModal({
         <div className="px-6 py-4 bg-muted/20">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
-              {template.rating !== undefined && (
-                <div className="flex items-center space-x-2">
-                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-medium">{template.rating.toFixed(1)}</span>
-                  <span className="text-sm text-muted-foreground">rating</span>
-                </div>
-              )}
               
               {template.usageCount !== undefined && (
                 <div className="flex items-center space-x-2">
@@ -327,28 +313,7 @@ export function TemplatePreviewModal({
         {/* Footer Actions */}
         <div className="p-6 pt-0">
           <Separator className="mb-6" />
-          <div className="flex items-center justify-between">
-            {/* Rating */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium">Rate this template:</span>
-              <div className="flex space-x-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => handleRating(star)}
-                    className={cn(
-                      "text-lg transition-colors",
-                      star <= selectedRating
-                        ? "text-yellow-400"
-                        : "text-gray-300 hover:text-yellow-400"
-                    )}
-                  >
-                    <Star className="w-5 h-5 fill-current" />
-                  </button>
-                ))}
-              </div>
-            </div>
-            
+          <div className="flex justify-end">
             {/* Primary Actions */}
             <div className="flex space-x-3">
               <Button variant="outline" onClick={onClose}>

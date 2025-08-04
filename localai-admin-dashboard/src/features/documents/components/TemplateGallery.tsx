@@ -225,7 +225,6 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
               {/* Stats */}
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>{template.usage_count} uses</span>
-                <span>★ {template.rating.toFixed(1)}</span>
               </div>
 
               {/* Actions */}

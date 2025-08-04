@@ -14,7 +14,15 @@
     "test": "npx vitest --environment jsdom",
     "test:watch": "npx vitest --environment jsdom --watch",
     "test:coverage": "npx vitest --environment jsdom --run --coverage",
-    "test:ui": "npx vitest --environment jsdom --ui"
+    "test:ui": "npx vitest --environment jsdom --ui",
+    "debug": "./scripts/debug.sh",
+    "debug:chrome": "./scripts/debug.sh chrome",
+    "debug:edge": "./scripts/debug.sh edge",
+    "debug:firefox": "./scripts/debug.sh firefox",
+    "debug:test": "./scripts/debug.sh test",
+    "debug:attach": "./scripts/debug.sh attach",
+    "dev:debug": "vite --debug --force",
+    "dev:inspect": "node --inspect-brk ./node_modules/.bin/vite"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.31.4",

@@ -446,6 +446,8 @@ services:
     restart: unless-stopped
     ports:
       - "8090:8090"
+    env_file:
+      - .env
     volumes:
       - ./shared:/app/shared
       - document_uploads:/app/uploads
@@ -454,6 +456,11 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME}
+      - AZURE_OPENAI_LOCATION=${AZURE_OPENAI_LOCATION}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s

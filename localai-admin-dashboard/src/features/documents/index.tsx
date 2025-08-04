@@ -10,10 +10,14 @@ import {
   History, 
   Download,
   Eye,
-  Plus
+  Plus,
+  Upload,
+  Sparkles
 } from 'lucide-react';
 import { TemplateGallery } from './components/TemplateGallery';
 import { CreateTemplateModal } from './components/CreateTemplateModal';
+import { ProcessedDocumentsService, ProcessedDocument } from './services/processed-documents-service';
+import { useQuery } from '@tanstack/react-query';
 
 // Define interfaces
 interface SmartVariable {
@@ -35,51 +39,27 @@ interface SmartTemplate {
   category: string;
 }
 
-interface GeneratedDocument {
-  id: string;
-  template_name: string;
-  content: string;
-  created_at: string;
-  status: 'completed' | 'processing' | 'failed';
-}
-
 export default function DocumentsPage() {
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<'gallery' | 'history'>('gallery');
-  const [generatedDocuments] = useState<GeneratedDocument[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Mock data for recent documents
-  const recentDocuments: GeneratedDocument[] = [
-    {
-      id: '1',
-      template_name: 'Project Proposal',
-      content: 'Generated project proposal content...',
-      created_at: '2024-01-15T10:30:00Z',
-      status: 'completed'
-    },
-    {
-      id: '2', 
-      template_name: 'Marketing Brief',
-      content: 'Generated marketing brief content...',
-      created_at: '2024-01-15T09:15:00Z',
-      status: 'completed'
-    },
-    {
-      id: '3',
-      template_name: 'Contract Template',
-      content: 'Processing...',
-      created_at: '2024-01-15T11:00:00Z',
-      status: 'processing'
-    }
-  ];
+  // Load real processed documents from Supabase
+  const { 
+    data: processedDocuments = [], 
+    isLoading: isLoadingDocuments, 
+    error: documentsError 
+  } = useQuery({
+    queryKey: ['processedDocuments'],
+    queryFn: ProcessedDocumentsService.getProcessedDocuments,
+  });
 
   const handleTemplateSelect = useCallback((template: SmartTemplate) => {
     // Navigate to the document processor route with template data
-    console.log('Navigating to /documents/process-document with template:', template.name);
+    console.log('Navigating to /documents/process-document with template:', template.name, 'ID:', template.id);
     navigate({ 
       to: '/documents/process-document',
-      search: { templateId: template.id.toString() }
+      search: { templateId: template.id }
     });
   }, [navigate]);
 
@@ -87,14 +67,28 @@ export default function DocumentsPage() {
     setIsModalOpen(true);
   }, []);
 
-  const downloadDocument = useCallback((document: GeneratedDocument) => {
-    const blob = new Blob([document.content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement('a');
-    a.href = url;
-    a.download = `${document.template_name}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadDocument = useCallback(async (document: ProcessedDocument) => {
+    try {
+      // Use the export functionality from the service
+      const blob = await ProcessedDocumentsService.exportDocument(document.id, 'json');
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `${document.name.replace(/\.[^/.]+$/, '')}_processed.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download document:', error);
+      // Fallback to simple content download
+      const content = document.content_text || 'No content available';
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `${document.name}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   }, []);
 
   const formatDate = useCallback((dateString: string) => {
@@ -107,13 +101,22 @@ export default function DocumentsPage() {
     });
   }, []);
 
-  const getStatusColor = useCallback((status: string) => {
+  const getStatusColor = useCallback((status?: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
       case 'processing': return 'bg-blue-100 text-blue-800';
       case 'failed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  }, []);
+
+  const getDocumentPreview = useCallback((document: ProcessedDocument) => {
+    if (document.extracted_fields) {
+      // Show extracted fields preview
+      const fieldCount = Object.keys(document.extracted_fields).length;
+      return `${fieldCount} fields extracted from ${document.name}`;
+    }
+    return document.content_text?.substring(0, 100) || 'No content preview available';
   }, []);
 
   return (
@@ -129,9 +132,17 @@ export default function DocumentsPage() {
             <Plus className="h-4 w-4 mr-2" />
             Create Template
           </Button>
+          <Button 
+            variant="outline"
+            onClick={() => navigate({ to: '/documents/upload' })}
+            className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900 dark:hover:to-blue-900"
+          >
+            <Sparkles className="h-4 w-4 mr-2 text-purple-600 dark:text-purple-400" />
+            Smart Upload
+          </Button>
           <Button onClick={() => setCurrentView('gallery')}>
             <Zap className="h-4 w-4 mr-2" />
-            Start Processing
+            Browse Templates
           </Button>
         </div>
       </div>
@@ -170,59 +181,81 @@ export default function DocumentsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {[...generatedDocuments, ...recentDocuments].map((document) => (
-                  <div key={document.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium text-gray-900">{document.template_name}</h4>
-                        <Badge className={getStatusColor(document.status)}>
-                          {document.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Generated on {formatDate(document.created_at)}
-                      </p>
-                      {document.status === 'completed' && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {document.content.substring(0, 100)}...
+              {isLoadingDocuments ? (
+                <div className="text-center py-8">
+                  <div className="animate-pulse">Loading documents...</div>
+                </div>
+              ) : documentsError ? (
+                <div className="text-center py-8 text-red-600">
+                  <p>Error loading documents: {documentsError.message}</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {processedDocuments.map((document) => (
+                    <div key={document.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium text-gray-900">
+                            {document.template_name || document.name}
+                          </h4>
+                          <Badge className={getStatusColor(document.processing_status)}>
+                            {document.processing_status || 'completed'}
+                          </Badge>
+                          {document.processing_method && (
+                            <Badge variant="outline" className="text-xs">
+                              {document.processing_method}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Processed on {formatDate(document.created_at)}
                         </p>
-                      )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          {getDocumentPreview(document)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {(document.processing_status === 'completed' || !document.processing_status) && (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => navigate({ to: `/documents/${document.id}` })}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => downloadDocument(document)}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        {document.processing_status === 'processing' && (
+                          <div className="text-sm text-blue-600">Processing...</div>
+                        )}
+                        {document.processing_status === 'failed' && (
+                          <div className="text-sm text-red-600">Failed</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {document.status === 'completed' && (
-                        <>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => downloadDocument(document)}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                      {document.status === 'processing' && (
-                        <div className="text-sm text-blue-600">Processing...</div>
-                      )}
+                  ))}
+                  
+                  {processedDocuments.length === 0 && (
+                    <div className="text-center py-8">
+                      <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Documents Generated</h3>
+                      <p className="text-gray-600 mb-4">Start by selecting a template and processing a document</p>
+                      <Button onClick={() => setCurrentView('gallery')}>
+                        <Zap className="h-4 w-4 mr-2" />
+                        Get Started
+                      </Button>
                     </div>
-                  </div>
-                ))}
-                
-                {generatedDocuments.length === 0 && recentDocuments.length === 0 && (
-                  <div className="text-center py-8">
-                    <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Documents Generated</h3>
-                    <p className="text-gray-600 mb-4">Start by selecting a template and processing a document</p>
-                    <Button onClick={() => setCurrentView('gallery')}>
-                      <Zap className="h-4 w-4 mr-2" />
-                      Get Started
-                    </Button>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

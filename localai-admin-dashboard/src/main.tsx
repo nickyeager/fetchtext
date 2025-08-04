@@ -13,6 +13,7 @@ import { handleServerError } from '@/utils/handle-server-error'
 import { FontProvider } from './context/font-context'
 import { ThemeProvider } from './context/theme-context'
 import { AuthProvider } from './context/auth-context'
+import { SearchProvider } from './context/search-context'
 import './index.css'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
@@ -93,7 +94,9 @@ if (!rootElement.innerHTML) {
         <ThemeProvider defaultTheme='light' storageKey='vite-ui-theme'>
           <AuthProvider>
             <FontProvider>
-              <RouterProvider router={router} />
+              <SearchProvider>
+                <RouterProvider router={router} />
+              </SearchProvider>
             </FontProvider>
           </AuthProvider>
         </ThemeProvider>

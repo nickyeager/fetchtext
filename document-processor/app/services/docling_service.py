@@ -164,7 +164,7 @@ class DoclingService:
                     extract_structure
                 )
             else:
-                logger.info(f"Using mock implementation for processing: {file_path.name}")
+                logger.info(f"Using mock implementation for processing: {file_path.name} (use_real_docling={self.use_real_docling}, converter={self.converter})")
                 content = await self._mock_extract_content(
                     file_path, 
                     extract_text, 
@@ -222,24 +222,15 @@ class DoclingService:
                 content["markdown"] = f"# {file_path.stem}\n\n{text}"
         
         if extract_structure:
-            # Mock table data
-            content["tables"] = [
-                {
-                    "table_id": "table_1",
-                    "rows": 3,
-                    "columns": 2,
-                    "data": [
-                        ["Header 1", "Header 2"],
-                        ["Row 1 Col 1", "Row 1 Col 2"],
-                        ["Row 2 Col 1", "Row 2 Col 2"]
-                    ]
-                }
-            ]
+            # Don't add fake table data - only real structure if detected
+            logger.info("MOCK EXTRACT: Adding empty tables array instead of fake data")
+            content["tables"] = []  # Empty array instead of fake tables
             
             content["layout_info"] = {
                 "pages": 1,
-                "layout_detected": True,
-                "reading_order": ["header", "body", "footer"]
+                "layout_detected": False,  # Changed to False since no real structure detected
+                "reading_order": [],
+                "note": "No structure data available for this file type"
             }
         
         return content
@@ -317,9 +308,44 @@ class DoclingService:
             
         except Exception as e:
             logger.error(f"Error in real Docling extraction: {e}")
-            # Fall back to mock implementation
-            logger.info("Falling back to mock implementation")
-            return await self._mock_extract_content(file_path, extract_text, extract_structure)
+            # Fall back to simple extraction without fake structure data
+            logger.info("Falling back to simple extraction without mock structure data")
+            return await self._simple_extract_content(file_path, extract_text, extract_structure)
+
+    async def _simple_extract_content(
+        self, 
+        file_path: Path, 
+        extract_text: bool,
+        extract_structure: bool
+    ) -> Dict[str, Any]:
+        """Simple content extraction without fake structure data"""
+        
+        logger.info("Using _simple_extract_content method (should have no fake tables)")
+        content = {}
+        
+        if extract_text:
+            # For text files, read content directly
+            if file_path.suffix.lower() in ['.txt', '.md']:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    text_content = await f.read()
+                content["text"] = text_content
+                content["markdown"] = text_content if file_path.suffix.lower() == '.md' else f"```\n{text_content}\n```"
+            else:
+                # For other unsupported formats, provide a simple message
+                content["text"] = f"[Content extracted from {file_path.name}]\n\nThis file format is not fully supported by Docling. Only basic text extraction is available."
+                content["markdown"] = f"# {file_path.stem}\n\n{content['text']}"
+        
+        if extract_structure:
+            # Only provide minimal structure info without fake data
+            content["tables"] = []  # Empty array instead of fake tables
+            content["layout_info"] = {
+                "pages": 1,
+                "layout_detected": False,
+                "reading_order": [],
+                "note": "Structure extraction not available for this file format"
+            }
+        
+        return content
 
     async def process_batch(
         self, 
