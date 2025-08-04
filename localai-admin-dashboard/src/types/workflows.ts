@@ -40,7 +40,6 @@ export interface WorkflowTemplate {
   flowiseFlowId?: string; // Corresponds to workflow_templates.flowise_flow_id
   templateData?: any; // The raw JSONB content
   usageCount?: number; // Corresponds to workflow_templates.usage_count
-  rating?: number; // Corresponds to workflow_templates.rating
   createdBy?: string; // Corresponds to workflow_templates.created_by
   createdAt?: string; // Corresponds to workflow_templates.created_at
   updatedAt?: string; // Corresponds to workflow_templates.updated_at
@@ -146,13 +145,12 @@ export interface TemplateFilters {
   complexity?: 'beginner' | 'intermediate' | 'advanced';
   templateType?: 'n8n' | 'flowise' | 'hybrid' | 'other';
   tags?: string[];
-  minRating?: number;
 }
 
 export interface TemplateSearchParams {
   query?: string;
   filters?: TemplateFilters;
-  sortBy?: 'name' | 'rating' | 'usage_count' | 'created_at' | 'updated_at';
+  sortBy?: 'name' | 'usage_count' | 'created_at' | 'updated_at';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
   offset?: number;

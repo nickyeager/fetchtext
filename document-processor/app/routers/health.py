@@ -3,9 +3,10 @@ from fastapi.responses import JSONResponse
 import asyncio
 from typing import Dict, Any
 
-router = APIRouter(prefix="/health", tags=["health"])
+router = APIRouter(tags=["health"])
 
-@router.get("/")
+@router.get("/health", status_code=200)
+@router.get("/health/", status_code=200, include_in_schema=False)
 async def health_check() -> Dict[str, Any]:
     """Basic health check endpoint"""
     return {
@@ -14,7 +15,8 @@ async def health_check() -> Dict[str, Any]:
         "version": "1.0.0"
     }
 
-@router.get("/ready")
+@router.get("/health/ready", status_code=200)
+@router.get("/health/ready/", status_code=200, include_in_schema=False)
 async def readiness_check() -> Dict[str, Any]:
     """Readiness check - ensures all dependencies are available"""
     try:
@@ -53,7 +55,8 @@ async def readiness_check() -> Dict[str, Any]:
             }
         )
 
-@router.get("/live")
+@router.get("/health/live", status_code=200)
+@router.get("/health/live/", status_code=200, include_in_schema=False)
 async def liveness_check() -> Dict[str, Any]:
     """Liveness check - basic endpoint to ensure service is running"""
     return {

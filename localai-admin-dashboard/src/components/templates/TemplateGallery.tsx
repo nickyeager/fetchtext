@@ -49,7 +49,7 @@ export function TemplateGallery({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [sortBy, setSortBy] = useState<'name' | 'rating' | 'usage_count' | 'created_at'>('name')
+  const [sortBy, setSortBy] = useState<'name' | 'usage_count' | 'created_at'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   
@@ -57,7 +57,6 @@ export function TemplateGallery({
     complexity: undefined,
     templateType: undefined,
     tags: [],
-    minRating: undefined,
   })
 
   // Load templates and categories
@@ -99,7 +98,6 @@ export function TemplateGallery({
         flowiseFlowId: template.flowise_flow_id,
         templateData: template.template_data,
         usageCount: template.usage_count,
-        rating: template.rating,
         createdBy: template.created_by,
         createdAt: template.created_at,
         updatedAt: template.updated_at,
@@ -150,9 +148,6 @@ export function TemplateGallery({
       filtered = filtered.filter(template => template.templateType === filters.templateType)
     }
 
-    if (filters.minRating) {
-      filtered = filtered.filter(template => (template.rating || 0) >= filters.minRating!)
-    }
 
     if (filters.tags && filters.tags.length > 0) {
       filtered = filtered.filter(template =>
@@ -170,10 +165,6 @@ export function TemplateGallery({
         case 'name':
           aValue = a.name.toLowerCase()
           bValue = b.name.toLowerCase()
-          break
-        case 'rating':
-          aValue = a.rating || 0
-          bValue = b.rating || 0
           break
         case 'usage_count':
           aValue = a.usageCount || 0
@@ -227,8 +218,7 @@ export function TemplateGallery({
       complexity: undefined,
       templateType: undefined,
       tags: [],
-      minRating: undefined,
-    })
+      })
     setSelectedCategory('all')
     setSearchQuery('')
   }
@@ -237,7 +227,6 @@ export function TemplateGallery({
     let count = 0
     if (filters.complexity) count++
     if (filters.templateType) count++
-    if (filters.minRating) count++
     if (filters.tags && filters.tags.length > 0) count++
     if (selectedCategory !== 'all') count++
     return count
@@ -327,8 +316,6 @@ export function TemplateGallery({
           <SelectContent>
             <SelectItem value="name-asc">Name A-Z</SelectItem>
             <SelectItem value="name-desc">Name Z-A</SelectItem>
-            <SelectItem value="rating-desc">Rating High-Low</SelectItem>
-            <SelectItem value="rating-asc">Rating Low-High</SelectItem>
             <SelectItem value="usage_count-desc">Most Used</SelectItem>
             <SelectItem value="created_at-desc">Newest</SelectItem>
             <SelectItem value="created_at-asc">Oldest</SelectItem>
@@ -406,30 +393,6 @@ export function TemplateGallery({
                 </Select>
               </div>
 
-              {/* Rating Filter */}
-              <div>
-                <Label className="text-sm font-medium">Minimum Rating</Label>
-                <Select
-                  value={filters.minRating?.toString() || ''}
-                  onValueChange={(value) =>
-                    setFilters(prev => ({
-                      ...prev,
-                      minRating: value ? parseFloat(value) : undefined
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Any rating" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Any rating</SelectItem>
-                    <SelectItem value="4">4+ stars</SelectItem>
-                    <SelectItem value="3">3+ stars</SelectItem>
-                    <SelectItem value="2">2+ stars</SelectItem>
-                    <SelectItem value="1">1+ stars</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
 
               <Separator />
 

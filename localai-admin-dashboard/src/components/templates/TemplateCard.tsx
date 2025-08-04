@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Star, Clock, Users, Play, Eye, MoreVertical } from 'lucide-react'
+import { Clock, Users, Play, Eye, MoreVertical } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -213,12 +213,6 @@ export function TemplateCard({
         {/* Stats */}
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center space-x-3">
-            {template.rating !== undefined && (
-              <div className="flex items-center space-x-1">
-                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                <span>{template.rating.toFixed(1)}</span>
-              </div>
-            )}
             
             {template.usageCount !== undefined && (
               <div className="flex items-center space-x-1">
@@ -254,7 +248,7 @@ export function TemplateCard({
             className="flex-1"
           >
             <Play className="w-4 h-4 mr-1" />
-            Use Template
+            Use Template 
           </Button>
         </div>
       </CardFooter>

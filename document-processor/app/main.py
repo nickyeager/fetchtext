@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # Import routers
-from app.routers import documents, health
+from app.routers import documents, health, enhanced_documents, models
 
 app = FastAPI(
     title="Document Processor API",
@@ -26,6 +26,8 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(documents.router)
+app.include_router(enhanced_documents.router)
+app.include_router(models.router)
 
 @app.get("/")
 async def root():
