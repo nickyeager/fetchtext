@@ -1,5 +1,33 @@
 {
-	"devDependencies": {
-		"vite-tsconfig-paths": "^5.1.4"
-	}
+  "name": "fetchtext-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "FetchText AI-powered document processing platform with Context Engineering workflow",
+  "scripts": {
+    "validate": "ts-node scripts/validate-implementation.ts",
+    "prp:create": "ts-node scripts/prp-generator.ts create",
+    "prp:generate": "ts-node scripts/prp-generator.ts generate", 
+    "prp:list": "ts-node scripts/prp-generator.ts list",
+    "start": "python start_services.py --profile gpu-nvidia",
+    "start:cpu": "python start_services.py --profile cpu",
+    "dev:frontend": "cd localai-admin-dashboard && pnpm dev",
+    "test:frontend": "cd localai-admin-dashboard && pnpm test",
+    "test:backend": "cd document-processor && python -m pytest tests/ -v",
+    "health-check": "./quick_health_check.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0",
+    "vite-tsconfig-paths": "^5.1.4"
+  },
+  "keywords": [
+    "ai",
+    "document-processing",
+    "context-engineering",
+    "docker",
+    "react",
+    "python",
+    "fastapi"
+  ]
 }

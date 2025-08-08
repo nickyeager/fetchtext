@@ -334,7 +334,7 @@ export class DocumentProcessorEnhanced {
       if (process.env.NODE_ENV === 'test' || !backendAvailable) {
         console.log('Using mock data for document processing - test mode or backend unavailable');
         // Use mock data for basic structure
-        const mockDoc = this.createMockProcessedDocument(file);
+        const mockDoc = await this.createMockProcessedDocument(file);
         documentContent = mockDoc.content;
         documentMetadata = mockDoc.metadata;
         documentStructure = mockDoc.structure;
@@ -487,7 +487,7 @@ export class DocumentProcessorEnhanced {
 
     } catch (error) {
       // Fallback to batch processing on error
-      return this.createMockTemplateExtractionResult(file, template);
+      return await this.createMockTemplateExtractionResult(file, template);
     }
   }
 
@@ -554,7 +554,7 @@ export class DocumentProcessorEnhanced {
       // For testing/development, return mock data that matches test expectations
       if (process.env.NODE_ENV === 'test' || !enhancedApiAvailable) {
         console.log('Using mock template extraction result');
-        return this.createMockTemplateExtractionResult(file, template);
+        return await this.createMockTemplateExtractionResult(file, template);
       }
 
       console.log('Using optimized fast extraction endpoint');
@@ -566,7 +566,7 @@ export class DocumentProcessorEnhanced {
           const textContent = await this.extractTextFromFile(file);
           const extractedFields = await this.extractWithTemplateFast(textContent, template);
           
-          // Create a complete result structure
+          // Create a complete result structure with actual content
           return {
             content: textContent,
             metadata: {
@@ -612,11 +612,29 @@ export class DocumentProcessorEnhanced {
       const result = await response.json();
       console.log('File upload template extraction result:', result);
       
-      return this.transformEnhancedResponseWithTemplate(result, file, template);
+      const templateResult = this.transformEnhancedResponseWithTemplate(result, file, template);
+      
+      // If no content was returned from extraction, try to get it separately
+      if (!templateResult.content) {
+        console.log('No content in extraction result, attempting separate content extraction...');
+        try {
+          const contentResult = await this.processDocumentWithDocling(file);
+          templateResult.content = contentResult.content;
+          templateResult.metadata = { ...templateResult.metadata, ...contentResult.metadata };
+          templateResult.structure = contentResult.structure;
+          console.log('Successfully obtained content from separate extraction');
+        } catch (contentError) {
+          console.warn('Failed to get content separately:', contentError);
+          // Use fallback content
+          templateResult.content = `Content extraction failed for ${file.name}. Only field extraction was successful.`;
+        }
+      }
+      
+      return templateResult;
     } catch (error) {
       console.error('Template extraction failed, using mock data:', error);
       // Backend not available, use mock data for development
-      return this.createMockTemplateExtractionResult(file, template);
+      return await this.createMockTemplateExtractionResult(file, template);
     }
   }
 
@@ -638,7 +656,7 @@ export class DocumentProcessorEnhanced {
       // For testing/development, return mock data that matches test expectations
       if (process.env.NODE_ENV === 'test' || !backendAvailable) {
         console.log('Using mock processed document');
-        return this.createMockProcessedDocument(file);
+        return await this.createMockProcessedDocument(file);
       }
       
       if (enhancedApiAvailable) {
@@ -686,7 +704,7 @@ export class DocumentProcessorEnhanced {
       }
     } catch (_error) {
       // Backend not available, use mock data for development
-      return this.createMockProcessedDocument(file);
+      return await this.createMockProcessedDocument(file);
     }
   }
 
@@ -797,11 +815,24 @@ export class DocumentProcessorEnhanced {
   /**
    * Create mock processed document for testing/development
    */
-  private createMockProcessedDocument(file: File): ProcessedDocument {
+  private async createMockProcessedDocument(file: File): Promise<ProcessedDocument> {
     const fileType = file.name.toLowerCase();
     
+    // Try to extract real content first if it's a text-based file
+    let actualContent = '';
+    try {
+      if (file.type === 'text/plain' || file.type === 'text/html' || file.type === 'text/markdown') {
+        actualContent = await this.extractTextFromFile(file);
+      }
+    } catch (error) {
+      console.warn('Failed to extract text from file:', error);
+    }
+    
+    // Use real content if available, otherwise use sample text
+    const content = actualContent || `Sample document content for ${file.name}. This would contain the full extracted text from the document.`;
+    
     return {
-      content: `Test document content for ${file.name}. This is a sample document that would normally be processed by the Docling service. The content would include the full text extracted from the document.`,
+      content,
       metadata: {
         title: file.name.includes('test') ? 'Test Document' : this.generateTitleFromFilename(file.name),
         format: this.getFormatFromMimeType(file.type),
@@ -995,7 +1026,20 @@ export class DocumentProcessorEnhanced {
   /**
    * Create mock template extraction result for testing/development
    */
-  private createMockTemplateExtractionResult(file: File, template: SmartTemplate): TemplateExtractionResult {
+  private async createMockTemplateExtractionResult(file: File, template: SmartTemplate): Promise<TemplateExtractionResult> {
+    // Try to extract real content first
+    let actualContent = '';
+    try {
+      if (file.type === 'text/plain' || file.type === 'text/html' || file.type === 'text/markdown') {
+        actualContent = await this.extractTextFromFile(file);
+      }
+    } catch (error) {
+      console.warn('Failed to extract text from file for template:', error);
+    }
+    
+    // Use real content if available, otherwise use sample text
+    const content = actualContent || `Sample document content for ${file.name}. This would contain the full extracted text from the document.`;
+    
     const extractedFields: Record<string, ExtractedField> = {};
     
     // Generate mock extraction results for each template field
@@ -1036,7 +1080,7 @@ export class DocumentProcessorEnhanced {
     });
 
     return {
-      content: `Sample document content for ${file.name}. This would contain the full extracted text from the document.`,
+      content,
       metadata: {
         title: file.name.includes('test') ? 'Test Document' : this.generateTitleFromFilename(file.name),
         format: this.getFormatFromMimeType(file.type),
@@ -1157,7 +1201,21 @@ export class DocumentProcessorEnhanced {
     file: File, 
     template: SmartTemplate
   ): TemplateExtractionResult {
-    const content = enhancedResponse.content?.text || '';
+    // The enhanced API might not return content in the same response as extraction
+    // We need to handle this case differently
+    let content = '';
+    
+    if (enhancedResponse.content?.text) {
+      content = enhancedResponse.content.text;
+    } else if (enhancedResponse.document_content?.text) {
+      content = enhancedResponse.document_content.text;
+    } else if (enhancedResponse.original_content) {
+      content = enhancedResponse.original_content;
+    } else {
+      // If no content is provided, we'll need to extract it separately
+      console.warn('No document content found in API response, will need separate content extraction');
+      content = ''; // This will be handled by the calling code
+    }
     
     // Transform basic document structure
     const headings = enhancedResponse.content?.layout_info?.headings?.map((h: any) => ({
@@ -1181,8 +1239,23 @@ export class DocumentProcessorEnhanced {
     // Extract template-specific fields from enhanced API response
     const extractedFields: Record<string, ExtractedField> = {};
     
-    // Use extracted_data from enhanced API if available
-    if (enhancedResponse.extracted_data?.extracted_values) {
+    // Use extraction_result from enhanced API if available
+    if (enhancedResponse.extraction_result?.extracted_values) {
+      const extractedValues = enhancedResponse.extraction_result.extracted_values;
+      const confidenceScores = enhancedResponse.extraction_result.confidence_scores || {};
+      const sourceLocations = enhancedResponse.extraction_result.source_locations || {};
+      
+      Object.keys(extractedValues).forEach(fieldName => {
+        extractedFields[fieldName] = {
+          value: extractedValues[fieldName],
+          confidence: confidenceScores[fieldName] || 0.8,
+          sourceText: `Extracted from document: ${fieldName}`,
+          location: sourceLocations[fieldName] || { page: 1, position: 0 },
+        };
+      });
+    }
+    // Fallback to check extracted_data structure for backward compatibility
+    else if (enhancedResponse.extracted_data?.extracted_values) {
       const extractedValues = enhancedResponse.extracted_data.extracted_values;
       const confidenceScores = enhancedResponse.extracted_data.confidence_scores || {};
       const sourceLocations = enhancedResponse.extracted_data.source_locations || {};
@@ -1679,7 +1752,7 @@ export class DocumentProcessorEnhanced {
           name: 'Receipt Number',
           type: 'text',
           description: 'The receipt transaction number',
-          extraction_hints: ['Receipt #', 'Transaction:', 'Order #'],
+          extraction_hints: ['Receipt #', 'Transaction:', 'Order #', 'Invoice number', 'Invoice #', 'Reference:'],
           default_value: ''
         },
         {
@@ -1687,7 +1760,7 @@ export class DocumentProcessorEnhanced {
           name: 'Purchase Date',
           type: 'date',
           description: 'The date of purchase',
-          extraction_hints: ['Date:', 'Purchased:', 'Transaction Date:'],
+          extraction_hints: ['Date:', 'Purchased:', 'Transaction Date:', 'Date paid', 'Payment Date'],
           default_value: ''
         },
         {
@@ -1695,8 +1768,24 @@ export class DocumentProcessorEnhanced {
           name: 'Total Paid',
           type: 'currency',
           description: 'The total amount paid',
-          extraction_hints: ['Total:', 'Paid:', 'Amount:'],
+          extraction_hints: ['Total:', 'Paid:', 'Amount:', 'paid on', 'Amount paid', 'Grand Total'],
           default_value: 0
+        },
+        {
+          id: 'vendor_name',
+          name: 'Vendor Name',
+          type: 'text',
+          description: 'The vendor or merchant name',
+          extraction_hints: ['From:', 'Vendor:', 'Merchant:', 'Company:', 'Business:'],
+          default_value: ''
+        },
+        {
+          id: 'customer_name',
+          name: 'Customer Name',
+          type: 'text',
+          description: 'The customer or buyer name',
+          extraction_hints: ['Bill to', 'Customer:', 'To:', 'Buyer:', 'Client:'],
+          default_value: ''
         }
       ],
       general: [
