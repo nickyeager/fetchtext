@@ -1,0 +1,37 @@
+INVOICE
+
+From: TechCorp Solutions
+123 Business Street
+San Francisco, CA 94105
+Phone: (555) 123-4567
+Email: billing@techcorp.com
+
+To: ABC Company
+456 Customer Avenue
+New York, NY 10001
+
+Invoice Number: INV-2024-001
+Invoice Date: January 15, 2024
+Due Date: February 15, 2024
+
+DESCRIPTION                          QTY    RATE      AMOUNT
+Software Development Services         40    $125.00   $5,000.00
+UI/UX Design Consultation            10    $100.00   $1,000.00
+System Integration                   20     $75.00   $1,500.00
+
+                              Subtotal:    $7,500.00
+                                   Tax:      $675.00
+                           TOTAL AMOUNT:    $8,175.00
+
+Payment Terms: Net 30 days
+Payment Method: Check or Wire Transfer
+
+Thank you for your business!
+
+Please remit payment by the due date to avoid late fees.
+For questions, contact our billing department at billing@techcorp.com
+
+---
+Reference Number: REF-789-XYZ
+Account Manager: John Smith
+Project Code: PROJ-2024-ABC

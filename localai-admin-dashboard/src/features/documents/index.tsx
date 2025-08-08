@@ -12,7 +12,8 @@ import {
   Eye,
   Plus,
   Upload,
-  Sparkles
+  Sparkles,
+  Image
 } from 'lucide-react';
 import { TemplateGallery } from './components/TemplateGallery';
 import { CreateTemplateModal } from './components/CreateTemplateModal';
@@ -131,6 +132,13 @@ export default function DocumentsPage() {
           <Button variant="outline" onClick={handleCreateTemplate}>
             <Plus className="h-4 w-4 mr-2" />
             Create Template
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => navigate({ to: '/documents/gallery' })}
+          >
+            <Image className="h-4 w-4 mr-2" />
+            Document Gallery
           </Button>
           <Button 
             variant="outline"

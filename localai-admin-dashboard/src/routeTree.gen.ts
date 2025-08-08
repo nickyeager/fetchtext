@@ -11,10 +11,6 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
-import { Route as WorkflowTestImport } from './routes/workflow-test'
-import { Route as TestStorageDebugImport } from './routes/test-storage-debug'
-import { Route as DebugExampleImport } from './routes/debug-example'
-import { Route as DebugImport } from './routes/debug'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
@@ -53,6 +49,7 @@ import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenti
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedDocumentsUploadImport } from './routes/_authenticated/documents/upload'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
+import { Route as AuthenticatedDocumentsGalleryImport } from './routes/_authenticated/documents/gallery'
 import { Route as AuthenticatedDocumentsDocumentIdImport } from './routes/_authenticated/documents/$documentId'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdImport } from './routes/_authenticated/workflows/instances/$instanceId'
@@ -63,30 +60,6 @@ import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from '
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
 
 // Create/Update Routes
-
-const WorkflowTestRoute = WorkflowTestImport.update({
-  id: '/workflow-test',
-  path: '/workflow-test',
-  getParentRoute: () => rootRoute,
-} as any)
-
-const TestStorageDebugRoute = TestStorageDebugImport.update({
-  id: '/test-storage-debug',
-  path: '/test-storage-debug',
-  getParentRoute: () => rootRoute,
-} as any)
-
-const DebugExampleRoute = DebugExampleImport.update({
-  id: '/debug-example',
-  path: '/debug-example',
-  getParentRoute: () => rootRoute,
-} as any)
-
-const DebugRoute = DebugImport.update({
-  id: '/debug',
-  path: '/debug',
-  getParentRoute: () => rootRoute,
-} as any)
 
 const ClerkRouteRoute = ClerkRouteImport.update({
   id: '/clerk',
@@ -327,6 +300,13 @@ const AuthenticatedDocumentsProcessDocumentRoute =
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
+const AuthenticatedDocumentsGalleryRoute =
+  AuthenticatedDocumentsGalleryImport.update({
+    id: '/gallery',
+    path: '/gallery',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
 const AuthenticatedDocumentsDocumentIdRoute =
   AuthenticatedDocumentsDocumentIdImport.update({
     id: '/$documentId',
@@ -406,34 +386,6 @@ declare module '@tanstack/react-router' {
       path: '/clerk'
       fullPath: '/clerk'
       preLoaderRoute: typeof ClerkRouteImport
-      parentRoute: typeof rootRoute
-    }
-    '/debug': {
-      id: '/debug'
-      path: '/debug'
-      fullPath: '/debug'
-      preLoaderRoute: typeof DebugImport
-      parentRoute: typeof rootRoute
-    }
-    '/debug-example': {
-      id: '/debug-example'
-      path: '/debug-example'
-      fullPath: '/debug-example'
-      preLoaderRoute: typeof DebugExampleImport
-      parentRoute: typeof rootRoute
-    }
-    '/test-storage-debug': {
-      id: '/test-storage-debug'
-      path: '/test-storage-debug'
-      fullPath: '/test-storage-debug'
-      preLoaderRoute: typeof TestStorageDebugImport
-      parentRoute: typeof rootRoute
-    }
-    '/workflow-test': {
-      id: '/workflow-test'
-      path: '/workflow-test'
-      fullPath: '/workflow-test'
-      preLoaderRoute: typeof WorkflowTestImport
       parentRoute: typeof rootRoute
     }
     '/_authenticated/settings': {
@@ -567,6 +519,13 @@ declare module '@tanstack/react-router' {
       path: '/$documentId'
       fullPath: '/documents/$documentId'
       preLoaderRoute: typeof AuthenticatedDocumentsDocumentIdImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
+    '/_authenticated/documents/gallery': {
+      id: '/_authenticated/documents/gallery'
+      path: '/gallery'
+      fullPath: '/documents/gallery'
+      preLoaderRoute: typeof AuthenticatedDocumentsGalleryImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/documents/process-document': {
@@ -769,6 +728,7 @@ const AuthenticatedSettingsRouteRouteWithChildren =
 
 interface AuthenticatedDocumentsRouteChildren {
   AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
+  AuthenticatedDocumentsGalleryRoute: typeof AuthenticatedDocumentsGalleryRoute
   AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
   AuthenticatedDocumentsUploadRoute: typeof AuthenticatedDocumentsUploadRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
@@ -778,6 +738,7 @@ const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
   {
     AuthenticatedDocumentsDocumentIdRoute:
       AuthenticatedDocumentsDocumentIdRoute,
+    AuthenticatedDocumentsGalleryRoute: AuthenticatedDocumentsGalleryRoute,
     AuthenticatedDocumentsProcessDocumentRoute:
       AuthenticatedDocumentsProcessDocumentRoute,
     AuthenticatedDocumentsUploadRoute: AuthenticatedDocumentsUploadRoute,
@@ -896,10 +857,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
-  '/debug': typeof DebugRoute
-  '/debug-example': typeof DebugExampleRoute
-  '/test-storage-debug': typeof TestStorageDebugRoute
-  '/workflow-test': typeof WorkflowTestRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -918,6 +875,7 @@ export interface FileRoutesByFullPath {
   '/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -947,10 +905,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
-  '/debug': typeof DebugRoute
-  '/debug-example': typeof DebugExampleRoute
-  '/test-storage-debug': typeof TestStorageDebugRoute
-  '/workflow-test': typeof WorkflowTestRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
@@ -967,6 +921,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/templates': typeof AuthenticatedTemplatesRoute
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -998,10 +953,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkRouteRouteWithChildren
-  '/debug': typeof DebugRoute
-  '/debug-example': typeof DebugExampleRoute
-  '/test-storage-debug': typeof TestStorageDebugRoute
-  '/workflow-test': typeof WorkflowTestRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
   '/clerk/_authenticated': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -1021,6 +972,7 @@ export interface FileRoutesById {
   '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
   '/_authenticated/templates': typeof AuthenticatedTemplatesRoute
   '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
+  '/_authenticated/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
   '/_authenticated/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
@@ -1053,10 +1005,6 @@ export interface FileRouteTypes {
     | '/'
     | ''
     | '/clerk'
-    | '/debug'
-    | '/debug-example'
-    | '/test-storage-debug'
-    | '/workflow-test'
     | '/settings'
     | '/clerk/'
     | '/forgot-password'
@@ -1075,6 +1023,7 @@ export interface FileRouteTypes {
     | '/documents'
     | '/templates'
     | '/documents/$documentId'
+    | '/documents/gallery'
     | '/documents/process-document'
     | '/documents/upload'
     | '/settings/account'
@@ -1103,10 +1052,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | ''
-    | '/debug'
-    | '/debug-example'
-    | '/test-storage-debug'
-    | '/workflow-test'
     | '/clerk'
     | '/forgot-password'
     | '/otp'
@@ -1123,6 +1068,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/templates'
     | '/documents/$documentId'
+    | '/documents/gallery'
     | '/documents/process-document'
     | '/documents/upload'
     | '/settings/account'
@@ -1152,10 +1098,6 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/clerk'
-    | '/debug'
-    | '/debug-example'
-    | '/test-storage-debug'
-    | '/workflow-test'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
     | '/clerk/_authenticated'
@@ -1175,6 +1117,7 @@ export interface FileRouteTypes {
     | '/_authenticated/documents'
     | '/_authenticated/templates'
     | '/_authenticated/documents/$documentId'
+    | '/_authenticated/documents/gallery'
     | '/_authenticated/documents/process-document'
     | '/_authenticated/documents/upload'
     | '/_authenticated/settings/account'
@@ -1206,10 +1149,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   ClerkRouteRoute: typeof ClerkRouteRouteWithChildren
-  DebugRoute: typeof DebugRoute
-  DebugExampleRoute: typeof DebugExampleRoute
-  TestStorageDebugRoute: typeof TestStorageDebugRoute
-  WorkflowTestRoute: typeof WorkflowTestRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
   authResetPasswordRoute: typeof authResetPasswordRoute
@@ -1228,10 +1167,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   ClerkRouteRoute: ClerkRouteRouteWithChildren,
-  DebugRoute: DebugRoute,
-  DebugExampleRoute: DebugExampleRoute,
-  TestStorageDebugRoute: TestStorageDebugRoute,
-  WorkflowTestRoute: WorkflowTestRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
   authResetPasswordRoute: authResetPasswordRoute,
@@ -1259,10 +1194,6 @@ export const routeTree = rootRoute
         "/",
         "/_authenticated",
         "/clerk",
-        "/debug",
-        "/debug-example",
-        "/test-storage-debug",
-        "/workflow-test",
         "/(auth)/forgot-password",
         "/(auth)/otp",
         "/(auth)/reset-password",
@@ -1302,18 +1233,6 @@ export const routeTree = rootRoute
         "/clerk/(auth)",
         "/clerk/_authenticated"
       ]
-    },
-    "/debug": {
-      "filePath": "debug.tsx"
-    },
-    "/debug-example": {
-      "filePath": "debug-example.tsx"
-    },
-    "/test-storage-debug": {
-      "filePath": "test-storage-debug.tsx"
-    },
-    "/workflow-test": {
-      "filePath": "workflow-test.tsx"
     },
     "/_authenticated/settings": {
       "filePath": "_authenticated/settings/route.tsx",
@@ -1387,6 +1306,7 @@ export const routeTree = rootRoute
       "parent": "/_authenticated",
       "children": [
         "/_authenticated/documents/$documentId",
+        "/_authenticated/documents/gallery",
         "/_authenticated/documents/process-document",
         "/_authenticated/documents/upload",
         "/_authenticated/documents/"
@@ -1398,6 +1318,10 @@ export const routeTree = rootRoute
     },
     "/_authenticated/documents/$documentId": {
       "filePath": "_authenticated/documents/$documentId.tsx",
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/gallery": {
+      "filePath": "_authenticated/documents/gallery.tsx",
       "parent": "/_authenticated/documents"
     },
     "/_authenticated/documents/process-document": {

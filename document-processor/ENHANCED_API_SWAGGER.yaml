@@ -1,0 +1,1344 @@
+openapi: 3.0.3
+info:
+  title: Document Processor Enhanced API
+  description: |
+    Advanced document processing service with AI-powered enhancement capabilities.
+    
+    This API provides sophisticated document processing features including:
+    - AI-powered document classification and content analysis
+    - Enhanced structure extraction with intelligent parsing
+    - Context-aware data extraction with confidence scoring
+    - Content quality assessment and validation
+    - Batch processing with concurrent execution
+    - Structured data extraction with field targeting
+    
+    ## Features
+    
+    ### AI Enhancement
+    - **Document Classification**: Automatically classify documents into categories (invoices, contracts, reports, etc.)
+    - **Content Analysis**: Deep analysis of document content, structure, and meaning
+    - **Quality Assessment**: Evaluate content quality, completeness, and extraction confidence
+    
+    ### Enhanced Processing
+    - **Structure Recognition**: Advanced layout and structure detection
+    - **Data Extraction**: Intelligent extraction of key-value pairs and structured data
+    - **Field Targeting**: Extract specific fields based on document type and user requirements
+    
+    ### Batch Operations
+    - **Concurrent Processing**: Process multiple documents simultaneously with configurable concurrency
+    - **Error Handling**: Individual error handling with comprehensive batch statistics
+    - **Progress Tracking**: Real-time progress monitoring for batch operations
+    
+  version: 1.0.0
+  contact:
+    name: FetchText Document Processing Team
+    email: support@fetchtext.ai
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8090/api/enhanced-documents
+    description: Local development server
+  - url: https://api.fetchtext.ai/v1/enhanced-documents
+    description: Production server
+
+tags:
+  - name: document-processing
+    description: Enhanced document processing operations
+  - name: classification
+    description: AI-powered document classification
+  - name: batch-operations
+    description: Batch processing capabilities
+  - name: data-extraction
+    description: Structured data extraction
+  - name: template-generation
+    description: AI-powered template generation and optimization
+  - name: system-info
+    description: System information and capabilities
+
+paths:
+  /process-with-ai:
+    post:
+      tags:
+        - document-processing
+      summary: Process document with AI enhancement
+      description: |
+        Process a single document with comprehensive AI enhancement including:
+        - Intelligent content extraction
+        - Document structure analysis
+        - AI-powered classification
+        - Quality assessment
+        
+        This is the primary endpoint for enhanced document processing.
+      operationId: processDocumentWithAI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file to process
+                extract_text:
+                  type: boolean
+                  default: true
+                  description: Extract text content from document
+                extract_metadata:
+                  type: boolean
+                  default: true
+                  description: Extract document metadata
+                extract_structure:
+                  type: boolean
+                  default: true
+                  description: Extract document structure and layout
+                use_ai_enhancement:
+                  type: boolean
+                  default: true
+                  description: Apply AI enhancement for improved accuracy
+                include_quality_assessment:
+                  type: boolean
+                  default: true
+                  description: Include content quality assessment
+              required:
+                - file
+      responses:
+        '200':
+          description: Document processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnhancedDocumentProcessingResponse'
+              example:
+                job_id: "550e8400-e29b-41d4-a716-446655440000"
+                status: "completed"
+                content:
+                  text: "Invoice from Acme Corp for services rendered..."
+                  layout_info:
+                    headings:
+                      - level: 1
+                        text: "INVOICE"
+                        position: 0
+                      - level: 2
+                        text: "Bill To"
+                        position: 150
+                  tables:
+                    - data: [["Item", "Quantity", "Price"], ["Consulting", "10 hours", "$150/hr"]]
+                      caption: "Service Details"
+                metadata:
+                  title: "Acme Corp Invoice #12345"
+                  pages: 2
+                  format: "PDF"
+                  file_size: 245760
+                ai_classification:
+                  primary_category: "invoice"
+                  confidence: 0.95
+                  secondary_categories: ["business_document", "financial"]
+                  industry_domain: "professional_services"
+                extracted_data:
+                  extraction_method: "ai_guided"
+                  extracted_values:
+                    vendor_name: "Acme Corp"
+                    invoice_number: "12345"
+                    total_amount: "$1,500.00"
+                    due_date: "2024-02-15"
+                  confidence_scores:
+                    vendor_name: 0.98
+                    invoice_number: 0.95
+                    total_amount: 0.92
+                    due_date: 0.88
+                quality_assessment:
+                  overall_score: 0.91
+                  text_clarity: 0.95
+                  structure_quality: 0.89
+                  completeness: 0.88
+                request_metadata:
+                  original_filename: "invoice_acme_12345.pdf"
+                  content_type: "application/pdf"
+                  processing_options:
+                    extract_text: true
+                    extract_metadata: true
+                    extract_structure: true
+                    use_ai_enhancement: true
+                    include_quality_assessment: true
+                  processed_at: "2024-01-15T10:30:00Z"
+        '400':
+          description: Bad request - invalid file or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error during processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /classify-content:
+    post:
+      tags:
+        - classification
+      summary: Classify document content using AI
+      description: |
+        Analyze and classify document content to determine:
+        - Document type and category
+        - Industry domain
+        - Content complexity level
+        - Key topics and themes
+        - Extraction recommendations
+      operationId: classifyDocumentContent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file to classify
+                include_confidence_analysis:
+                  type: boolean
+                  default: false
+                  description: Include detailed confidence analysis
+              required:
+                - file
+      responses:
+        '200':
+          description: Document classified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentClassificationResponse'
+        '400':
+          description: Bad request - invalid file or no content found
+        '500':
+          description: Classification failed
+
+  /batch-process-with-ai:
+    post:
+      tags:
+        - batch-operations
+      summary: Process multiple documents with AI enhancement
+      description: |
+        Process multiple documents concurrently with AI enhancement.
+        Supports up to 50 files per batch with configurable concurrency.
+        
+        Features:
+        - Concurrent processing for improved performance
+        - Individual error handling per document
+        - Comprehensive batch statistics
+        - Progress tracking and timing information
+      operationId: batchProcessWithAI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Multiple document files to process (max 50)
+                extract_text:
+                  type: boolean
+                  default: true
+                extract_metadata:
+                  type: boolean
+                  default: true
+                extract_structure:
+                  type: boolean
+                  default: true
+                use_ai_enhancement:
+                  type: boolean
+                  default: true
+                max_concurrent:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  default: 3
+                  description: Maximum concurrent processing threads
+              required:
+                - files
+      responses:
+        '200':
+          description: Batch processing completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchProcessingResponse'
+        '400':
+          description: Bad request - no files or too many files
+
+  /extract-structured-data:
+    post:
+      tags:
+        - data-extraction
+      summary: Extract structured data with AI guidance
+      description: |
+        Extract specific structured data from documents using AI-guided strategies.
+        Supports targeted field extraction based on document type and user requirements.
+      operationId: extractStructuredData
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file to extract data from
+                target_fields:
+                  type: string
+                  description: Comma-separated list of fields to extract (e.g., "vendor_name,invoice_number,total_amount")
+                extraction_method:
+                  type: string
+                  enum: [ai_guided, rule_based]
+                  default: ai_guided
+                  description: Extraction method to use
+              required:
+                - file
+      responses:
+        '200':
+          description: Data extracted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredDataExtractionResponse'
+        '400':
+          description: Bad request - invalid file
+        '500':
+          description: Data extraction failed
+
+  /enhancement-capabilities:
+    get:
+      tags:
+        - system-info
+      summary: Get AI enhancement capabilities
+      description: |
+        Retrieve information about available AI enhancement capabilities including:
+        - Supported document types
+        - AI classification features
+        - Structure enhancement options
+        - Data extraction capabilities
+        - System status and health
+      operationId: getEnhancementCapabilities
+      responses:
+        '200':
+          description: Capabilities retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnhancementCapabilities'
+        '500':
+          description: Failed to retrieve capabilities
+
+  /supported-categories:
+    get:
+      tags:
+        - system-info
+      summary: Get supported document categories
+      description: |
+        Retrieve a list of all supported document categories for AI classification.
+        Each category includes description and classification guidance.
+      operationId: getSupportedCategories
+      responses:
+        '200':
+          description: Categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportedCategoriesResponse'
+              example:
+                supported_categories:
+                  - value: "invoice"
+                    display_name: "Invoice"
+                    description: "Invoices, bills, and billing documents"
+                  - value: "business_report"
+                    display_name: "Business Report"
+                    description: "Business reports, analysis documents, and corporate communications"
+                  - value: "technical_document"
+                    display_name: "Technical Document"
+                    description: "Technical specifications, API documentation, and system manuals"
+                  - value: "legal_contract"
+                    display_name: "Legal Contract"
+                    description: "Legal contracts, agreements, and legal documents"
+                total_categories: 11
+                classification_method: "ai_powered_with_fallback"
+        '500':
+          description: Failed to retrieve categories
+
+  /analyze-document:
+    post:
+      tags:
+        - template-generation
+      summary: Analyze document for template generation
+      description: |
+        Analyze document structure and content to identify potential template fields.
+        This endpoint performs deep analysis to understand document layout, detect patterns,
+        and suggest extractable fields for template creation.
+        
+        Use this when you want to:
+        - Understand what fields can be extracted from a new document type
+        - Get AI suggestions for template creation
+        - Analyze document complexity before processing
+      operationId: analyzeDocumentForTemplateGeneration
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file to analyze for template generation
+                confidence_threshold:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                  default: 0.7
+                  description: Minimum confidence for field detection
+                include_suggestions:
+                  type: boolean
+                  default: true
+                  description: Include AI-generated field suggestions
+                analysis_depth:
+                  type: string
+                  enum: [basic, standard, comprehensive]
+                  default: standard
+                  description: Depth of analysis to perform
+              required:
+                - file
+      responses:
+        '200':
+          description: Document analyzed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentAnalysisResponse'
+        '400':
+          description: Bad request - invalid file or parameters
+        '500':
+          description: Analysis failed
+
+  /generate-template:
+    post:
+      tags:
+        - template-generation
+      summary: Generate template from document
+      description: |
+        Generate a complete document processing template based on AI analysis of the uploaded document.
+        This endpoint creates a fully functional template with suggested fields, types, and extraction hints.
+        
+        The generated template can be:
+        - Used immediately for document processing
+        - Saved to the template library for future use
+        - Customized and refined by the user
+      operationId: generateTemplateFromDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file to generate template from
+                template_name:
+                  type: string
+                  description: Name for the generated template
+                category:
+                  type: string
+                  default: Generated
+                  description: Category for the template
+                auto_save:
+                  type: boolean
+                  default: false
+                  description: Automatically save generated template
+                field_filter:
+                  type: string
+                  description: Comma-separated list of fields to include
+                generation_mode:
+                  type: string
+                  enum: [automatic, guided, custom]
+                  default: automatic
+                  description: Template generation mode
+              required:
+                - file
+                - template_name
+      responses:
+        '200':
+          description: Template generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedTemplateResponse'
+        '400':
+          description: Bad request - invalid parameters
+        '500':
+          description: Template generation failed
+
+  /suggest-template-improvements:
+    post:
+      tags:
+        - template-generation
+      summary: Suggest improvements to existing template
+      description: |
+        Analyze multiple sample documents against an existing template to suggest improvements.
+        This endpoint helps optimize templates by identifying:
+        - Missing fields that could be added
+        - Poorly performing fields that need better extraction hints
+        - Structural improvements for better accuracy
+      operationId: suggestTemplateImprovements
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                template_id:
+                  type: integer
+                  description: ID of template to improve
+                sample_documents:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Sample documents for analysis (2-10 recommended)
+                improvement_mode:
+                  type: string
+                  enum: [enhance, optimize, validate]
+                  default: enhance
+                  description: Type of improvement analysis
+                focus_areas:
+                  type: array
+                  items:
+                    type: string
+                    enum: [field_detection, extraction_hints, template_structure, performance]
+                  description: Specific areas to focus improvement suggestions on
+              required:
+                - template_id
+                - sample_documents
+      responses:
+        '200':
+          description: Improvement suggestions generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateImprovementResponse'
+        '400':
+          description: Bad request - invalid template ID or files
+        '404':
+          description: Template not found
+        '500':
+          description: Analysis failed
+
+components:
+  schemas:
+    EnhancedDocumentProcessingResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this processing job
+        status:
+          type: string
+          enum: [completed, failed, processing]
+          description: Processing status
+        content:
+          $ref: '#/components/schemas/DocumentContent'
+        metadata:
+          $ref: '#/components/schemas/DocumentMetadata'
+        ai_classification:
+          $ref: '#/components/schemas/AIClassification'
+        extracted_data:
+          $ref: '#/components/schemas/ExtractedData'
+        quality_assessment:
+          $ref: '#/components/schemas/QualityAssessment'
+        request_metadata:
+          $ref: '#/components/schemas/RequestMetadata'
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        processing_time:
+          type: number
+          description: Processing time in seconds
+        ai_enhancement_enabled:
+          type: boolean
+
+    DocumentContent:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Extracted text content
+        layout_info:
+          type: object
+          properties:
+            headings:
+              type: array
+              items:
+                type: object
+                properties:
+                  level:
+                    type: integer
+                  text:
+                    type: string
+                  position:
+                    type: integer
+            paragraphs:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  position:
+                    type: integer
+        tables:
+          type: array
+          items:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: array
+                  items:
+                    type: string
+              caption:
+                type: string
+              position:
+                type: integer
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              caption:
+                type: string
+              position:
+                type: integer
+              dimensions:
+                type: object
+                properties:
+                  width:
+                    type: integer
+                  height:
+                    type: integer
+
+    DocumentMetadata:
+      type: object
+      properties:
+        title:
+          type: string
+        pages:
+          type: integer
+        format:
+          type: string
+        file_size:
+          type: integer
+        language:
+          type: string
+        creation_date:
+          type: string
+          format: date-time
+        author:
+          type: string
+        subject:
+          type: string
+
+    AIClassification:
+      type: object
+      properties:
+        primary_category:
+          type: string
+          description: Primary document category
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence score for primary classification
+        secondary_categories:
+          type: array
+          items:
+            type: string
+          description: Additional relevant categories
+        industry_domain:
+          type: string
+          description: Detected industry or domain
+        content_type:
+          type: string
+          enum: [formal, informal, technical, legal, financial]
+        complexity_level:
+          type: string
+          enum: [simple, moderate, complex, highly_complex]
+        key_topics:
+          type: array
+          items:
+            type: string
+        extraction_recommendations:
+          type: array
+          items:
+            type: string
+
+    ExtractedData:
+      type: object
+      properties:
+        extraction_method:
+          type: string
+          enum: [ai_guided, rule_based, hybrid]
+        extracted_values:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value pairs of extracted data
+        confidence_scores:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 1
+          description: Confidence scores for each extracted value
+        source_locations:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              page:
+                type: integer
+              position:
+                type: integer
+              bounding_box:
+                type: object
+                properties:
+                  x:
+                    type: number
+                  y:
+                    type: number
+                  width:
+                    type: number
+                  height:
+                    type: number
+
+    QualityAssessment:
+      type: object
+      properties:
+        overall_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Overall quality score
+        text_clarity:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Text clarity and readability score
+        structure_quality:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Document structure and layout quality
+        completeness:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Content completeness assessment
+        extraction_reliability:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Reliability of data extraction
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [low_confidence, missing_data, format_issue, quality_concern]
+              description:
+                type: string
+              severity:
+                type: string
+                enum: [low, medium, high, critical]
+
+    RequestMetadata:
+      type: object
+      properties:
+        original_filename:
+          type: string
+        content_type:
+          type: string
+        processing_options:
+          type: object
+          properties:
+            extract_text:
+              type: boolean
+            extract_metadata:
+              type: boolean
+            extract_structure:
+              type: boolean
+            use_ai_enhancement:
+              type: boolean
+            include_quality_assessment:
+              type: boolean
+        processed_at:
+          type: string
+          format: date-time
+
+    DocumentClassificationResponse:
+      type: object
+      properties:
+        classification:
+          $ref: '#/components/schemas/AIClassification'
+        document_metadata:
+          $ref: '#/components/schemas/DocumentMetadata'
+        classification_timestamp:
+          type: string
+          format: date-time
+        confidence_analysis:
+          type: object
+          properties:
+            classification_factors:
+              type: array
+              items:
+                type: object
+                properties:
+                  factor:
+                    type: string
+                  weight:
+                    type: number
+                  confidence:
+                    type: number
+            alternative_classifications:
+              type: array
+              items:
+                type: object
+                properties:
+                  category:
+                    type: string
+                  confidence:
+                    type: number
+                  reasoning:
+                    type: string
+
+    BatchProcessingResponse:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        batch_statistics:
+          type: object
+          properties:
+            total_files:
+              type: integer
+            successful_count:
+              type: integer
+            failed_count:
+              type: integer
+            success_rate:
+              type: number
+              minimum: 0
+              maximum: 1
+            total_processing_time:
+              type: number
+              description: Total processing time in seconds
+            average_time_per_file:
+              type: number
+              description: Average processing time per file in seconds
+        processing_options:
+          type: object
+          properties:
+            extract_text:
+              type: boolean
+            extract_metadata:
+              type: boolean
+            extract_structure:
+              type: boolean
+            use_ai_enhancement:
+              type: boolean
+            max_concurrent:
+              type: integer
+        results:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/EnhancedDocumentProcessingResponse'
+              - $ref: '#/components/schemas/ProcessingErrorResponse'
+        batch_started_at:
+          type: string
+          format: date-time
+        batch_completed_at:
+          type: string
+          format: date-time
+
+    StructuredDataExtractionResponse:
+      type: object
+      properties:
+        extraction_result:
+          $ref: '#/components/schemas/ExtractedData'
+        document_classification:
+          $ref: '#/components/schemas/AIClassification'
+        extraction_metadata:
+          type: object
+          properties:
+            original_filename:
+              type: string
+            extraction_method:
+              type: string
+            target_fields:
+              type: array
+              items:
+                type: string
+            extraction_timestamp:
+              type: string
+              format: date-time
+
+    EnhancementCapabilities:
+      type: object
+      properties:
+        ai_classification:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            supported_categories:
+              type: array
+              items:
+                type: string
+            confidence_threshold:
+              type: number
+        structure_enhancement:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            supported_features:
+              type: array
+              items:
+                type: string
+        data_extraction:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            extraction_methods:
+              type: array
+              items:
+                type: string
+            supported_field_types:
+              type: array
+              items:
+                type: string
+        quality_assessment:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            assessment_criteria:
+              type: array
+              items:
+                type: string
+        system_status:
+          type: object
+          properties:
+            docling_available:
+              type: boolean
+            ai_services_available:
+              type: boolean
+            version:
+              type: string
+            last_updated:
+              type: string
+              format: date-time
+
+    SupportedCategoriesResponse:
+      type: object
+      properties:
+        supported_categories:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              display_name:
+                type: string
+              description:
+                type: string
+        total_categories:
+          type: integer
+        classification_method:
+          type: string
+
+    ProcessingErrorResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [failed]
+        original_filename:
+          type: string
+        error_message:
+          type: string
+        error_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        ai_enhancement_enabled:
+          type: boolean
+
+    DocumentAnalysisResponse:
+      type: object
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this analysis
+        document_type:
+          type: string
+          description: Detected document type
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence in document type detection
+        suggested_category:
+          type: string
+          description: Suggested template category
+        detected_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectedField'
+        structural_elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/StructuralElement'
+        extraction_complexity:
+          type: string
+          enum: [simple, moderate, complex]
+          description: Estimated complexity of data extraction
+        template_matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateMatch'
+        analysis_metadata:
+          type: object
+          properties:
+            analysis_time:
+              type: number
+              description: Time taken for analysis in seconds
+            ai_model_version:
+              type: string
+            processing_method:
+              type: string
+
+    DetectedField:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Suggested field name
+        suggested_type:
+          type: string
+          enum: [text, number, date, currency, percentage, boolean, email, phone, address]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        sample_values:
+          type: array
+          items:
+            type: string
+          description: Example values found in document
+        extraction_hints:
+          type: array
+          items:
+            type: string
+          description: Suggested extraction hints
+        position:
+          $ref: '#/components/schemas/FieldPosition'
+        importance:
+          type: string
+          enum: [high, medium, low]
+        pattern_analysis:
+          type: object
+          properties:
+            pattern_type:
+              type: string
+            regex_pattern:
+              type: string
+            validation_rules:
+              type: array
+              items:
+                type: string
+
+    FieldPosition:
+      type: object
+      properties:
+        page:
+          type: integer
+        section:
+          type: string
+        relative_position:
+          type: number
+        bounding_box:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+
+    StructuralElement:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [header, footer, table, form, list, signature_block]
+        content:
+          type: string
+        position:
+          type: integer
+        importance:
+          type: string
+          enum: [high, medium, low]
+
+    TemplateMatch:
+      type: object
+      properties:
+        template_id:
+          type: integer
+        template_name:
+          type: string
+        match_confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        matching_fields:
+          type: array
+          items:
+            type: string
+        missing_fields:
+          type: array
+          items:
+            type: string
+        recommendation:
+          type: string
+          enum: [use_existing, modify_existing, create_new]
+
+    GeneratedTemplateResponse:
+      type: object
+      properties:
+        template_id:
+          type: string
+          format: uuid
+          description: ID of generated template
+        template:
+          $ref: '#/components/schemas/GeneratedTemplate'
+        generation_metadata:
+          type: object
+          properties:
+            generation_time:
+              type: number
+            ai_confidence:
+              type: number
+            fields_detected:
+              type: integer
+            generation_method:
+              type: string
+        validation_results:
+          type: object
+          properties:
+            template_valid:
+              type: boolean
+            validation_warnings:
+              type: array
+              items:
+                type: string
+            suggested_improvements:
+              type: array
+              items:
+                type: string
+        test_extraction:
+          type: object
+          description: Results of testing template on source document
+          properties:
+            extraction_successful:
+              type: boolean
+            extracted_fields_count:
+              type: integer
+            average_confidence:
+              type: number
+            failed_fields:
+              type: array
+              items:
+                type: string
+
+    GeneratedTemplate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        template_content:
+          type: string
+        template_type:
+          type: string
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/SmartVariable'
+        extraction_rules:
+          type: array
+          items:
+            type: object
+        generation_settings:
+          type: object
+        tags:
+          type: array
+          items:
+            type: string
+        ai_confidence:
+          type: number
+        generation_method:
+          type: string
+          enum: [ai_automatic, ai_assisted, manual]
+
+    SmartVariable:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        extraction_hints:
+          type: array
+          items:
+            type: string
+        default_value:
+          type: string
+        validation_rules:
+          type: object
+        confidence_threshold:
+          type: number
+
+    TemplateImprovementResponse:
+      type: object
+      properties:
+        improvement_id:
+          type: string
+          format: uuid
+        template_id:
+          type: integer
+        analysis_summary:
+          type: object
+          properties:
+            documents_analyzed:
+              type: integer
+            current_performance:
+              type: object
+              properties:
+                average_extraction_rate:
+                  type: number
+                average_confidence:
+                  type: number
+                common_failures:
+                  type: array
+                  items:
+                    type: string
+        suggested_improvements:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImprovementSuggestion'
+        estimated_impact:
+          type: object
+          properties:
+            extraction_rate_improvement:
+              type: number
+            confidence_improvement:
+              type: number
+            new_fields_potential:
+              type: integer
+        implementation_difficulty:
+          type: string
+          enum: [easy, moderate, complex]
+        next_steps:
+          type: array
+          items:
+            type: string
+
+    ImprovementSuggestion:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [add_field, improve_hints, modify_structure, optimize_performance]
+        priority:
+          type: string
+          enum: [high, medium, low]
+        description:
+          type: string
+        current_state:
+          type: string
+        suggested_change:
+          type: string
+        expected_improvement:
+          type: string
+        implementation_notes:
+          type: string
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error description
+        error_code:
+          type: string
+          description: Specific error code
+        timestamp:
+          type: string
+          format: date-time
