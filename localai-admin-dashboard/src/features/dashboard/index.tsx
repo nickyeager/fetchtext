@@ -15,6 +15,7 @@ import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Overview } from './components/overview'
 import { RecentSales } from './components/recent-sales'
+import { ProcessingMonitorWidget } from '@/components/documents/ProcessingMonitorWidget'
 
 export default function Dashboard() {
   return (
@@ -180,6 +181,13 @@ export default function Dashboard() {
                   <RecentSales />
                 </CardContent>
               </Card>
+            </div>
+            
+            {/* Document Processing Monitor */}
+            <div className='grid grid-cols-1 gap-4 lg:grid-cols-4'>
+              <div className='col-span-1 lg:col-span-1'>
+                <ProcessingMonitorWidget />
+              </div>
             </div>
           </TabsContent>
         </Tabs>

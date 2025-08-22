@@ -570,11 +570,23 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: false
 
   supabase-realtime:
-    image: supabase/realtime:v2.34.47
-    container_name: supabase-realtime
+    image: supabase/realtime:v2.30.34
+    container_name: realtime-dev.supabase-realtime
     restart: unless-stopped
     healthcheck:
-      disable: true
+      test:
+        - "CMD"
+        - "curl"
+        - "-sSfL"
+        - "--head"
+        - "-o"
+        - "/dev/null"
+        - "-H"
+        - "Authorization: Bearer ${ANON_KEY}"
+        - "http://localhost:4000/api/tenants/realtime-dev/health"
+      timeout: 5s
+      interval: 5s
+      retries: 3
     depends_on:
       supabase-db:
         condition: service_healthy
@@ -588,17 +600,14 @@ services:
       DB_ENC_KEY: supabaserealtime
       DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
       API_JWT_SECRET: ${JWT_SECRET}
-      FLY_ALLOC_ID: fly123
-      FLY_APP_NAME: supabase-realtime
-      APP_NAME: supabase-realtime
-      TENANT_NAME: supabase-realtime
       SECRET_KEY_BASE: ***REMOVED-SECRET-KEY-BASE***
       ERL_AFLAGS: "-proto_dist inet_tcp"
-      ENABLE_TAILSCALE: "false"
       DNS_NODES: "''"
-      RLIMIT_NOFILE: "65536"
-      # IP version configuration required by realtime v2.34.47
-      REALTIME_IP_VERSION: "ipv4"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      LOG_LEVEL: "info"
+      DB_IP_VERSION: ipv4
     entrypoint: ["/usr/bin/tini", "-s", "-g", "--"]
     command: >
       sh -c "ulimit -n 65536 && /app/bin/realtime eval 'Realtime.Release.migrate' && /app/bin/realtime start"

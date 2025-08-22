@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Settings, FileText, Eye, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Settings, FileText, Eye, Loader2, AlertTriangle, Edit3, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { smartTemplateService, SmartTemplate } from '@/services/smart-template-service';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { WysiwygEditor } from '@/features/documents/components/WysiwygEditor';
+import { MarkdownViewer } from '@/features/documents/components/MarkdownViewer';
 
 export const Route = createFileRoute('/_authenticated/documents/templates/$templateId')({
   component: DocumentTemplateDetailPage,
@@ -139,6 +141,7 @@ export function DocumentTemplateDetailPage() {
           <SmartTemplateDetail 
             template={template}
             onEdit={handleEdit}
+            refetch={refetch}
           />
         </div>
       </div>
@@ -228,9 +231,44 @@ function TemplateList({
 interface SmartTemplateDetailProps {
   template: SmartTemplate;
   onEdit: () => void;
+  refetch: () => void;
 }
 
-function SmartTemplateDetail({ template, onEdit }: SmartTemplateDetailProps) {
+function SmartTemplateDetail({ template, onEdit, refetch }: SmartTemplateDetailProps) {
+  const [contentEditMode, setContentEditMode] = useState(false);
+  const [editedContent, setEditedContent] = useState(template.template_content || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleContentEdit = () => {
+    setEditedContent(template.template_content || '');
+    setContentEditMode(true);
+  };
+
+  const handleContentSave = async () => {
+    if (!template.id) return;
+    
+    setIsSaving(true);
+    try {
+      await smartTemplateService.updateTemplate(template.id, {
+        ...template,
+        template_content: editedContent
+      });
+      
+      toast.success('Template content updated successfully');
+      setContentEditMode(false);
+      refetch(); // Refresh the template data
+    } catch (error) {
+      console.error('Error updating template content:', error);
+      toast.error('Failed to update template content');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleContentCancel = () => {
+    setEditedContent(template.template_content || '');
+    setContentEditMode(false);
+  };
   return (
     <div className="space-y-6">
       {/* Template Header */}
@@ -291,15 +329,74 @@ function SmartTemplateDetail({ template, onEdit }: SmartTemplateDetailProps) {
       {/* Template Content */}
       <Card>
         <CardHeader>
-          <CardTitle>Template Content</CardTitle>
-          <CardDescription>
-            How the extracted data will be formatted
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Template Content</CardTitle>
+              <CardDescription>
+                How the extracted data will be formatted
+              </CardDescription>
+            </div>
+            <div className="flex items-center space-x-2">
+              {contentEditMode ? (
+                <>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleContentCancel}
+                    disabled={isSaving}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    onClick={handleContentSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleContentEdit}>
+                  <Edit3 className="h-4 w-4 mr-2" />
+                  Edit Content
+                </Button>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <pre className="bg-muted p-4 rounded-md text-sm overflow-auto max-h-96 border">
-            {template.template_content || 'No content defined'}
-          </pre>
+          {contentEditMode ? (
+            <div className="h-64 sm:h-96">
+              <WysiwygEditor
+                value={editedContent}
+                onChange={setEditedContent}
+                placeholder="Enter template content... Use {{variable_name}} for template variables"
+                height="100%"
+              />
+            </div>
+          ) : (
+            <div className="min-h-32">
+              {template.template_content ? (
+                <MarkdownViewer 
+                  content={template.template_content}
+                  height="auto"
+                  className="border-0 p-0"
+                />
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No content defined</p>
+                  <p className="text-sm">Click "Edit Content" to add template content</p>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

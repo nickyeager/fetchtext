@@ -159,24 +159,32 @@ export class UnifiedDocumentService {
       console.log('✅ AI analysis completed for document:', documentId);
       console.log('Evaluation result:', evaluation);
 
-      // Update document with evaluation results
+      // Update document with evaluation results and trigger extraction if template is available
+      const metadata = {
+        document_type: evaluation.type_evaluation.primary_type,
+        type_confidence: evaluation.type_evaluation.confidence,
+        ai_classification: {
+          primary_category: evaluation.type_evaluation.primary_type,
+          confidence_score: evaluation.type_evaluation.confidence,
+          detection_method: evaluation.type_evaluation.detection_method,
+        },
+        template_suggestions: evaluation.template_suggestions,
+        processing_recommendations: evaluation.processing_recommendations,
+        analysis_completed_at: new Date().toISOString(),
+      };
+
       await this.updateDocumentStatus(documentId, {
         status: DocumentStatus.PROCESSING,
-        metadata: {
-          document_type: evaluation.type_evaluation.primary_type,
-          type_confidence: evaluation.type_evaluation.confidence,
-          ai_classification: {
-            primary_category: evaluation.type_evaluation.primary_type,
-            confidence_score: evaluation.type_evaluation.confidence,
-            detection_method: evaluation.type_evaluation.detection_method,
-          },
-          template_suggestions: evaluation.template_suggestions,
-          processing_recommendations: evaluation.processing_recommendations,
-          analysis_completed_at: new Date().toISOString(),
-        },
+        metadata,
       });
 
       console.log('✅ Document updated with AI analysis results');
+
+      // If document has template metadata, trigger template extraction automatically
+      if (document.metadata?.template_id) {
+        console.log('🎯 Document has template, triggering template extraction...');
+        setTimeout(() => this.triggerTemplateExtraction(documentId), 100);
+      }
 
     } catch (error) {
       console.error('❌ AI analysis failed for document:', documentId, error);
@@ -263,6 +271,126 @@ export class UnifiedDocumentService {
       return 'statement';
     } else {
       return 'document';
+    }
+  }
+
+  /**
+   * Trigger template extraction for a document with template metadata
+   */
+  private static async triggerTemplateExtraction(documentId: string): Promise<void> {
+    try {
+      console.log('🎯 Triggering template extraction for document:', documentId);
+      
+      // Get the document with template metadata
+      const document = await this.getDocumentById(documentId);
+      if (!document) {
+        throw new Error('Document not found for template extraction');
+      }
+
+      const templateId = document.metadata?.template_id;
+      if (!templateId) {
+        console.log('❌ No template ID found in document metadata');
+        return;
+      }
+
+      // Get the file from storage
+      const { supabase } = await import('@/lib/supabase');
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('documents')
+        .download(document.file_path);
+
+      if (downloadError || !fileData) {
+        console.error('Failed to download file for template extraction:', downloadError);
+        await this.markDocumentFailed(documentId, 'Failed to download file for template extraction');
+        return;
+      }
+
+      // Create File object for document processor
+      const file = new File([fileData], document.name, { 
+        type: document.file_type 
+      });
+
+      // Get the template
+      const { smartTemplateService } = await import('./smart-template-service');
+      const template = await smartTemplateService.getTemplate(Number(templateId));
+      
+      if (!template) {
+        console.error('Template not found:', templateId);
+        await this.markDocumentFailed(documentId, `Template not found: ${templateId}`);
+        return;
+      }
+
+      // Initialize document processor and perform extraction
+      const { DocumentProcessorEnhanced } = await import('@/lib/document-processor-enhanced');
+      const documentProcessor = new DocumentProcessorEnhanced();
+
+      console.log('🔄 Starting template extraction...');
+      
+      // Set processing timeout (5 minutes for template extraction)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Template extraction timeout')), 5 * 60 * 1000);
+      });
+
+      const extractionPromise = documentProcessor.processDocumentWithTemplate(file, template);
+      
+      const extractionResult = await Promise.race([extractionPromise, timeoutPromise]);
+
+      console.log('✅ Template extraction completed for document:', documentId);
+
+      // Finalize document with extraction results
+      await this.finalizeDocument(documentId, {
+        content_text: extractionResult.content,
+        extracted_fields: extractionResult.extractedFields,
+        processing_method: 'smart_template',
+        quality_metrics: {
+          extraction_quality: extractionResult.qualityScore || 0.8,
+          confidence_distribution: {
+            high: 0.7,
+            medium: 0.2,
+            low: 0.1
+          }
+        },
+        metadata: {
+          template_extraction_completed_at: new Date().toISOString(),
+          template_used: template.name,
+          field_count: Object.keys(extractionResult.extractedFields || {}).length
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Template extraction failed for document:', documentId, error);
+      
+      // Check if it's a timeout error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isTimeoutError = errorMessage.includes('timeout') || 
+                            errorMessage.includes('AbortError') ||
+                            errorMessage.includes('Failed to fetch');
+      
+      if (isTimeoutError) {
+        console.log('⏰ Template extraction timeout, attempting fallback...');
+        try {
+          // Fallback: mark as completed with partial results
+          await this.finalizeDocument(documentId, {
+            content_text: `Template extraction timed out for document: ${documentId}`,
+            processing_method: 'template_extraction_timeout',
+            metadata: {
+              extraction_timeout: true,
+              timeout_reason: errorMessage,
+              fallback_processing: true,
+              template_extraction_failed_at: new Date().toISOString()
+            }
+          });
+          return;
+        } catch (fallbackError) {
+          console.error('❌ Fallback processing also failed:', fallbackError);
+        }
+      }
+      
+      // Mark document as failed if extraction fails
+      await this.markDocumentFailed(
+        documentId, 
+        `Template extraction failed: ${errorMessage}`
+      );
     }
   }
 
