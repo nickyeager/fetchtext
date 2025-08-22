@@ -2,7 +2,11 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { WorkflowClient } from '@/lib/workflow-client';
-import { DocumentTemplateService } from '../services/template-service';
+import { masterTemplateService } from '@/services/master-template-service';
+import { UnifiedTemplate, isSmartTemplate } from '@/types/unified-template';
+
+// Define TemplateSource type
+type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery';
 import { ProcessedDocumentsService } from '../services/processed-documents-service';
 import { useDocumentManager } from '@/hooks/use-document-manager';
 import { UploadSource } from '@/services/unified-document-service';
@@ -167,9 +171,10 @@ interface WorkflowExecutionState {
 
 interface DocumentWorkflowProps {
   selectedTemplateId?: string | number;
+  templateSource?: TemplateSource;
 }
 
-export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps = {}) {
+export function DocumentWorkflow({ selectedTemplateId, templateSource }: DocumentWorkflowProps = {}) {
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -197,9 +202,29 @@ export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps =
     data: template, 
     isLoading: isTemplateLoading, 
     error: templateError 
-  } = useQuery({
-    queryKey: ['template', selectedTemplateId],
-    queryFn: () => DocumentTemplateService.getTemplateById(selectedTemplateId!),
+  } = useQuery<UnifiedTemplate>({
+    queryKey: ['unified-template', selectedTemplateId, templateSource],
+    queryFn: async () => {
+      if (!selectedTemplateId) throw new Error('No template ID provided');
+      
+      if (templateSource) {
+        // Use specific source if provided
+        return await masterTemplateService.getTemplate(Number(selectedTemplateId), templateSource as 'smart' | 'standard' | 'workflow');
+      } else {
+        // Auto-detect template source
+        // Try to get template from different types until we find it
+        let template = await masterTemplateService.getTemplate(Number(selectedTemplateId), 'smart');
+        if (template) return template;
+        
+        template = await masterTemplateService.getTemplate(Number(selectedTemplateId), 'standard');
+        if (template) return template;
+        
+        template = await masterTemplateService.getTemplate(Number(selectedTemplateId), 'workflow');
+        if (template) return template;
+        
+        throw new Error('Template not found');
+      }
+    },
     enabled: !!selectedTemplateId,
   });
 
@@ -244,12 +269,22 @@ export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps =
     setIsProcessing(true);
 
     try {
-      console.log('Processing document with template:', template?.name, 'useProgressiveExtraction:', useProgressiveExtraction);
+      console.log('Processing document with template:', template?.name, 'source:', template?.source, 'useProgressiveExtraction:', useProgressiveExtraction);
+      
+      // Increment usage count for the template
+      if (template) {
+        // Note: incrementUsage not implemented in masterTemplateService yet
+        // await masterTemplateService.incrementUsage(template.id, template.type);
+      }
+      
       // Use template-guided processing if template is available
       if (template) {
-        if (useProgressiveExtraction) {
-          // Progressive extraction with real-time updates - FIXED GENERATOR CONSUMPTION
-          console.log('Starting progressive extraction...');
+        const isSmartTemplateType = isSmartTemplate(template);
+        console.log('Template type:', isSmartTemplateType ? 'Smart Template' : 'Standard Template');
+        
+        if (useProgressiveExtraction && isSmartTemplateType) {
+          // Progressive extraction with real-time updates for smart templates
+          console.log('Starting smart template progressive extraction...');
           const progressiveGenerator = documentProcessor.processDocumentWithTemplateProgressive(selectedFile, template);
           
           let finalProgressiveResult: any = null;
@@ -286,16 +321,18 @@ export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps =
             setTemplateExtractionResult(templateResult);
             
             // Save to database and navigate to document detail page
-            const savedDocument = await saveProcessedDocument(selectedFile, templateResult, 'progressive');
+            const savedDocument = await saveProcessedDocument(selectedFile, templateResult, 'smart_progressive');
             navigate({ to: '/documents/$documentId', params: { documentId: savedDocument.id } });
           }
         } else {
-          // Standard batch processing
+          // Standard processing for both smart and regular templates
+          console.log('Processing with standard method...');
           const result = await documentProcessor.processDocumentWithTemplate(selectedFile, template);
           setTemplateExtractionResult(result);
           
           // Save to database and navigate to document detail page
-          const savedDocument = await saveProcessedDocument(selectedFile, result, 'template_guided');
+          const processingMethod = isSmartTemplate ? 'smart_template' : 'template_guided';
+          const savedDocument = await saveProcessedDocument(selectedFile, result, processingMethod);
           navigate({ to: '/documents/$documentId', params: { documentId: savedDocument.id } });
         }
       } else {
@@ -414,9 +451,14 @@ export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps =
                     </CardTitle>
                     <p className="text-muted-foreground mt-1">{template.description}</p>
                   </div>
-                  <Badge variant="secondary" className="ml-4">
-                    {template.category}
-                  </Badge>
+                  <div className="flex gap-2 ml-4">
+                    <Badge variant="secondary">
+                      {template.category}
+                    </Badge>
+                    <Badge variant={isSmartTemplate(template) ? "default" : "outline"}>
+                      {isSmartTemplate(template) ? "Smart Template" : "Standard"}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               
@@ -491,20 +533,33 @@ export function DocumentWorkflow({ selectedTemplateId }: DocumentWorkflowProps =
               Extraction Settings
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="progressive"
                 checked={useProgressiveExtraction}
                 onCheckedChange={(checked) => setUseProgressiveExtraction(checked === true)}
+                disabled={!isSmartTemplate(template)}
               />
               <label htmlFor="progressive" className="text-sm font-medium">
                 Enable progressive field extraction
               </label>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              See extraction progress in real-time as each field is processed
+            <p className="text-xs text-muted-foreground">
+              {isSmartTemplate(template) 
+                ? "See extraction progress in real-time as each field is processed"
+                : "Progressive extraction is only available for Smart Templates"
+              }
             </p>
+            
+            {isSmartTemplate(template) && (
+              <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  <strong>Smart Template Features:</strong> AI-powered extraction with confidence scores, 
+                  source attribution, and advanced validation.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

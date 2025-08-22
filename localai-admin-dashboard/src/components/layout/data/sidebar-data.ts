@@ -24,6 +24,7 @@ import {
   IconCpu,
   IconUpload,
   IconPhoto,
+  IconDatabase,
 } from '@tabler/icons-react'
 import { AudioWaveform, Command, GalleryVerticalEnd } from 'lucide-react'
 import { ClerkLogo } from '@/assets/clerk-logo'
@@ -75,6 +76,11 @@ export const sidebarData: SidebarData = {
           title: 'Upload Document',
           url: '/documents/upload',
           icon: IconUpload,
+        },
+        {
+          title: 'Smart Templates',
+          url: '/documents/templates',
+          icon: IconTemplate,
         },
         {
           title: 'Templates',
@@ -225,6 +231,17 @@ export const sidebarData: SidebarData = {
               title: 'Display',
               url: '/settings/display',
               icon: IconBrowserCheck,
+            },
+          ],
+        },
+        {
+          title: 'Admin',
+          icon: IconDatabase,
+          items: [
+            {
+              title: 'Template Migration',
+              url: '/admin/template-migration',
+              icon: IconTemplate,
             },
           ],
         },

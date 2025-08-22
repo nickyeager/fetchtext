@@ -47,7 +47,7 @@ This document provides a comprehensive overview of all services, their ports, an
 ### AI & ML Services
 | Service | Port | Container | Description |
 |---------|------|-----------|-------------|
-| **Ollama API** | `11434` | `ollama-cpu/gpu:11434` | Local LLM API server |
+| **Ollama API** | `11434` | `ollama-cpu/gpu:11434` | Local LLM API server (Llama, CodeLlama, etc.) |
 | **Document Processor API** | `8090` | `document-processor:8090` | Document processing service |
 
 ## Internal Services (Container-to-Container Only)
@@ -92,7 +92,8 @@ Browser → Caddy (:8005) → Kong (:8000) → GoTrue (:9999) → PostgreSQL (:5
 
 ### AI Chat Flow
 ```
-Browser → Caddy (:8002) → Open WebUI (:8080) → Ollama (:11434) → LLM Models
+Browser → Caddy (:8002) → Open WebUI (:8080) → Ollama (:11434) → Local LLM Models
+                                           → Azure OpenAI API → Cloud LLM Models
 ```
 
 ### Workflow Automation Flow
@@ -250,6 +251,35 @@ docker compose ps
 # Check specific service
 curl http://localhost:8090/health  # Document processor
 curl http://localhost:8007/api/public/health  # Langfuse
+```
+
+## LLM Architecture
+
+### Dual LLM Provider Support
+The platform supports both local and cloud LLM providers through a unified service:
+
+| Provider | Type | Configuration | Models |
+|----------|------|---------------|--------|
+| **Ollama** | Local | Automatic | Llama 3, CodeLlama, Mistral, etc. |
+| **Azure OpenAI** | Cloud | Environment variables required | GPT-4, GPT-3.5, etc. |
+
+### LLM Service Configuration
+Environment variables for Azure OpenAI:
+- `AZURE_OPENAI_API_KEY` - Azure OpenAI API key
+- `AZURE_OPENAI_ENDPOINT` - Azure OpenAI endpoint URL  
+- `AZURE_OPENAI_DEPLOYMENT_NAME` - Deployment name
+- `AZURE_OPENAI_API_VERSION` - API version (e.g., 2023-12-01-preview)
+
+### Provider Selection Logic
+1. If Azure OpenAI is configured, it can be selected explicitly
+2. Ollama is always available as local fallback
+3. Document processor automatically routes based on availability and configuration
+
+### Document Processing with LLM Integration
+```
+Document Upload → Document Processor → Docling (Structure) → LLM Service → Enhanced Processing
+                                                          ↓
+                                                    Ollama (Local) / Azure OpenAI (Cloud)
 ```
 
 This architecture provides a comprehensive, scalable AI platform with proper separation of concerns, security, and monitoring capabilities.

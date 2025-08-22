@@ -6,6 +6,7 @@ import {
   IconTool,
   IconUser,
   IconCpu,
+  IconApi,
 } from '@tabler/icons-react'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/layout/header'
@@ -65,6 +66,11 @@ const sidebarNavItems = [
     title: 'AI Models',
     icon: <IconCpu size={18} />,
     href: '/settings/ai-models',
+  },
+  {
+    title: 'Integrations',
+    icon: <IconApi size={18} />,
+    href: '/settings/integrations',
   },
   {
     title: 'Appearance',

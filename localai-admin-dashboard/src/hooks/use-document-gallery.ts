@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { withAuthentication } from '@/lib/supabase-auth-utils';
 import { toast } from 'sonner';
 
 // Helper function to format file sizes
@@ -113,7 +114,8 @@ async function fetchDocuments(
   pagination: PaginationParams,
   sort: SortParams
 ): Promise<DocumentsResponse> {
-  try {
+  return withAuthentication(async (user) => {
+
     let query = supabase
       .from('documents')
       .select('*', { count: 'exact' });
@@ -175,6 +177,7 @@ async function fetchDocuments(
     const offset = (pagination.page - 1) * pagination.limit;
     query = query.range(offset, offset + pagination.limit - 1);
 
+    console.log('📤 fetchDocuments - Executing query with session auth...');
     const { data, error, count } = await query;
 
     if (error) {
@@ -193,10 +196,7 @@ async function fetchDocuments(
       total_count,
       has_more,
     };
-  } catch (error) {
-    console.error('Document fetch error:', error);
-    throw error;
-  }
+  }, 'fetchDocuments');
 }
 
 // Hook for document statistics
@@ -210,7 +210,7 @@ export function useDocumentStats() {
 }
 
 async function fetchDocumentStats() {
-  try {
+  return withAuthentication(async (user) => {
     const { data, error } = await supabase
       .from('documents')
       .select('processing_status, file_type, metadata');
@@ -249,10 +249,7 @@ async function fetchDocumentStats() {
     });
 
     return stats;
-  } catch (error) {
-    console.error('Error fetching document stats:', error);
-    throw error;
-  }
+  }, 'fetchDocumentStats');
 }
 
 // Hook for real-time document updates
@@ -348,30 +345,32 @@ export function useDocumentActions() {
 
   const reprocessMutation = useMutation({
     mutationFn: async (documentId: number) => {
-      // Update processing_status to analyzing
-      const { error: updateError } = await supabase
-        .from('documents')
-        .update({ 
-          processing_status: 'analyzing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', documentId);
+      return withAuthentication(async (user) => {
+        // Update processing_status to analyzing
+        const { error: updateError } = await supabase
+          .from('documents')
+          .update({ 
+            processing_status: 'analyzing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', documentId);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
 
-      // Trigger reprocessing via document processor API
-      const response = await fetch(`http://localhost:8090/api/documents/${documentId}/reprocess`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+        // Trigger reprocessing via document processor API
+        const response = await fetch(`http://localhost:8090/api/documents/${documentId}/reprocess`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to trigger document reprocessing');
-      }
+        if (!response.ok) {
+          throw new Error('Failed to trigger document reprocessing');
+        }
 
-      return response.json();
+        return response.json();
+      }, 'reprocessDocument');
     },
     onSuccess: (data, documentId) => {
       // Invalidate queries to refresh UI
@@ -393,20 +392,16 @@ export function useDocumentActions() {
 
   const deleteMutation = useMutation({
     mutationFn: async (documentId: number) => {
-      console.log('🗑️ Starting document deletion for ID:', documentId, typeof documentId);
-      console.log('🔗 Supabase client config:', {
-        url: import.meta.env.VITE_SUPABASE_URL,
-        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
-        keyPrefix: import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...'
-      });
-      
-      // Step 1: Get document info including file_path for storage deletion
-      console.log('🔍 Making Supabase query to documents table...');
-      const { data: document, error: fetchError } = await supabase
-        .from('documents')
-        .select('file_path, name, file_size')
-        .eq('id', documentId)
-        .single();
+      return withAuthentication(async (user) => {
+        console.log('🗑️ Starting document deletion for ID:', documentId, typeof documentId);
+        
+        // Step 1: Get document info including file_path for storage deletion
+        console.log('🔍 Making authenticated Supabase query to documents table...');
+        const { data: document, error: fetchError } = await supabase
+          .from('documents')
+          .select('file_path, name, file_size')
+          .eq('id', documentId)
+          .single();
       
       console.log('📊 Query result:', { document, fetchError });
 
@@ -462,12 +457,13 @@ export function useDocumentActions() {
         throw new Error(`File deleted but database cleanup failed. Please contact support. Error: ${dbError.message}`);
       }
       
-      return { 
-        documentId, 
-        deletedFile: document.file_path,
-        freedSpace: document.file_size || 0,
-        documentName: document.name
-      };
+        return { 
+          documentId, 
+          deletedFile: document.file_path,
+          freedSpace: document.file_size || 0,
+          documentName: document.name
+        };
+      }, 'deleteDocument');
     },
     onSuccess: (result) => {
       // Use a timeout to ensure database changes have propagated before updating cache
@@ -517,33 +513,35 @@ export function useDocumentActions() {
 
   const downloadMutation = useMutation({
     mutationFn: async (documentId: number) => {
-      // Get document info first
-      const { data: document, error } = await supabase
-        .from('documents')
-        .select('name, file_path')
-        .eq('id', documentId)
-        .single();
+      return withAuthentication(async (user) => {
+        // Get document info first
+        const { data: document, error } = await supabase
+          .from('documents')
+          .select('name, file_path')
+          .eq('id', documentId)
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Download via document processor API
-      const response = await fetch(`http://localhost:8090/api/documents/${documentId}/download`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to download document');
-      }
+        // Download via document processor API
+        const response = await fetch(`http://localhost:8090/api/documents/${documentId}/download`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to download document');
+        }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = window.document.createElement('a');
-      a.href = url;
-      a.download = document.name;
-      window.document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      window.document.body.removeChild(a);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = window.document.createElement('a');
+        a.href = url;
+        a.download = document.name;
+        window.document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        window.document.body.removeChild(a);
 
-      return document;
+        return document;
+      }, 'downloadDocument');
     },
     onError: (error) => {
       console.error('Error downloading document:', error);

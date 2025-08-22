@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileText, Search, Plus, Eye, Zap } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { DocumentTemplateService } from '../services/template-service';
+import { masterTemplateService } from '@/services/master-template-service';
+import { TemplateSelectionItem } from '../index';
+import { UnifiedTemplate } from '@/types/unified-template';
 
 interface ValidationRule {
   type: string;
@@ -57,25 +59,43 @@ interface SmartTemplate {
 }
 
 interface TemplateGalleryProps {
-  onSelectTemplate: (template: SmartTemplate) => void;
+  onSelectTemplate: (template: TemplateSelectionItem) => void;
   onCreateTemplate: () => void;
 }
+
+// Helper function to convert UnifiedTemplate to TemplateSelectionItem
+const convertToSelectionItem = (template: UnifiedTemplate): TemplateSelectionItem => ({
+  id: template.id,
+  name: template.name,
+  description: template.description,
+  category: template.category,
+  type: template.type,
+  source: template.type, // source matches type for unified templates
+  tags: template.tags || [],
+  usageCount: template.usage_count || 0,
+  rating: template.rating || 0,
+  isSmartTemplate: template.type === 'smart',
+  variableCount: template.smart_variables?.length || template.fields?.length || 0
+});
 
 export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: TemplateGalleryProps) {
   const {
     data: templates = [],
     isLoading: loading,
     error,
-  } = useQuery<SmartTemplate[]>({
-    queryKey: ['document-templates'],
-    queryFn: DocumentTemplateService.getTemplates,
+  } = useQuery<TemplateSelectionItem[]>({
+    queryKey: ['unified-templates'],
+    queryFn: async () => {
+      const unifiedTemplates = await masterTemplateService.getTemplates();
+      return unifiedTemplates.map(convertToSelectionItem);
+    },
   });
 
-  const [filteredTemplates, setFilteredTemplates] = useState<SmartTemplate[]>([]);
+  const [filteredTemplates, setFilteredTemplates] = useState<TemplateSelectionItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const categories = ['all', 'business', 'legal', 'marketing', 'hr', 'finance', 'technical'];
+  const categories = ['all', 'business', 'legal', 'finance', 'hr', 'procurement', 'healthcare', 'insurance', 'other'];
 
   // Filter templates whenever dependencies change
   useEffect(() => {
@@ -85,12 +105,13 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
       filtered = filtered.filter(
         (template) =>
           template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          template.description.toLowerCase().includes(searchQuery.toLowerCase()),
+          template.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          template.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())),
       );
     }
 
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter((template) => template.category.toLowerCase() === selectedCategory);
+      filtered = filtered.filter((template) => template.category.toLowerCase() === selectedCategory.toLowerCase());
     }
 
     setFilteredTemplates(filtered);
@@ -173,43 +194,42 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
                     {template.description}
                   </CardDescription>
                 </div>
-                {template.smart_variables.length > 0 && (
-                  <Badge variant="secondary" className="ml-2 flex items-center gap-1">
-                    <Zap className="h-3 w-3" />
-                    Smart
+                <div className="flex gap-2 ml-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {template.category}
                   </Badge>
-                )}
+                  {template.isSmartTemplate && (
+                    <Badge variant="default" className="flex items-center gap-1 text-xs">
+                      <Zap className="h-3 w-3" />
+                      Smart
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="text-xs">
+                    {template.source === 'smart_templates' ? 'Smart Template' : 'Standard'}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             
             <CardContent className="space-y-4">
-              {/* Template Preview */}
-              <div className="bg-gray-50 p-3 rounded-md text-sm">
-                <p className="text-gray-600 line-clamp-3">
-                  {template.template_content.substring(0, 120)}...
-                </p>
+              {/* Template Stats */}
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">{template.variableCount} fields</span>
+                </div>
+                {template.isSmartTemplate && (
+                  <Badge variant="default" className="text-xs">
+                    AI-Powered
+                  </Badge>
+                )}
               </div>
 
-              {/* Smart Variables Preview */}
-              {template.smart_variables.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-700 mb-2">
-                    Auto-extractable fields ({template.smart_variables.length}):
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {template.smart_variables.slice(0, 3).map((variable) => (
-                      <Badge key={variable.id} variant="outline" className="text-xs">
-                        {variable.name}
-                      </Badge>
-                    ))}
-                    {template.smart_variables.length > 3 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{template.smart_variables.length - 3} more
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              )}
+              {/* Template Description */}
+              <div className="bg-gray-50 p-3 rounded-md text-sm">
+                <p className="text-gray-600 line-clamp-2">
+                  {template.description || 'No description available'}
+                </p>
+              </div>
 
               {/* Tags */}
               {template.tags.length > 0 && (
@@ -222,10 +242,14 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
                 </div>
               )}
 
-              {/* Stats */}
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{template.usage_count} uses</span>
-              </div>
+              {/* Additional Features Indicator */}
+              {template.isSmartTemplate && (
+                <div className="bg-blue-50 dark:bg-blue-950 p-2 rounded text-xs">
+                  <p className="text-blue-800 dark:text-blue-200">
+                    <strong>Smart Features:</strong> AI extraction, confidence scores, real-time processing
+                  </p>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2">

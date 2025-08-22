@@ -128,6 +128,41 @@ export class ProcessedDocumentsService {
   }
 
   /**
+   * Debug method to check if a document exists (temporary)
+   */
+  static async debugCheckDocument(id: string): Promise<any> {
+    console.log('🔍 Debug: Checking document existence for ID:', id);
+    
+    try {
+      // First, check without user filter to see if document exists at all
+      const { data: allDocs, error: allError } = await supabase
+        .from('documents')
+        .select('id, uploaded_by, created_at, name')
+        .eq('id', id);
+      
+      console.log('🔍 Debug: Document search result (no user filter):', allDocs, allError);
+      
+      // Now check with user filter
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData.user) {
+        const { data: userDocs, error: userError } = await supabase
+          .from('documents')
+          .select('id, uploaded_by, created_at, name')
+          .eq('id', id)
+          .eq('uploaded_by', userData.user.id);
+        
+        console.log('🔍 Debug: Document search result (with user filter):', userDocs, userError);
+        console.log('🔍 Debug: Current user ID:', userData.user.id);
+      }
+      
+      return { exists: allDocs && allDocs.length > 0, documents: allDocs };
+    } catch (error) {
+      console.error('🔍 Debug: Error checking document:', error);
+      return { exists: false, error };
+    }
+  }
+
+  /**
    * Get all processed documents for the current user
    */
   static async getProcessedDocuments(): Promise<ProcessedDocument[]> {

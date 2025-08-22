@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { DocumentTemplateService } from "../services/template-service";
+import { masterTemplateService } from '@/services/master-template-service';
 import { NewTemplate } from "../types";
+import { TemplatePayload } from '@/types/unified-template';
 
 interface CreateTemplateModalProps {
   open: boolean;
@@ -32,8 +33,18 @@ export function CreateTemplateModal({
   const [templateContent, setTemplateContent] = useState("");
 
   const mutation = useMutation({
-    mutationFn: (newTemplate: NewTemplate) =>
-      DocumentTemplateService.createTemplate(newTemplate),
+    mutationFn: (newTemplate: NewTemplate) => {
+      const templatePayload: TemplatePayload = {
+        name: newTemplate.name,
+        description: newTemplate.description,
+        category: newTemplate.category,
+        type: 'standard', // Default to standard template
+        content: newTemplate.template_content,
+        tags: [],
+        is_public: false
+      };
+      return masterTemplateService.createTemplate(templatePayload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
       // The modal closing is now handled by the useEffect below

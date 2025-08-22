@@ -16,6 +16,20 @@ import {
   Image
 } from 'lucide-react';
 import { TemplateGallery } from './components/TemplateGallery';
+// TemplateSelectionItem type definition (was from unified-template-service)
+export interface TemplateSelectionItem {
+  id: string | number;
+  name: string;
+  description: string;
+  type: 'smart' | 'standard' | 'workflow';
+  category: string;
+  source: 'smart' | 'standard' | 'workflow' | 'gallery';
+  tags: string[];
+  usageCount: number;
+  rating: number;
+  isSmartTemplate: boolean;
+  variableCount: number;
+}
 import { CreateTemplateModal } from './components/CreateTemplateModal';
 import { ProcessedDocumentsService, ProcessedDocument } from './services/processed-documents-service';
 import { useQuery } from '@tanstack/react-query';
@@ -55,12 +69,15 @@ export default function DocumentsPage() {
     queryFn: ProcessedDocumentsService.getProcessedDocuments,
   });
 
-  const handleTemplateSelect = useCallback((template: SmartTemplate) => {
+  const handleTemplateSelect = useCallback((template: TemplateSelectionItem) => {
     // Navigate to the document processor route with template data
-    console.log('Navigating to /documents/process-document with template:', template.name, 'ID:', template.id);
+    console.log('Navigating to /documents/process-document with template:', template.name, 'ID:', template.id, 'Source:', template.source);
     navigate({ 
       to: '/documents/process-document',
-      search: { templateId: template.id }
+      search: { 
+        templateId: template.id,
+        templateSource: template.source
+      }
     });
   }, [navigate]);
 

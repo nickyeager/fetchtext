@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { requireAuthentication } from '@/lib/supabase-auth-utils';
 
 export enum DocumentStatus {
   UPLOADED = 'uploaded',
@@ -114,28 +115,191 @@ export interface UpdateDocumentStatusOptions {
 
 export class UnifiedDocumentService {
   /**
+   * Trigger AI analysis for a document
+   * This method is called automatically when status changes to 'analyzing'
+   */
+  private static async triggerAIAnalysis(documentId: string): Promise<void> {
+    try {
+      console.log('🤖 Triggering AI analysis for document:', documentId);
+      
+      // Get the document record
+      const document = await this.getDocumentById(documentId);
+      if (!document) {
+        throw new Error('Document not found for AI analysis');
+      }
+
+      // Get the file from storage
+      const { supabase } = await import('@/lib/supabase');
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('documents')
+        .download(document.file_path);
+
+      if (downloadError || !fileData) {
+        console.error('Failed to download file for analysis:', downloadError);
+        await this.markDocumentFailed(documentId, 'Failed to download file for analysis');
+        return;
+      }
+
+      // Create File object for document processor
+      const file = new File([fileData], document.name, { 
+        type: document.file_type 
+      });
+
+      // Initialize document processor
+      const { DocumentProcessorEnhanced } = await import('@/lib/document-processor-enhanced');
+      const documentProcessor = new DocumentProcessorEnhanced();
+
+      // Perform AI document type evaluation
+      const evaluation = await documentProcessor.evaluateDocumentType(file, {
+        quickScan: false,
+        includeConfidenceScores: true,
+        suggestTemplates: true
+      });
+
+      console.log('✅ AI analysis completed for document:', documentId);
+      console.log('Evaluation result:', evaluation);
+
+      // Update document with evaluation results
+      await this.updateDocumentStatus(documentId, {
+        status: DocumentStatus.PROCESSING,
+        metadata: {
+          document_type: evaluation.type_evaluation.primary_type,
+          type_confidence: evaluation.type_evaluation.confidence,
+          ai_classification: {
+            primary_category: evaluation.type_evaluation.primary_type,
+            confidence_score: evaluation.type_evaluation.confidence,
+            detection_method: evaluation.type_evaluation.detection_method,
+          },
+          template_suggestions: evaluation.template_suggestions,
+          processing_recommendations: evaluation.processing_recommendations,
+          analysis_completed_at: new Date().toISOString(),
+        },
+      });
+
+      console.log('✅ Document updated with AI analysis results');
+
+    } catch (error) {
+      console.error('❌ AI analysis failed for document:', documentId, error);
+      
+      // Check if it's a timeout or network error - provide fallback processing
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isNetworkError = errorMessage.includes('timeout') || 
+                            errorMessage.includes('network') || 
+                            errorMessage.includes('AbortError') ||
+                            errorMessage.includes('Failed to fetch') ||
+                            errorMessage.includes('Document evaluation failed');
+      
+      if (isNetworkError) {
+        console.log('🔄 Network error detected, attempting fallback analysis...');
+        try {
+          // Fallback: create basic analysis without backend
+          const document = await this.getDocumentById(documentId);
+          if (document) {
+            const fallbackEvaluation = {
+              type_evaluation: {
+                primary_type: this.guessDocumentType(document.name),
+                confidence: 0.6,
+                detection_method: 'filename_analysis_fallback'
+              },
+              template_suggestions: [],
+              processing_recommendations: {
+                workflow: 'manual_processing',
+                suggested_action: 'Manual review recommended - backend unavailable',
+                alternative_actions: ['Browse templates', 'Upload different document'],
+                confidence_level: 'medium'
+              }
+            };
+            
+            // Update with fallback analysis
+            await this.updateDocumentStatus(documentId, {
+              status: DocumentStatus.PROCESSING,
+              metadata: {
+                document_type: fallbackEvaluation.type_evaluation.primary_type,
+                type_confidence: fallbackEvaluation.type_evaluation.confidence,
+                ai_classification: {
+                  primary_category: fallbackEvaluation.type_evaluation.primary_type,
+                  confidence_score: fallbackEvaluation.type_evaluation.confidence,
+                  detection_method: fallbackEvaluation.type_evaluation.detection_method,
+                },
+                template_suggestions: fallbackEvaluation.template_suggestions,
+                processing_recommendations: fallbackEvaluation.processing_recommendations,
+                analysis_completed_at: new Date().toISOString(),
+                fallback_analysis: true,
+                backend_unavailable: true
+              },
+            });
+            
+            console.log('✅ Fallback analysis completed for document:', documentId);
+            return;
+          }
+        } catch (fallbackError) {
+          console.error('❌ Fallback analysis also failed:', fallbackError);
+        }
+      }
+      
+      // Mark document as failed if analysis fails
+      await this.markDocumentFailed(
+        documentId, 
+        `AI analysis failed: ${errorMessage}`
+      );
+    }
+  }
+
+  /**
+   * Guess document type from filename
+   */
+  private static guessDocumentType(filename: string): string {
+    const name = filename.toLowerCase();
+    
+    if (name.includes('invoice') || name.includes('bill')) {
+      return 'invoice';
+    } else if (name.includes('receipt')) {
+      return 'receipt';  
+    } else if (name.includes('contract') || name.includes('agreement')) {
+      return 'contract';
+    } else if (name.includes('report')) {
+      return 'report';
+    } else if (name.includes('statement')) {
+      return 'statement';
+    } else {
+      return 'document';
+    }
+  }
+
+  /**
+   * Force retry analysis for a stuck document
+   */
+  static async forceRetryAnalysis(documentId: string): Promise<void> {
+    console.log('🔄 Force retrying analysis for document:', documentId);
+    
+    try {
+      // Reset status to analyzing to trigger fresh analysis
+      await this.updateDocumentStatus(documentId, {
+        status: DocumentStatus.ANALYZING,
+        metadata: {
+          retry_attempt: true,
+          retry_timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('❌ Failed to force retry analysis:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create initial document record immediately upon file selection
    * This ensures every uploaded document gets tracked from the start
    */
   static async createDocumentRecord(options: CreateDocumentOptions): Promise<DocumentRecord> {
     try {
-      // Get current user
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error('Auth error:', userError);
-        throw new Error(`Authentication failed: ${userError.message}`);
-      }
-      
-      if (!userData?.user) {
-        console.error('No user found in auth response:', userData);
-        throw new Error('User not authenticated - please sign in to upload documents');
-      }
-      
-      console.log('Authenticated user:', userData.user.id);
+      // Get current authenticated user
+      const user = await requireAuthentication();
+      console.log('✅ createDocumentRecord - Authenticated user:', user.id);
 
       // Generate file path for storage
       const fileExtension = options.file.name.split('.').pop() || '';
-      const fileName = `${userData.user.id}/${Date.now()}_${options.file.name}`;
+      const fileName = `${user.id}/${Date.now()}_${options.file.name}`;
       
       // Initialize metadata
       const metadata: DocumentMetadata = {
@@ -156,18 +320,10 @@ export class UnifiedDocumentService {
         file_size: options.file.size,
         processing_status: 'uploaded', // Set initial status
         metadata,
-        uploaded_by: userData.user.id,
+        uploaded_by: user.id,
       };
 
       console.log('Creating document record:', documentData);
-      
-      // Debug: Check current session
-      const { data: sessionData } = await supabase.auth.getSession();
-      console.log('Current session:', {
-        has_session: !!sessionData?.session,
-        access_token: sessionData?.session?.access_token?.substring(0, 50) + '...',
-        user_id: sessionData?.session?.user?.id
-      });
       
       const { data, error } = await supabase
         .from('documents')
@@ -183,7 +339,9 @@ export class UnifiedDocumentService {
           throw new Error('Permission denied - please ensure you are signed in and have permission to upload documents');
         }
         
-        throw new Error(`Failed to create document record: ${error.message}`);
+        // Better error handling for undefined error messages
+        const errorMessage = error.message || error.details || error.hint || `Database error (code: ${error.code || 'unknown'})`;
+        throw new Error(`Failed to create document record: ${errorMessage}`);
       }
 
       // Upload file to storage (with fallback for file system issues)
@@ -310,6 +468,8 @@ export class UnifiedDocumentService {
       switch (options.status) {
         case DocumentStatus.ANALYZING:
           updatedMetadata.analysis_started_at = now;
+          // Trigger AI analysis automatically (use setTimeout for browser compatibility)
+          setTimeout(() => this.triggerAIAnalysis(documentId), 0);
           break;
         case DocumentStatus.PROCESSING:
           if (!updatedMetadata.analysis_completed_at && updatedMetadata.analysis_started_at) {
@@ -421,16 +581,13 @@ export class UnifiedDocumentService {
    */
   static async getDocumentById(documentId: string): Promise<DocumentRecord | null> {
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        throw new Error('User not authenticated');
-      }
+      const user = await requireAuthentication();
 
       const { data, error } = await supabase
         .from('documents')
         .select('*')
         .eq('id', documentId)
-        .eq('uploaded_by', userData.user.id)
+        .eq('uploaded_by', user.id)
         .single();
 
       if (error) {
@@ -452,15 +609,12 @@ export class UnifiedDocumentService {
    */
   static async getUserDocuments(): Promise<DocumentRecord[]> {
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        throw new Error('User not authenticated');
-      }
+      const user = await requireAuthentication();
 
       const { data, error } = await supabase
         .from('documents')
         .select('*')
-        .eq('uploaded_by', userData.user.id)
+        .eq('uploaded_by', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {

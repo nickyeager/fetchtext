@@ -29,6 +29,7 @@ import {
 import { DocumentCard } from './DocumentCard';
 import { DocumentTable } from './DocumentTable';
 import { DocumentGalleryFilters } from './DocumentGalleryFilters';
+import { DragDropUpload } from './DragDropUpload';
 import { useDocumentGallery } from '@/hooks/use-document-gallery';
 import { toast } from 'sonner';
 
@@ -66,6 +67,7 @@ export function DocumentGallery({
   
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{id: number, name: string, size?: number} | null>(null);
+  const [showUploadZone, setShowUploadZone] = useState(false);
 
   // Save view mode to localStorage when it changes
   useEffect(() => {
@@ -172,32 +174,33 @@ export function DocumentGallery({
     navigate({ to: '/documents/upload' });
   };
 
-  const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center py-16 px-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-      <Inbox className="w-16 h-16 text-gray-400 mb-4" />
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        {Object.keys(filters).length > 0 ? 'No documents match your filters' : 'No documents yet'}
-      </h3>
-      <p className="text-gray-600 text-center mb-6 max-w-md">
-        {Object.keys(filters).length > 0 
-          ? 'Try adjusting your search criteria or filters to find more documents.'
-          : 'Upload your first document to get started with AI-powered processing and template generation.'
-        }
-      </p>
-      <div className="flex space-x-3">
-        {Object.keys(filters).length > 0 ? (
+  const renderEmptyState = () => {
+    if (Object.keys(filters).length > 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 px-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+          <Inbox className="w-16 h-16 text-gray-400 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            No documents match your filters
+          </h3>
+          <p className="text-gray-600 text-center mb-6 max-w-md">
+            Try adjusting your search criteria or filters to find more documents.
+          </p>
           <Button onClick={() => updateFilters({})}>
             Clear All Filters
           </Button>
-        ) : (
-          <Button onClick={handleUploadClick}>
-            <Upload className="w-4 h-4 mr-2" />
-            Upload Document
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+      );
+    }
+
+    // Show drag-and-drop zone when no documents
+    return (
+      <DragDropUpload 
+        onUploadComplete={(documentId) => {
+          refetch(); // Refresh the document list
+        }}
+      />
+    );
+  };
 
   const renderError = () => (
     <Alert>
@@ -449,21 +452,40 @@ export function DocumentGallery({
           </div>
           
           {/* Upload Button */}
-          <Button onClick={handleUploadClick} className="hidden sm:flex">
+          <Button 
+            onClick={() => setShowUploadZone(!showUploadZone)} 
+            className="hidden sm:flex"
+            variant={showUploadZone ? "secondary" : "default"}
+          >
             <Upload className="w-4 h-4 mr-2" />
-            Upload Document
+            {showUploadZone ? 'Hide Upload' : 'Upload Document'}
           </Button>
           
           {/* Mobile Upload Button */}
           <Button 
-            onClick={handleUploadClick} 
+            onClick={() => setShowUploadZone(!showUploadZone)} 
             size="sm"
             className="sm:hidden"
+            variant={showUploadZone ? "secondary" : "default"}
           >
             <Upload className="w-4 h-4" />
           </Button>
         </div>
       </div>
+
+      {/* Upload Zone */}
+      {showUploadZone && (
+        <DragDropUpload 
+          className="mb-6"
+          onUploadStart={() => {
+            // Optional: Add loading state
+          }}
+          onUploadComplete={(documentId) => {
+            setShowUploadZone(false);
+            refetch(); // Refresh the document list
+          }}
+        />
+      )}
 
       {/* Statistics */}
       {renderStats()}

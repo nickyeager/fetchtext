@@ -43,34 +43,8 @@ class EnhancedDoclingService(DoclingService):
                 self.logger.info(f"Processing text file directly: {file_path.name}")
                 
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        text_content = f.read()
-                    
-                    basic_result = {
-                        'job_id': job_id,
-                        'status': 'completed',
-                        'content': {
-                            'text': text_content,
-                            'layout_info': {
-                                'headings': [],
-                                'paragraphs': [{'text': text_content, 'position': 0}]
-                            }
-                        },
-                        'metadata': {
-                            'title': file_path.stem,
-                            'pages': 1,
-                            'format': 'text/plain',
-                            'file_size': file_path.stat().st_size
-                        },
-                        'structure': {
-                            'sections': [],
-                            'tables': [],
-                            'images': []
-                        },
-                        'created_at': start_time.isoformat(),
-                        'completed_at': datetime.utcnow().isoformat(),
-                        'processing_time': 0.1
-                    }
+                    # Enhanced text file processing with better structure detection
+                    basic_result = await self._process_text_file_enhanced(file_path, start_time, job_id)
                 except Exception as e:
                     self.logger.error(f"Failed to read text file: {e}")
                     return {
@@ -275,13 +249,33 @@ class EnhancedDoclingService(DoclingService):
                 'overall_confidence': classification.get('confidence_score', 0.5)
             }
             
+        except TimeoutError as e:
+            self.logger.warning(f"AI extraction timed out: {e}")
+            # Provide pattern-based fallback for timeout
+            fallback_data = self._pattern_based_extraction(text_content, category, key_data_points)
+            return {
+                'extraction_method': 'pattern_fallback',
+                'target_data_points': key_data_points,
+                'extracted_values': fallback_data,
+                'confidence_scores': {field: 0.3 for field in key_data_points},  # Lower confidence
+                'extraction_notes': 'AI extraction timed out, used pattern matching fallback',
+                'fallback_reason': 'timeout',
+                'overall_confidence': 0.3
+            }
+            
         except Exception as e:
             self.logger.error(f"Error in AI-guided extraction: {e}")
+            # Provide pattern-based fallback for other errors
+            fallback_data = self._pattern_based_extraction(text_content, category, key_data_points)
             return {
-                'extraction_method': 'failed',
+                'extraction_method': 'pattern_fallback',
                 'target_data_points': key_data_points,
+                'extracted_values': fallback_data,
+                'confidence_scores': {field: 0.2 for field in key_data_points},  # Even lower confidence
+                'extraction_notes': f'AI extraction failed: {str(e)}, used pattern matching fallback',
+                'fallback_reason': 'error',
                 'error': str(e),
-                'fallback_used': True
+                'overall_confidence': 0.2
             }
     
     def _build_extraction_prompt(
@@ -322,11 +316,12 @@ Return ONLY JSON:
         """Call LLM for data extraction with robust JSON parsing"""
         
         try:
-            # Use the unified LLM service with optimized parameters
+            # Use the unified LLM service with optimized parameters and timeout
             response_text = await self.llm_service.complete(
                 prompt,
                 temperature=0.0,  # Deterministic output
-                max_tokens=300    # Force concise responses
+                max_tokens=300,   # Force concise responses
+                timeout=10.0      # 10 second timeout for template generation
             )
             
             # Log raw response for debugging
@@ -540,6 +535,396 @@ Return ONLY JSON:
             },
             'llm_status': self.llm_service.get_current_provider_info()
         }
+    
+    async def _process_text_file_enhanced(
+        self,
+        file_path: Path,
+        start_time: datetime,
+        job_id: str
+    ) -> Dict[str, Any]:
+        """Enhanced text file processing with structure detection"""
+        
+        # Read file with encoding detection
+        try:
+            import chardet
+        except ImportError:
+            self.logger.warning("chardet not available, using utf-8 encoding")
+            chardet = None
+        
+        # Detect encoding if chardet is available
+        encoding = 'utf-8'
+        if chardet:
+            try:
+                with open(file_path, 'rb') as f:
+                    raw_data = f.read()
+                    detected = chardet.detect(raw_data)
+                    encoding = detected['encoding'] or 'utf-8'
+            except Exception:
+                encoding = 'utf-8'
+        
+        # Read text content with proper encoding
+        with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+            text_content = f.read().strip()
+        
+        if not text_content:
+            raise ValueError("Text file is empty")
+        
+        # Enhanced structure detection for text files
+        structure_analysis = await self._analyze_text_structure(text_content)
+        
+        # Extract metadata from file
+        stat = file_path.stat()
+        processing_time = (datetime.utcnow() - start_time).total_seconds()
+        
+        return {
+            'job_id': job_id,
+            'status': 'completed',
+            'content': {
+                'text': text_content,
+                'markdown': text_content,  # For text files, use as-is
+                'layout_info': structure_analysis,
+                'word_count': len(text_content.split()),
+                'character_count': len(text_content),
+                'line_count': len(text_content.splitlines())
+            },
+            'metadata': {
+                'filename': file_path.name,
+                'file_size': stat.st_size,
+                'mime_type': 'text/plain',
+                'format': 'text/plain',
+                'document_type': 'TXT',
+                'created_at': datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                'modified_at': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                'title': file_path.stem,
+                'pages': 1,
+                'word_count': len(text_content.split()),
+                'character_count': len(text_content),
+                'line_count': len(text_content.splitlines()),
+                'encoding': encoding,
+                'processing_method': 'enhanced_text_analysis'
+            },
+            'structure': {
+                'sections': structure_analysis.get('sections', []),
+                'tables': [],  # Text files typically don't have structured tables
+                'images': [],
+                'headings': structure_analysis.get('headings', [])
+            },
+            'created_at': start_time.isoformat(),
+            'completed_at': datetime.utcnow().isoformat(),
+            'processing_time': processing_time,
+            'processing_method': 'enhanced_text_analysis'
+        }
+    
+    async def _analyze_text_structure(self, content: str) -> Dict[str, Any]:
+        """Analyze text structure to detect headings, sections, paragraphs"""
+        
+        lines = content.splitlines()
+        structure = {
+            'headings': [],
+            'paragraphs': [],
+            'sections': [],
+            'layout_detected': True,
+            'pages': 1
+        }
+        
+        current_section = None
+        paragraph_text = ""
+        line_number = 0
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:  # Empty line - end of paragraph
+                if paragraph_text:
+                    structure['paragraphs'].append({
+                        'text': paragraph_text.strip(),
+                        'position': line_number,
+                        'section': current_section
+                    })
+                    paragraph_text = ""
+                continue
+            
+            # Detect headings (lines that are short, capitalized, or have special formatting)
+            if self._is_likely_heading(line, i, lines):
+                # Save current paragraph before heading
+                if paragraph_text:
+                    structure['paragraphs'].append({
+                        'text': paragraph_text.strip(),
+                        'position': line_number,
+                        'section': current_section
+                    })
+                    paragraph_text = ""
+                
+                # Add heading
+                heading_level = self._determine_heading_level(line)
+                structure['headings'].append({
+                    'text': line,
+                    'level': heading_level,
+                    'position': i,
+                    'line_number': i + 1
+                })
+                
+                # Start new section
+                current_section = line
+                structure['sections'].append({
+                    'title': line,
+                    'start_line': i + 1,
+                    'level': heading_level
+                })
+            else:
+                # Regular content line
+                if paragraph_text:
+                    paragraph_text += " " + line
+                else:
+                    paragraph_text = line
+                    line_number = i + 1
+        
+        # Add final paragraph if exists
+        if paragraph_text:
+            structure['paragraphs'].append({
+                'text': paragraph_text.strip(),
+                'position': line_number,
+                'section': current_section
+            })
+        
+        return structure
+    
+    def _is_likely_heading(self, line: str, index: int, all_lines: list) -> bool:
+        """Determine if a line is likely a heading"""
+        
+        # Skip very long lines (probably paragraphs)
+        if len(line) > 100:
+            return False
+        
+        # Import re here to avoid import issues
+        import re
+        
+        # Check for common heading patterns
+        patterns = [
+            line.isupper() and len(line.split()) <= 8,  # ALL CAPS short lines
+            line.startswith('#'),  # Markdown headings
+            line.endswith(':') and len(line.split()) <= 6,  # Colon endings
+            bool(re.match(r'^[0-9]+\.?\s+', line)),  # Numbered headings
+            bool(re.match(r'^[A-Z][a-z]*(\s+[A-Z][a-z]*)*$', line)) and len(line.split()) <= 5,  # Title Case
+        ]
+        
+        # Check if followed by content (not another heading)
+        has_content_after = (
+            index + 1 < len(all_lines) and 
+            all_lines[index + 1].strip() and 
+            not self._looks_like_heading_pattern(all_lines[index + 1])
+        )
+        
+        return any(patterns) and (has_content_after or index == len(all_lines) - 1)
+    
+    def _looks_like_heading_pattern(self, line: str) -> bool:
+        """Quick check if line looks like a heading"""
+        import re
+        line = line.strip()
+        return (
+            line.isupper() or 
+            line.startswith('#') or 
+            line.endswith(':') or
+            bool(re.match(r'^[0-9]+\.?\s+', line))
+        )
+    
+    def _determine_heading_level(self, line: str) -> int:
+        """Determine heading level (1-6)"""
+        import re
+        
+        if line.startswith('#'):
+            return min(line.count('#'), 6)
+        elif line.isupper():
+            return 1  # ALL CAPS likely main headings
+        elif re.match(r'^[0-9]+\.?\s+', line):
+            return 2  # Numbered headings
+        elif line.endswith(':'):
+            return 3  # Colon headings
+        else:
+            return 2  # Default level
+    
+    def _pattern_based_extraction(
+        self,
+        content: str,
+        category: str,
+        data_points: List[str]
+    ) -> Dict[str, Any]:
+        """Pattern-based fallback extraction when AI fails or times out"""
+        
+        import re
+        content_lower = content.lower()
+        extracted = {}
+        
+        # Common patterns for different data types
+        patterns = {
+            'date': [
+                r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b',  # MM/DD/YYYY or DD/MM/YYYY
+                r'\b(\d{4}[/-]\d{1,2}[/-]\d{1,2})\b',    # YYYY/MM/DD
+                r'\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b'
+            ],
+            'currency': [
+                r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\b',  # $1,234.56
+                r'\b(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:dollars?|usd)\b'
+            ],
+            'number': [
+                r'\b(\d+(?:,\d{3})*(?:\.\d{2})?)\b'
+            ],
+            'email': [
+                r'\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b'
+            ],
+            'phone': [
+                r'\b(\(\d{3}\)\s*\d{3}-\d{4})\b',  # (123) 456-7890
+                r'\b(\d{3}[-.]?\d{3}[-.]?\d{4})\b'  # 123-456-7890 or 123.456.7890
+            ]
+        }
+        
+        # Category-specific extraction logic
+        if category in ['invoice', 'bill', 'receipt']:
+            extracted.update(self._extract_invoice_patterns(content, content_lower, patterns))
+        elif category == 'contract':
+            extracted.update(self._extract_contract_patterns(content, content_lower, patterns))
+        elif category == 'correspondence':
+            extracted.update(self._extract_correspondence_patterns(content, content_lower, patterns))
+        
+        # Generic extraction for any remaining fields
+        for field in data_points:
+            if field not in extracted:
+                extracted[field] = self._extract_generic_field(field, content, content_lower, patterns)
+        
+        return extracted
+    
+    def _extract_invoice_patterns(self, content: str, content_lower: str, patterns: dict) -> dict:
+        """Extract invoice-specific patterns"""
+        extracted = {}
+        
+        # Look for invoice number
+        invoice_patterns = [
+            r'invoice\s*#?\s*:?\s*([a-zA-Z0-9-]+)',
+            r'inv\s*#?\s*:?\s*([a-zA-Z0-9-]+)',
+            r'bill\s*#?\s*:?\s*([a-zA-Z0-9-]+)'
+        ]
+        for pattern in invoice_patterns:
+            match = __import__('re').search(pattern, content_lower)
+            if match:
+                extracted['invoice_number'] = match.group(1)
+                break
+        
+        # Look for total amount (usually largest currency value)
+        currency_matches = []
+        for pattern in patterns['currency']:
+            matches = __import__('re').findall(pattern, content, __import__('re').IGNORECASE)
+            currency_matches.extend([float(m.replace(',', '')) for m in matches if m])
+        
+        if currency_matches:
+            extracted['total_amount'] = f"${max(currency_matches):.2f}"
+        
+        # Look for dates
+        for pattern in patterns['date']:
+            match = __import__('re').search(pattern, content, __import__('re').IGNORECASE)
+            if match:
+                extracted['invoice_date'] = match.group(1)
+                break
+        
+        return extracted
+    
+    def _extract_contract_patterns(self, content: str, content_lower: str, patterns: dict) -> dict:
+        """Extract contract-specific patterns"""
+        extracted = {}
+        
+        # Look for party names (often after "between" or before "party")
+        party_patterns = [
+            r'between\s+([^,\n]+?)\s+and\s+([^,\n]+)',
+            r'party\s+1:?\s*([^,\n]+)',
+            r'party\s+2:?\s*([^,\n]+)'
+        ]
+        
+        for pattern in party_patterns:
+            match = __import__('re').search(pattern, content_lower)
+            if match and 'party_1_name' not in extracted:
+                if len(match.groups()) >= 2:
+                    extracted['party_1_name'] = match.group(1).strip()
+                    extracted['party_2_name'] = match.group(2).strip()
+                else:
+                    extracted['party_1_name'] = match.group(1).strip()
+                break
+        
+        # Look for effective date
+        effective_patterns = [
+            r'effective\s+(?:date:?\s*)?([^,\n]+)',
+            r'dated\s+([^,\n]+)'
+        ]
+        for pattern in effective_patterns:
+            match = __import__('re').search(pattern, content_lower)
+            if match:
+                extracted['effective_date'] = match.group(1).strip()
+                break
+        
+        return extracted
+    
+    def _extract_correspondence_patterns(self, content: str, content_lower: str, patterns: dict) -> dict:
+        """Extract correspondence-specific patterns"""
+        extracted = {}
+        
+        # Look for recipient (after "Dear")
+        dear_match = __import__('re').search(r'dear\s+([^,\n]+)', content_lower)
+        if dear_match:
+            extracted['recipient_name'] = dear_match.group(1).strip()
+        
+        # Look for sender (before "Sincerely" or "Regards")
+        signature_patterns = [
+            r'(?:sincerely|regards|best\s+regards),?\s*\n\s*([^,\n]+)',
+            r'(?:sincerely|regards|best\s+regards),?\s*([^,\n]+)'
+        ]
+        for pattern in signature_patterns:
+            match = __import__('re').search(pattern, content_lower)
+            if match:
+                extracted['sender_name'] = match.group(1).strip()
+                break
+        
+        return extracted
+    
+    def _extract_generic_field(self, field_name: str, content: str, content_lower: str, patterns: dict) -> str:
+        """Extract generic field using field name hints"""
+        
+        # Try to find field by name proximity
+        field_lower = field_name.lower().replace('_', ' ')
+        
+        # Look for "field_name: value" pattern
+        field_patterns = [
+            rf'{field_lower}\s*:?\s*([^\n,]+)',
+            rf'{field_name.replace("_", " ")}\s*:?\s*([^\n,]+)'
+        ]
+        
+        for pattern in field_patterns:
+            match = __import__('re').search(pattern, content_lower)
+            if match:
+                return match.group(1).strip()
+        
+        # Try type-specific patterns based on field name
+        if any(word in field_lower for word in ['date', 'when', 'time']):
+            for pattern in patterns['date']:
+                match = __import__('re').search(pattern, content)
+                if match:
+                    return match.group(1)
+        
+        elif any(word in field_lower for word in ['amount', 'total', 'cost', 'price']):
+            for pattern in patterns['currency']:
+                match = __import__('re').search(pattern, content)
+                if match:
+                    return f"${match.group(1)}"
+        
+        elif any(word in field_lower for word in ['email', 'mail']):
+            for pattern in patterns['email']:
+                match = __import__('re').search(pattern, content)
+                if match:
+                    return match.group(1)
+        
+        elif any(word in field_lower for word in ['phone', 'tel', 'number']):
+            for pattern in patterns['phone']:
+                match = __import__('re').search(pattern, content)
+                if match:
+                    return match.group(1)
+        
+        return ""  # Return empty string if no pattern found
 
 # Global enhanced service instance
 enhanced_docling_service = EnhancedDoclingService()
