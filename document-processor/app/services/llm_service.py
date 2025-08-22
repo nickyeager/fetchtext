@@ -26,7 +26,7 @@ class LLMService:
         
         try:
             if target_provider == AIProvider.OLLAMA:
-                return await self._ollama_complete(prompt, **kwargs)
+                return await self._ollama_complete_with_timeout(prompt, **kwargs)
             elif target_provider == AIProvider.AZURE_OPENAI:
                 return await azure_openai_service.complete(prompt, **kwargs)
             else:
@@ -36,6 +36,28 @@ class LLMService:
             logger.error(f"Error in LLM completion with {target_provider}: {str(e)}")
             raise
     
+    async def _ollama_complete_with_timeout(self, prompt: str, **kwargs) -> str:
+        """
+        Send completion request to Ollama with configurable timeout and fallback
+        """
+        import asyncio
+        
+        # Get timeout from kwargs, default to 10 seconds for smart templates
+        timeout_seconds = kwargs.get('timeout', 10.0)
+        
+        try:
+            # Run Ollama completion with timeout
+            return await asyncio.wait_for(
+                self._ollama_complete(prompt, **kwargs),
+                timeout=timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Ollama completion timed out after {timeout_seconds} seconds")
+            raise TimeoutError(f"LLM request timed out after {timeout_seconds} seconds")
+        except Exception as e:
+            logger.error(f"Error in Ollama completion: {str(e)}")
+            raise
+
     async def _ollama_complete(self, prompt: str, **kwargs) -> str:
         """
         Send completion request to Ollama

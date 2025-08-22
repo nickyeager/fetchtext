@@ -45,17 +45,31 @@ interface ProcessingAction {
   template_name?: string;
 }
 
-interface DocumentUploadPageProps {
-  onDocumentProcessed?: (result: any) => void;
+interface PreSelectedTemplate {
+  id: string;
+  type?: 'smart' | 'standard' | 'workflow';
+  name?: string;
 }
 
-export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPageProps) {
+interface DocumentUploadPageProps {
+  onDocumentProcessed?: (result: any) => void;
+  preSelectedTemplate?: PreSelectedTemplate;
+}
+
+export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }: DocumentUploadPageProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluation, setEvaluation] = useState<DocumentEvaluation | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Debug pre-selected template
+  useEffect(() => {
+    if (preSelectedTemplate) {
+      console.log('🎯 Pre-selected template loaded:', preSelectedTemplate);
+    }
+  }, [preSelectedTemplate]);
   
   const navigate = useNavigate();
   const { user, session } = useAuth();
@@ -72,7 +86,110 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
     });
   }, [user, session]);
 
+  // Define handleActionSelect first since it's used by handleFileSelect
+  const handleActionSelect = useCallback(async (action: ProcessingAction) => {
+    // For pre-selected templates, we don't need evaluation
+    if (!selectedFile || !documentId) return;
+    
+    // For regular flow, we need evaluation, but not for pre-selected templates
+    if (!evaluation && !preSelectedTemplate) return;
+
+    console.log('🎯 handleActionSelect called with:', action);
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      // Update document status to processing
+      await documentManager.updateDocumentStatus(documentId, {
+        status: 'processing' as any,
+        metadata: {
+          processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
+          template_id: action.template_id,
+          template_name: action.template_name,
+        },
+      });
+
+      let result;
+
+      switch (action.type) {
+        case 'use_template':
+          console.log('🔄 Processing with existing template:', action.template_id);
+          // Process with existing template
+          result = await documentProcessor.processWithExistingTemplate(
+            selectedFile,
+            action.template_id!
+          );
+          break;
+
+        case 'generate_template':
+          // Generate new template (only for regular evaluation flow)
+          if (!evaluation) {
+            throw new Error('Cannot generate template without evaluation data');
+          }
+          
+          console.log('🎨 Generating template for:', evaluation.type_evaluation.primary_type);
+          result = await documentProcessor.generateTemplate(
+            selectedFile,
+            `${evaluation.type_evaluation.primary_type} Template`,
+            evaluation.type_evaluation.primary_type
+          );
+          break;
+
+        case 'manual_selection':
+          // Navigate to template selection
+          navigate({ to: '/templates' });
+          return;
+      }
+
+      console.log('✅ Processing completed:', result);
+
+      // Finalize document with processing results
+      await documentManager.finalizeDocument(documentId, {
+        content_text: result?.content || '',
+        extracted_fields: result?.extractedFields || result?.extracted_fields,
+        processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
+        quality_metrics: result?.quality_metrics,
+      });
+
+      // Invalidate queries to refresh the documents list
+      await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
+
+      console.log('🧭 Navigating to document detail page:', documentId);
+
+      // For pre-selected template flow, always navigate directly to results
+      if (preSelectedTemplate) {
+        console.log('🎯 Pre-selected template flow: forcing navigation to results page');
+        navigate({ to: `/documents/${documentId}` });
+        return; // Exit early to prevent further processing
+      }
+
+      // Navigate to results page or call callback
+      if (onDocumentProcessed) {
+        onDocumentProcessed(result);
+      } else {
+        // Navigate to the document detail page to show the processed result
+        navigate({ to: `/documents/${documentId}` });
+      }
+
+    } catch (err) {
+      console.error('❌ Document processing failed:', err);
+      setError(err instanceof Error ? err.message : 'Document processing failed');
+      
+      // Mark document as failed
+      if (documentId) {
+        await documentManager.markDocumentFailed(
+          documentId, 
+          err instanceof Error ? err.message : 'Document processing failed'
+        );
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedFile, evaluation, navigate, onDocumentProcessed, documentId, documentManager, documentProcessor, queryClient, preSelectedTemplate]);
+
   const handleFileSelect = useCallback(async (file: File) => {
+    console.log('📁 handleFileSelect called with:', file.name, 'preSelectedTemplate:', preSelectedTemplate);
+    
     setSelectedFile(file);
     setError(null);
     setEvaluation(null);
@@ -80,6 +197,7 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
 
     // Verify user is authenticated before proceeding
     if (!user || !session) {
+      console.error('❌ Authentication failed');
       setError('Authentication required - please sign in to upload documents');
       setIsEvaluating(false);
       return;
@@ -97,6 +215,52 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
       const metadata = documentRecord.metadata as any;
       if (metadata?.storage_upload_failed) {
         console.warn('File storage failed, but document processing will continue:', metadata.storage_error);
+      }
+
+      // If we have a pre-selected template, skip evaluation and process directly
+      if (preSelectedTemplate) {
+        console.log('🎯 Using pre-selected template:', preSelectedTemplate);
+        setIsEvaluating(false); // Stop evaluating since we're processing directly
+        setIsProcessing(true);  // Start processing
+        
+        try {
+          // Step 2: Update status to processing with template info
+          await documentManager.updateDocumentStatus(documentRecord.id, {
+            status: 'processing' as any,
+            metadata: {
+              template_id: Number(preSelectedTemplate.id),
+              template_type: preSelectedTemplate.type || 'smart',
+              template_name: preSelectedTemplate.name,
+              processing_method: 'template_pre_selected',
+            },
+          });
+
+          console.log('🔄 Processing with template ID:', preSelectedTemplate.id);
+          
+          // Step 3: Process with the selected template
+          await handleActionSelect({
+            type: 'use_template',
+            template_id: Number(preSelectedTemplate.id),
+            template_name: preSelectedTemplate.name
+          });
+          
+          console.log('✅ Pre-selected template processing completed successfully');
+          return; // Exit early, processing is handled by handleActionSelect
+        } catch (error) {
+          console.error('❌ Error processing with pre-selected template:', error);
+          setError(error instanceof Error ? error.message : 'Processing failed with selected template');
+          setIsProcessing(false);
+          setIsEvaluating(false);
+          
+          // Even on error, try to navigate to the document if it was created
+          if (documentRecord && documentRecord.id) {
+            console.log('🔀 Error occurred but document exists, navigating to document page for troubleshooting');
+            setTimeout(() => {
+              navigate({ to: `/documents/${documentRecord.id}` });
+            }, 2000); // Give user time to see the error message
+          }
+          return;
+        }
       }
 
       // Step 2: Update status to analyzing
@@ -127,7 +291,7 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
       navigate({ to: `/documents/${documentRecord.id}` });
 
     } catch (err) {
-      console.error('Document evaluation failed:', err);
+      console.error('❌ Document evaluation failed:', err);
       setError(err instanceof Error ? err.message : 'Document evaluation failed');
       
       // Mark document as failed if we created it
@@ -139,134 +303,9 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
       }
     } finally {
       setIsEvaluating(false);
-    }
-  }, [documentProcessor, documentManager, documentId]);
-
-  const handleActionSelect = useCallback(async (action: ProcessingAction) => {
-    if (!selectedFile || !evaluation || !documentId) return;
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      // Update document status to processing
-      await documentManager.updateDocumentStatus(documentId, {
-        status: 'processing' as any,
-        metadata: {
-          processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
-          template_id: action.template_id,
-          template_name: action.template_name,
-        },
-      });
-
-      let result;
-
-      switch (action.type) {
-        case 'use_template':
-          // Process with existing template
-          result = await documentProcessor.processWithExistingTemplate(
-            selectedFile,
-            action.template_id!
-          );
-          break;
-
-        case 'generate_template':
-          // Generate new template
-          console.log('Generating template for:', evaluation.type_evaluation.primary_type);
-          result = await documentProcessor.generateTemplate(
-            selectedFile,
-            `${evaluation.type_evaluation.primary_type} Template`,
-            evaluation.type_evaluation.primary_type
-          );
-          console.log('Template generation result:', result);
-          
-          // Save the generated template to the database
-          if (result && result.template) {
-            try {
-              const { supabase } = await import('@/lib/supabase');
-              const { data: userResponse } = await supabase.auth.getUser();
-              const userId = userResponse.user?.id;
-              
-              if (userId && result.template.name && result.template.template_content) {
-                // Ensure smart_variables/variables are properly handled
-                const templateVariables = result.template.smart_variables || result.template.variables || [];
-                
-                console.log('Saving template with variables:', templateVariables);
-                
-                const { data: savedTemplate, error } = await supabase
-                  .from('templates')
-                  .insert([{
-                    name: result.template.name || `Generated Template ${Date.now()}`,
-                    description: result.template.description || 'AI-generated template',
-                    template_content: result.template.template_content,
-                    template_type: 'markdown',
-                    variables: templateVariables,
-                    extraction_rules: result.template.extraction_rules || [],
-                    generation_settings: result.template.generation_settings || {},
-                    category: result.template.category || 'other',
-                    tags: result.template.tags || [],
-                    is_public: false,
-                    created_by: userId,
-                    usage_count: 0,
-                    rating: 0
-                  }])
-                  .select()
-                  .single();
-                  
-                if (error) {
-                  console.error('Failed to save generated template:', error);
-                } else {
-                  console.log('Generated template saved:', savedTemplate);
-                  // Update result with the saved template ID
-                  result.template.id = savedTemplate.id;
-                }
-              }
-            } catch (err) {
-              console.error('Error saving template:', err);
-            }
-          }
-          break;
-
-        case 'manual_selection':
-          // Navigate to template selection
-          navigate({ to: '/templates' });
-          return;
-      }
-
-      // Finalize document with processing results
-      await documentManager.finalizeDocument(documentId, {
-        content_text: result?.content || '',
-        extracted_fields: result?.extractedFields || result?.extracted_fields,
-        processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
-        quality_metrics: result?.quality_metrics,
-      });
-
-      // Invalidate queries to refresh the documents list
-      await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
-
-      // Navigate to results page or call callback
-      if (onDocumentProcessed) {
-        onDocumentProcessed(result);
-      } else {
-        // Navigate to the document detail page to show the processed result
-        navigate({ to: `/documents/${documentId}` });
-      }
-
-    } catch (err) {
-      console.error('Document processing failed:', err);
-      setError(err instanceof Error ? err.message : 'Document processing failed');
-      
-      // Mark document as failed
-      if (documentId) {
-        await documentManager.markDocumentFailed(
-          documentId, 
-          err instanceof Error ? err.message : 'Document processing failed'
-        );
-      }
-    } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, evaluation, navigate, onDocumentProcessed, documentId, documentManager]);
+  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate]);
 
   const resetUpload = useCallback(() => {
     setSelectedFile(null);
@@ -315,6 +354,34 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
           <Sparkles className="h-8 w-8 text-purple-600" />
         </div>
       </div>
+
+      {/* Pre-selected Template Notification */}
+      {preSelectedTemplate && (
+        <Alert>
+          <Zap className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <div>
+              <strong>Template Selected:</strong> {preSelectedTemplate.name || `Template ${preSelectedTemplate.id}`}
+              <span className="ml-2">
+                <Badge variant="outline" className="text-xs">
+                  {preSelectedTemplate.type || 'smart'} template
+                </Badge>
+              </span>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => {
+                // Clear the search params by navigating to upload without params
+                navigate({ to: '/documents/upload' });
+              }}
+              className="text-xs"
+            >
+              Clear Selection
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Authentication Status */}
       {!user && (
@@ -524,17 +591,51 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
             <div className="flex items-center justify-center space-x-3">
               <Zap className="w-6 h-6 text-blue-500 animate-pulse" />
               <div className="text-center">
-                <p className="text-lg font-medium text-gray-900 dark:text-white">Processing Document with AI</p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Using advanced AI models for document analysis. This typically takes 60-90 seconds...
-                </p>
-                <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>⚡ AI-powered extraction</span>
-                  <span>•</span>
-                  <span>🤖 LLM processing</span>
-                  <span>•</span>
-                  <span>⏱️ Please wait</span>
-                </div>
+                {preSelectedTemplate ? (
+                  <>
+                    <p className="text-lg font-medium text-gray-900 dark:text-white">Processing with {preSelectedTemplate.name}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Extracting data using the pre-selected template. This should be faster since we're skipping document type analysis...
+                    </p>
+                    <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span>⚡ Template processing</span>
+                      <span>•</span>
+                      <span>🎯 {preSelectedTemplate.name}</span>
+                      <span>•</span>
+                      <span>⏱️ Redirecting to results</span>
+                    </div>
+                    {/* Manual navigation button as backup */}
+                    <div className="mt-4">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          if (documentId) {
+                            console.log('🖱️ Manual navigation clicked for document:', documentId);
+                            navigate({ to: `/documents/${documentId}` });
+                          }
+                        }}
+                        disabled={!documentId}
+                      >
+                        {documentId ? 'View Document Results' : 'Processing...'}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium text-gray-900 dark:text-white">Processing Document with AI</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Using advanced AI models for document analysis. This typically takes 60-90 seconds...
+                    </p>
+                    <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+                      <span>⚡ AI-powered extraction</span>
+                      <span>•</span>
+                      <span>🤖 LLM processing</span>
+                      <span>•</span>
+                      <span>⏱️ Please wait</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </CardContent>
@@ -543,18 +644,37 @@ export function DocumentUploadPage({ onDocumentProcessed }: DocumentUploadPagePr
 
       {/* Help Text */}
       {!selectedFile && !isEvaluating && (
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
+        <Card className={preSelectedTemplate 
+          ? "bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800"
+          : "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800"
+        }>
           <CardContent className="p-6">
             <div className="text-center">
-              <Sparkles className="w-8 h-8 text-blue-500 mx-auto mb-3" />
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
-                Smart Document Processing
-              </h3>
-              <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-w-2xl mx-auto">
-                <p>• <strong>Automatic Detection:</strong> AI identifies document type (invoices, contracts, reports, etc.)</p>
-                <p>• <strong>Template Matching:</strong> Suggests the best templates based on document content</p>
-                <p>• <strong>Intelligent Processing:</strong> Chooses optimal extraction method for your document</p>
-              </div>
+              {preSelectedTemplate ? (
+                <>
+                  <Zap className="w-8 h-8 text-green-500 mx-auto mb-3" />
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                    Ready to Process with Selected Template
+                  </h3>
+                  <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-w-2xl mx-auto">
+                    <p>• <strong>Template Selected:</strong> {preSelectedTemplate.name || `Template ${preSelectedTemplate.id}`}</p>
+                    <p>• <strong>Direct Processing:</strong> Your document will be processed immediately using this template</p>
+                    <p>• <strong>Fast Results:</strong> No evaluation needed - we'll extract data based on the template fields</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-8 h-8 text-blue-500 mx-auto mb-3" />
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                    Smart Document Processing
+                  </h3>
+                  <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-w-2xl mx-auto">
+                    <p>• <strong>Automatic Detection:</strong> AI identifies document type (invoices, contracts, reports, etc.)</p>
+                    <p>• <strong>Template Matching:</strong> Suggests the best templates based on document content</p>
+                    <p>• <strong>Intelligent Processing:</strong> Chooses optimal extraction method for your document</p>
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

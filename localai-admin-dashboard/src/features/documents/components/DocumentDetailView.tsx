@@ -29,7 +29,15 @@ import {
   Zap,
   AlertTriangle,
   Loader2,
-  CheckCircle
+  CheckCircle,
+  BarChart3,
+  Clock,
+  Layers,
+  Target,
+  Database,
+  TrendingUp,
+  ExternalLink,
+  Edit
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,6 +51,9 @@ import { ProcessedDocumentsService, ProcessedDocument } from '../services/proces
 import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { useDocumentManager } from '@/hooks/use-document-manager';
 import { WysiwygEditor } from './WysiwygEditor';
+import { MarkdownViewer } from './MarkdownViewer';
+import { masterTemplateService } from '@/services/master-template-service';
+import { UnifiedDocumentService } from '@/services/unified-document-service';
 
 interface DocumentDetailViewProps {
   documentId: string;
@@ -111,6 +122,27 @@ export function DocumentDetailView({
   const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
 
+  // Debug check on mount
+  useEffect(() => {
+    if (documentId) {
+      ProcessedDocumentsService.debugCheckDocument(documentId).then(result => {
+        console.log('📄 Document debug check for ID', documentId, ':', result);
+      });
+      
+      // Also list recent documents to help debug
+      ProcessedDocumentsService.getProcessedDocuments().then(docs => {
+        console.log('📄 Recent documents:', docs.slice(0, 5).map(d => ({ 
+          id: d.id, 
+          name: d.name, 
+          status: d.processing_status || d.status,
+          created: d.created_at 
+        })));
+      }).catch(err => {
+        console.error('📄 Error listing documents:', err);
+      });
+    }
+  }, [documentId]);
+
   // Fetch document data with real-time updates
   const { 
     data: document, 
@@ -134,26 +166,46 @@ export function DocumentDetailView({
   // Load evaluation data from document metadata if available
   useEffect(() => {
     const status = document?.processing_status || document?.status;
-    if (status === 'analyzing' && !evaluation && document.metadata) {
+    console.log('🔍 DocumentDetailView: Document status check:', {
+      documentId,
+      status,
+      hasEvaluation: !!evaluation,
+      hasMetadata: !!document?.metadata,
+      metadataKeys: document?.metadata ? Object.keys(document.metadata) : []
+    });
+    
+    if ((status === 'analyzing' || status === 'processing') && !evaluation && document?.metadata) {
       const metadata = document.metadata as Record<string, unknown>;
-      if (metadata.template_suggestions && metadata.ai_classification) {
+      console.log('📊 DocumentDetailView: Checking metadata for evaluation reconstruction:', metadata);
+      
+      // Check if we have either template suggestions OR ai classification data (more flexible)
+      if (metadata.template_suggestions || metadata.ai_classification || metadata.document_type) {
         // Reconstruct evaluation from metadata
         setEvaluation({
-          type_evaluation: {
-            primary_type: metadata.ai_classification.primary_category,
-            confidence: metadata.ai_classification.confidence_score,
-            detection_method: metadata.ai_classification.detection_method,
+          document_info: {
+            filename: document.name,
+            file_size: document.file_size,
+            mime_type: document.file_type,
+            format_supported: true,
           },
-          template_suggestions: metadata.template_suggestions,
-          processing_recommendations: {
-            workflow: metadata.template_suggestions.length > 0 ? 'existing_template' : 'generate_template',
-            suggested_action: metadata.template_suggestions.length > 0 
-              ? `Use the "${metadata.template_suggestions[0].template_name}" template for best results`
+          type_evaluation: {
+            primary_type: (metadata.ai_classification as any)?.primary_category || metadata.document_type || 'document',
+            confidence: (metadata.ai_classification as any)?.confidence_score || metadata.type_confidence || 0.8,
+            detection_method: (metadata.ai_classification as any)?.detection_method || 'automatic',
+          },
+          template_suggestions: (metadata.template_suggestions as any[]) || [],
+          processing_recommendations: metadata.processing_recommendations || {
+            workflow: (metadata.template_suggestions as any[])?.length > 0 ? 'existing_template' : 'generate_template',
+            suggested_action: (metadata.template_suggestions as any[])?.length > 0 
+              ? `Use the "${(metadata.template_suggestions as any[])[0].template_name}" template for best results`
               : 'Generate a new AI-powered template for this document type',
             alternative_actions: ['Generate a new template', 'Browse all templates'],
-            confidence_level: metadata.ai_classification.confidence_score > 0.8 ? 'high' : 'medium',
+            confidence_level: ((metadata.ai_classification as any)?.confidence_score || 0) > 0.8 ? 'high' : 'medium',
           },
         });
+        console.log('✅ DocumentDetailView: Evaluation reconstructed from metadata');
+      } else {
+        console.log('⚠️ DocumentDetailView: No sufficient metadata for evaluation reconstruction');
       }
     }
   }, [document?.processing_status, document?.status, document?.metadata, evaluation]);
@@ -162,16 +214,22 @@ export function DocumentDetailView({
   const documentContent: DocumentContent = useMemo(() => {
     if (!document) return { original: { text: '' }, processed: { text: '' } };
 
-
     // Try different sources for original and processed text
     const originalText = document.metadata?.original_content || 
                         document.metadata?.original_text || 
                         document.content_text || '';
     
-    const processedText = document.metadata?.processed_content || 
-                         document.metadata?.extracted_content ||
-                         document.metadata?.processed_text ||
-                         document.content_text || '';
+    // For processed text, try to generate formatted template output if we have extracted data
+    let processedText = document.metadata?.processed_content || 
+                       document.metadata?.extracted_content ||
+                       document.metadata?.processed_text ||
+                       document.content_text || '';
+    
+    // Get extracted data from various sources
+    const extractedData = document.extracted_fields || 
+                         document.metadata?.extracted_fields ||
+                         document.metadata?.extraction_result?.extracted_values || 
+                         {};
     
     return {
       original: {
@@ -182,7 +240,7 @@ export function DocumentDetailView({
       processed: {
         text: processedText,
         html: document.metadata?.processed_html || document.metadata?.extracted_html,
-        extracted_data: document.extracted_fields || document.metadata?.extracted_fields,
+        extracted_data: extractedData,
         template_applied: document.template_name || document.template_id?.toString()
       }
     };
@@ -194,6 +252,99 @@ export function DocumentDetailView({
       setEditedContent(documentContent.processed.html || documentContent.processed.text);
     }
   }, [documentContent, editedContent]);
+
+  // Navigate to correct template edit page based on template type
+  const navigateToTemplateEdit = async (templateId: number, editMode = true) => {
+    try {
+      // Get all templates to find the correct one and determine its type
+      const templates = await masterTemplateService.getTemplates();
+      const template = templates.find(t => t.id === templateId || t.id?.toString() === templateId?.toString());
+      
+      if (!template) {
+        console.error('Template not found:', templateId);
+        return;
+      }
+
+      // Navigate based on template type
+      if (template.type === 'smart') {
+        navigate({ 
+          to: '/templates/smart/$templateId/edit', 
+          params: { templateId: templateId.toString() }
+        });
+      } else if (template.type === 'workflow') {
+        // Navigate to workflow template edit when we have that route
+        navigate({ 
+          to: '/templates/$templateId', 
+          params: { templateId: templateId.toString() },
+          search: editMode ? { mode: 'edit' } : undefined
+        });
+      } else {
+        // Standard template
+        navigate({ 
+          to: '/templates/$templateId', 
+          params: { templateId: templateId.toString() },
+          search: editMode ? { mode: 'edit' } : undefined
+        });
+      }
+    } catch (error) {
+      console.error('Error navigating to template edit:', error);
+      // Fallback to standard template route
+      navigate({ 
+        to: '/templates/$templateId', 
+        params: { templateId: templateId.toString() },
+        search: editMode ? { mode: 'edit' } : undefined
+      });
+    }
+  };
+
+  // Generate formatted template output from extracted data
+  const generateFormattedOutput = async () => {
+    const extractedData = documentContent.processed.extracted_data;
+    const templateId = document?.template_id;
+    
+    if (!extractedData || !templateId || Object.keys(extractedData).length === 0) {
+      return documentContent.processed.text;
+    }
+
+    try {
+      // Get the template used for processing
+      const templates = await masterTemplateService.getTemplates();
+      const templateItem = templates.find(t => t.id === templateId || t.id?.toString() === templateId?.toString());
+      
+      if (!templateItem) {
+        return documentContent.processed.text;
+      }
+
+      // Get the full template with content
+      const template = await masterTemplateService.getTemplate(templateItem.id, templateItem.type);
+
+      // Replace template variables with extracted values
+      let formattedContent = template.template_content || (template as any).content || '';
+      
+      Object.entries(extractedData).forEach(([key, value]) => {
+        const placeholder = `{{${key}}}`;
+        const displayValue = typeof value === 'object' && value !== null && 'value' in value 
+          ? String((value as any).value || '') 
+          : String(value || '');
+        formattedContent = formattedContent.replace(new RegExp(placeholder, 'g'), displayValue);
+      });
+
+      return formattedContent;
+    } catch (error) {
+      console.error('Error generating formatted output:', error);
+      return documentContent.processed.text;
+    }
+  };
+
+  // State for formatted template output
+  const [formattedOutput, setFormattedOutput] = React.useState<string | null>(null);
+
+  // Generate formatted output when document changes
+  useEffect(() => {
+    if (document?.template_id && documentContent.processed.extracted_data) {
+      generateFormattedOutput().then(setFormattedOutput);
+    }
+  }, [document?.template_id, documentContent.processed.extracted_data]);
 
   // Helper function to get file for processing
   const getDocumentFile = async (): Promise<File> => {
@@ -354,6 +505,26 @@ export function DocumentDetailView({
     }
   };
 
+  const handleForceRetry = async () => {
+    if (!document) return;
+    
+    setIsProcessing(true);
+    setProcessingError(null);
+    
+    try {
+      console.log('🔄 Forcing retry for stuck document:', documentId);
+      await UnifiedDocumentService.forceRetryAnalysis(documentId);
+      
+      // Refresh the document data
+      refetch();
+    } catch (error) {
+      console.error('❌ Force retry failed:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to force retry');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
@@ -408,13 +579,41 @@ export function DocumentDetailView({
     );
   }
 
-  if (error || !document) {
+  if (error) {
+    console.error('Document fetch error:', error);
     return (
       <div className="container mx-auto p-6">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>Document not found</AlertDescription>
+          <AlertDescription>
+            {error instanceof Error && error.message.includes('User not authenticated') 
+              ? 'Please sign in to view this document'
+              : error instanceof Error && error.message.includes('Failed to fetch')
+              ? 'Failed to load document. Please try again.'
+              : 'Error loading document'}
+          </AlertDescription>
         </Alert>
+        <Button onClick={onBack} className="mt-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Documents
+        </Button>
+      </div>
+    );
+  }
+
+  if (!document) {
+    return (
+      <div className="container mx-auto p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Document not found. This document may have been deleted or you may not have permission to view it.
+          </AlertDescription>
+        </Alert>
+        <Button onClick={onBack} className="mt-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Documents
+        </Button>
       </div>
     );
   }
@@ -449,12 +648,27 @@ export function DocumentDetailView({
               </div>
             </div>
           </div>
-          {onDownload && (
-            <Button onClick={() => onDownload('json')} variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Rerun Analysis Button - show for analyzed or completed documents */}
+            {(currentStatus === 'analyzing' || currentStatus === 'processing' || currentStatus === 'completed') && (
+              <Button 
+                onClick={handleRerunExtraction} 
+                variant="outline"
+                disabled={isProcessing}
+                size="sm"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isProcessing ? 'animate-spin' : ''}`} />
+                {isProcessing ? 'Reprocessing...' : 'Rerun Analysis'}
+              </Button>
+            )}
+            
+            {onDownload && (
+              <Button onClick={() => onDownload('json')} variant="outline">
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Error Alert */}
@@ -478,6 +692,53 @@ export function DocumentDetailView({
                   </div>
                 </div>
                 <Progress value={33} className="h-2" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentStatus === 'analyzing' && !evaluation && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+                AI Analysis in Progress
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                      Analyzing Document
+                    </h4>
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      Our AI is analyzing your document to determine its type and suggest the best processing options. This usually takes 10-30 seconds.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center space-y-4">
+                  <div className="flex justify-center space-x-1">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Please wait while we process your document...
+                  </p>
+                  <Button
+                    onClick={handleForceRetry}
+                    variant="outline"
+                    size="sm"
+                    disabled={isProcessing}
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isProcessing ? 'animate-spin' : ''}`} />
+                    {isProcessing ? 'Retrying...' : 'Force Retry'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -598,6 +859,65 @@ export function DocumentDetailView({
           </Card>
         )}
 
+        {(currentStatus === 'pending' || currentStatus === 'uploaded') && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-primary">Document Ready for Processing</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRerunExtraction()}
+                  disabled={isProcessing}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Start Smart Extraction
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <Alert>
+                <Sparkles className="h-4 w-4" />
+                <AlertDescription>
+                  This document has been uploaded but processing hasn't started yet. Current status: <strong>{currentStatus}</strong>
+                  <br />
+                  Click "Start Smart Extraction" to begin AI analysis and content extraction.
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Catch-all for other unhandled statuses */}
+        {!['completed', 'processing', 'analyzing', 'failed', 'pending', 'uploaded'].includes(currentStatus) && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-gray-600">Unknown Status: {currentStatus}</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRerunExtraction()}
+                  disabled={isProcessing}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Start Processing
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  Document status: <strong>{currentStatus}</strong>
+                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  This status is not recognized. Try starting processing to move the document forward.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {currentStatus === 'failed' && (
           <Card>
             <CardHeader>
@@ -658,11 +978,10 @@ export function DocumentDetailView({
           </div>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-64 sm:h-96 w-full border rounded-md p-4">
-            <pre className="whitespace-pre-wrap text-sm font-mono">
-              {documentContent.original.text}
-            </pre>
-          </ScrollArea>
+          <MarkdownViewer
+            content={documentContent.original.text}
+            height="h-64 sm:h-96"
+          />
         </CardContent>
       </Card>
 
@@ -680,6 +999,17 @@ export function DocumentDetailView({
                 <Badge variant="secondary">
                   Template: {documentContent.processed.template_applied}
                 </Badge>
+              )}
+              {document.template_id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigateToTemplateEdit(document.template_id)}
+                  className="text-xs"
+                >
+                  <Edit className="w-4 h-4 mr-1" />
+                  Edit Template
+                </Button>
               )}
               <Button
                 variant="outline"
@@ -711,15 +1041,10 @@ export function DocumentDetailView({
               />
             </div>
           ) : (
-            <ScrollArea className="h-64 sm:h-96 w-full border rounded-md p-4">
-              <div 
-                className="prose max-w-none text-sm"
-                dangerouslySetInnerHTML={{ 
-                  __html: documentContent.processed.html || 
-                          documentContent.processed.text.replace(/\n/g, '<br>') 
-                }}
-              />
-            </ScrollArea>
+            <MarkdownViewer
+              content={formattedOutput || documentContent.processed.text}
+              height="h-64 sm:h-96"
+            />
           )}
         </CardContent>
       </Card>
@@ -757,11 +1082,10 @@ export function DocumentDetailView({
             </div>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-64 sm:h-96 w-full border rounded-md p-4">
-              <pre className="whitespace-pre-wrap text-sm font-mono">
-                {documentContent.original.text}
-              </pre>
-            </ScrollArea>
+            <MarkdownViewer
+              content={documentContent.original.text}
+              height="h-64 sm:h-96"
+            />
           </CardContent>
         </Card>
       </TabsContent>
@@ -776,6 +1100,17 @@ export function DocumentDetailView({
                 {editMode && <Badge className="ml-2">Editing</Badge>}
               </CardTitle>
               <div className="flex items-center space-x-2">
+                {document.template_id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigateToTemplateEdit(document.template_id, false)}
+                    className="text-xs"
+                  >
+                    <Edit className="w-4 h-4 mr-1" />
+                    Edit Template
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -806,15 +1141,10 @@ export function DocumentDetailView({
                 />
               </div>
             ) : (
-              <ScrollArea className="h-64 sm:h-96 w-full border rounded-md p-4">
-                <div 
-                  className="prose max-w-none text-sm"
-                  dangerouslySetInnerHTML={{ 
-                    __html: documentContent.processed.html || 
-                            documentContent.processed.text.replace(/\n/g, '<br>') 
-                  }}
-                />
-              </ScrollArea>
+              <MarkdownViewer
+                content={formattedOutput || documentContent.processed.text}
+                height="h-64 sm:h-96"
+              />
             )}
           </CardContent>
         </Card>
@@ -922,22 +1252,182 @@ export function DocumentDetailView({
         {viewMode === 'side-by-side' ? renderSideBySideView() : renderTabsView()}
       </div>
 
+      {/* Processing Statistics and Insights */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2" />
+            Processing Statistics & Insights
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Processing Time */}
+            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Processing Time</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                    {document.processing_time ? `${(document.processing_time).toFixed(2)}s` : '~0.2s'}
+                  </p>
+                </div>
+                <Clock className="w-8 h-8 text-blue-500" />
+              </div>
+            </div>
+
+            {/* Document Size */}
+            <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">File Size</p>
+                  <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                    {document.size ? `${(document.size / 1024).toFixed(1)}KB` : 'N/A'}
+                  </p>
+                </div>
+                <Database className="w-8 h-8 text-green-500" />
+              </div>
+            </div>
+
+            {/* Content Chunks */}
+            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Content Chunks</p>
+                  <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                    {document.chunk_count || document.chunks?.length || 'N/A'}
+                  </p>
+                </div>
+                <Layers className="w-8 h-8 text-purple-500" />
+              </div>
+            </div>
+
+            {/* Processing Method */}
+            <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-orange-800 dark:text-orange-200">Method Used</p>
+                  <p className="text-lg font-bold text-orange-900 dark:text-orange-100">
+                    {document.processing_method === 'real_docling' ? 'Enhanced' : 
+                     document.processing_method === 'mock' ? 'Basic' : 
+                     'Standard'}
+                  </p>
+                </div>
+                <Target className="w-8 h-8 text-orange-500" />
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Processing Insights */}
+          {(document.chunking_stats || document.processing_details) && (
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold flex items-center">
+                <TrendingUp className="w-5 h-5 mr-2" />
+                Processing Details
+              </h4>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Chunking Statistics */}
+                {document.chunking_stats && (
+                  <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <h5 className="font-medium mb-3">Chunking Analysis</h5>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Average words per chunk:</span>
+                        <span className="font-mono">{document.chunking_stats.avg_words_per_chunk?.toFixed(0) || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Chunk size range:</span>
+                        <span className="font-mono">
+                          {document.chunking_stats.min_words_per_chunk || 0}-{document.chunking_stats.max_words_per_chunk || 0} words
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total words processed:</span>
+                        <span className="font-mono">{document.chunking_stats.total_words?.toLocaleString() || 'N/A'}</span>
+                      </div>
+                      {document.chunking_stats.chunking_methods && (
+                        <div className="pt-2">
+                          <span className="text-xs text-gray-600 dark:text-gray-400">Chunking methods used:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {Object.entries(document.chunking_stats.chunking_methods).map(([method, count]) => (
+                              <Badge key={method} variant="outline" className="text-xs">
+                                {method}: {count}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vector Indexing Status */}
+                <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <h5 className="font-medium mb-3">Vector Indexing</h5>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>Status:</span>
+                      <Badge variant={document.vector_indexed ? "default" : "secondary"}>
+                        {document.vector_indexed ? 'Indexed' : 'Not Indexed'}
+                      </Badge>
+                    </div>
+                    {document.embedding_model && (
+                      <div className="flex justify-between">
+                        <span>Embedding model:</span>
+                        <span className="font-mono text-xs">{document.embedding_model}</span>
+                      </div>
+                    )}
+                    {document.vector_indexing_result && (
+                      <div className="flex justify-between">
+                        <span>Indexed chunks:</span>
+                        <span className="font-mono">{document.vector_indexing_result.indexed_chunks || 0}</span>
+                      </div>
+                    )}
+                    <div className="pt-2">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        {document.vector_indexed 
+                          ? 'Document is searchable via semantic search' 
+                          : 'Enable vector indexing for semantic search capabilities'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Enhanced Extracted Fields Display */}
       <Card className="mt-6">
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <CardTitle className="text-lg">Extracted Fields</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleRerunExtraction()}
-              disabled={isProcessing}
-              className="self-start sm:self-auto"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Rerun Smart Extraction</span>
-              <span className="sm:hidden">Rerun Extraction</span>
-            </Button>
+            <div className="flex gap-2">
+              {document.template_id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigateToTemplateEdit(document.template_id)}
+                  className="self-start sm:self-auto"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Edit Template & Fields</span>
+                  <span className="sm:hidden">Edit Template</span>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRerunExtraction()}
+                disabled={isProcessing}
+                className="self-start sm:self-auto"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Rerun Smart Extraction</span>
+                <span className="sm:hidden">Rerun Extraction</span>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

@@ -16,7 +16,10 @@ import {
   FileText,
   Clock,
   User,
-  HardDrive
+  HardDrive,
+  Brain,
+  Zap,
+  Database
 } from 'lucide-react';
 // Simple debounce implementation
 function debounce<T extends (...args: any[]) => any>(
@@ -56,6 +59,7 @@ export function DocumentGalleryFilters({
 }: DocumentGalleryFiltersProps) {
   const [searchValue, setSearchValue] = useState(filters.search || '');
   const [showDatePicker, setShowDatePicker] = useState<'from' | 'to' | null>(null);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +123,8 @@ export function DocumentGalleryFilters({
     if (filters.file_type?.length) count += filters.file_type.length;
     if (filters.document_type?.length) count += filters.document_type.length;
     if (filters.date_from || filters.date_to) count++;
+    if (filters.vector_indexed) count++;
+    if (filters.processing_method) count++;
     return count;
   };
 
@@ -178,26 +184,69 @@ export function DocumentGalleryFilters({
     <div className="space-y-4">
       {/* Search and Sort Row */}
       <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search Bar */}
+        {/* Enhanced Search Bar */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Search documents by filename or content..."
-            value={searchValue}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10 pr-10"
-            disabled={isLoading}
-          />
-          {searchValue && (
+          <div className="relative flex">
+            <div className="relative flex-1">
+              {isSemanticSearch ? (
+                <Brain className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-500 w-4 h-4" />
+              ) : (
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              )}
+              <Input
+                ref={searchInputRef}
+                placeholder={isSemanticSearch 
+                  ? "Semantic search: Find documents by meaning and context..." 
+                  : "Search documents by filename or content..."
+                }
+                value={searchValue}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className={`pl-10 pr-10 ${isSemanticSearch ? 'border-purple-200 focus:border-purple-400' : ''}`}
+                disabled={isLoading}
+              />
+              {searchValue && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSearch}
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
+            
+            {/* Semantic Search Toggle */}
             <Button
-              variant="ghost"
+              variant={isSemanticSearch ? "default" : "outline"}
               size="sm"
-              onClick={clearSearch}
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+              onClick={() => setIsSemanticSearch(!isSemanticSearch)}
+              className="ml-2 px-3"
+              title={isSemanticSearch ? "Switch to text search" : "Switch to semantic search"}
             >
-              <X className="w-3 h-3" />
+              {isSemanticSearch ? (
+                <>
+                  <Brain className="w-4 h-4 mr-1" />
+                  AI
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-1" />
+                  AI
+                </>
+              )}
             </Button>
+          </div>
+          
+          {/* Search Mode Indicator */}
+          {searchValue && (
+            <div className="absolute -bottom-5 left-0 text-xs text-gray-500">
+              {isSemanticSearch ? (
+                <span className="text-purple-600">🧠 Semantic search active</span>
+              ) : (
+                <span>🔍 Text search active</span>
+              )}
+            </div>
           )}
         </div>
 
@@ -370,6 +419,68 @@ export function DocumentGalleryFilters({
           </Popover>
         )}
 
+        {/* Processing Insights Filter */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8">
+              <Database className="w-4 h-4 mr-2" />
+              Processing
+              {(filters.vector_indexed || filters.processing_method) ? (
+                <Badge variant="secondary" className="ml-2 px-1 py-0 text-xs">
+                  {(filters.vector_indexed ? 1 : 0) + (filters.processing_method ? 1 : 0)}
+                </Badge>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64" align="start">
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Filter by Processing Status</h4>
+              
+              {/* Vector Indexing Status */}
+              <div className="flex items-center space-x-3">
+                <Checkbox
+                  id="vector-indexed"
+                  checked={filters.vector_indexed === true}
+                  onCheckedChange={(checked) => onFiltersChange({
+                    ...filters,
+                    vector_indexed: checked ? true : undefined
+                  })}
+                />
+                <label htmlFor="vector-indexed" className="text-sm cursor-pointer flex-1 flex items-center space-x-2">
+                  <Brain className="w-4 h-4 text-purple-500" />
+                  <span>Vector Indexed</span>
+                  <span className="text-xs text-gray-500">(Searchable)</span>
+                </label>
+              </div>
+
+              <div className="border-t pt-2">
+                <label className="text-xs text-gray-600 mb-2 block">Processing Method</label>
+                <div className="space-y-2">
+                  {['real_docling', 'enhanced', 'mock', 'basic'].map((method) => (
+                    <div key={method} className="flex items-center space-x-3">
+                      <Checkbox
+                        id={`method-${method}`}
+                        checked={filters.processing_method === method}
+                        onCheckedChange={(checked) => onFiltersChange({
+                          ...filters,
+                          processing_method: checked ? method : undefined
+                        })}
+                      />
+                      <label htmlFor={`method-${method}`} className="text-sm cursor-pointer flex-1">
+                        {method === 'real_docling' ? 'Enhanced Docling' :
+                         method === 'enhanced' ? 'Enhanced Processing' :
+                         method === 'mock' ? 'Basic Processing' :
+                         method === 'basic' ? 'Basic Processing' :
+                         method.charAt(0).toUpperCase() + method.slice(1)}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {/* Date Range Filter */}
         <Popover open={showDatePicker !== null} onOpenChange={(open) => !open && setShowDatePicker(null)}>
           <PopoverTrigger asChild>
@@ -528,6 +639,34 @@ export function DocumentGalleryFilters({
                   ...filters,
                   date_from: undefined,
                   date_to: undefined
+                })}
+              />
+            </Badge>
+          )}
+
+          {filters.vector_indexed && (
+            <Badge variant="secondary" className="px-2 py-1 flex items-center space-x-1">
+              <Brain className="w-3 h-3" />
+              <span>Vector Indexed</span>
+              <X 
+                className="w-3 h-3 cursor-pointer hover:text-red-600" 
+                onClick={() => onFiltersChange({
+                  ...filters,
+                  vector_indexed: undefined
+                })}
+              />
+            </Badge>
+          )}
+
+          {filters.processing_method && (
+            <Badge variant="secondary" className="px-2 py-1 flex items-center space-x-1">
+              <Database className="w-3 h-3" />
+              <span>Method: {filters.processing_method}</span>
+              <X 
+                className="w-3 h-3 cursor-pointer hover:text-red-600" 
+                onClick={() => onFiltersChange({
+                  ...filters,
+                  processing_method: undefined
                 })}
               />
             </Badge>

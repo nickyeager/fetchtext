@@ -78,7 +78,7 @@ function DocumentDetailPage() {
    * Handle navigation back to documents list
    */
   const handleBack = () => {
-    navigate({ to: '/documents' });
+    navigate({ to: '/documents/gallery' });
   };
 
   /**

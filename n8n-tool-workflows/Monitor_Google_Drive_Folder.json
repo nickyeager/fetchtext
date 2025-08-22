@@ -1,0 +1,386 @@
+{
+  "name": "Monitor Google Drive Folder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Check Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "list",
+        "queryString": "mimeType='application/vnd.google-apps.document' and '{{ $json.folder_id }}' in parents and modifiedTime > '{{ $json.last_sync_time }}'",
+        "fields": [
+          "files(id, name, mimeType, modifiedTime, createdTime, owners, permissions, size, webViewLink)"
+        ],
+        "options": {
+          "pageSize": 100
+        }
+      },
+      "id": "list-google-docs",
+      "name": "List Modified Google Docs",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "google-drive-oauth",
+          "name": "Google Drive Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.files.length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-new-files",
+      "name": "Check If Files Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "files",
+        "options": {}
+      },
+      "id": "split-files",
+      "name": "Split Files",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/load-google-doc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "document_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "export_format",
+              "value": "text/plain"
+            },
+            {
+              "name": "process_immediately",
+              "value": "={{ true }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ { name: $json.name, modifiedTime: $json.modifiedTime, createdTime: $json.createdTime, source: 'folder_sync' } }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "process-each-document",
+      "name": "Process Each Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sync-summary",
+              "name": "sync_summary",
+              "value": "={{ { processed_count: $items().length, last_sync: $now.toISOString(), folder_id: $('Get Sync Settings').item.json.folder_id, documents: $items().map(item => ({ id: item.json.document_id, name: item.json.name, status: item.json.success ? 'processed' : 'failed' })) } }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-sync-summary",
+      "name": "Prepare Sync Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "folder_sync_status",
+        "updateKey": "folder_id",
+        "columns": "folder_id,last_sync_time,documents_processed,status",
+        "options": {}
+      },
+      "id": "update-sync-status",
+      "name": "Update Sync Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1780, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-creds",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT folder_id, last_sync_time, sync_enabled FROM folder_sync_settings WHERE sync_enabled = true",
+        "options": {}
+      },
+      "id": "get-sync-settings",
+      "name": "Get Sync Settings",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-creds",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "webhook",
+        "webhookDescription": "Receives Google Drive push notifications",
+        "path": "google-drive-changes",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "google-push-webhook",
+      "name": "Google Push Notification Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "webhookId": "google-drive-push-notifications"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "notification-type",
+              "name": "notification_type",
+              "value": "={{ $json.headers['x-goog-resource-state'] }}",
+              "type": "string"
+            },
+            {
+              "id": "resource-id",
+              "name": "resource_id",
+              "value": "={{ $json.headers['x-goog-resource-id'] }}",
+              "type": "string"
+            },
+            {
+              "id": "changed-resource",
+              "name": "changed_resource",
+              "value": "={{ $json.headers['x-goog-changed'] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parse-push-notification",
+      "name": "Parse Push Notification",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 500]
+    }
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.notification_type }}",
+              "operation": "equals",
+              "value2": "change"
+            }
+          ]
+        }
+      },
+      "id": "check-if-change",
+      "name": "Check If Change Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 500]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Sync Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sync Settings": {
+      "main": [
+        [
+          {
+            "node": "List Modified Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Modified Google Docs": {
+      "main": [
+        [
+          {
+            "node": "Check If Files Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Files Found": {
+      "main": [
+        [
+          {
+            "node": "Split Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Files": {
+      "main": [
+        [
+          {
+            "node": "Process Each Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Each Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sync Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sync Summary": {
+      "main": [
+        [
+          {
+            "node": "Update Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Push Notification Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Push Notification": {
+      "main": [
+        [
+          {
+            "node": "Check If Change Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Change Event": {
+      "main": [
+        [
+          {
+            "node": "List Modified Google Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "onError": "continueErrorOutput"
+    }
+  },
+  "versionId": "folder-monitor-v1",
+  "meta": {
+    "templateId": "google-folder-monitor",
+    "description": "Monitors Google Drive folders for new or modified documents and automatically processes them"
+  },
+  "id": "GoogleFolderMonitor2024",
+  "tags": ["google-docs", "folder-sync", "monitoring"]
+}

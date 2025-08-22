@@ -14,21 +14,25 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('[Supabase] Missing URL or Anon key in environment variables')
 }
 
-// Create singleton Supabase client to avoid multiple instances
-let supabaseInstance: ReturnType<typeof createClient> | null = null
-
-const getSupabaseClient = () => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        storageKey: 'localai-supabase-auth',
-        storage: window.localStorage,
-        persistSession: true,
-        detectSessionInUrl: true,
-      },
-    })
+// Create Supabase client with proper auth configuration
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storageKey: 'localai-supabase-auth',
+    storage: window.localStorage,
+    persistSession: true,
+    detectSessionInUrl: true,
+    autoRefreshToken: true,
+    flowType: 'pkce'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
+    },
+    endpoint: supabaseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/realtime/v1/socket/websocket'
+  },
+  global: {
+    headers: {
+      'x-client-info': 'localai-admin-dashboard'
+    }
   }
-  return supabaseInstance
-}
-
-export const supabase = getSupabaseClient() 
+}) 

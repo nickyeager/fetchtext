@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import AuthLayout from '../auth-layout'
 import { SignUpForm } from './components/sign-up-form'
 
@@ -32,7 +33,7 @@ export default function SignUp() {
         <CardContent>
           <SignUpForm />
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex flex-col space-y-4">
           <p className='text-muted-foreground px-8 text-center text-sm'>
             By creating an account, you agree to our{' '}
             <a
@@ -50,6 +51,16 @@ export default function SignUp() {
             </a>
             .
           </p>
+          <div className="w-full text-center">
+            <p className="text-sm text-muted-foreground mb-2">
+              Already have an account?
+            </p>
+            <Button variant="outline" asChild className="w-full">
+              <Link to="/sign-in">
+                Sign In to Your Account
+              </Link>
+            </Button>
+          </div>
         </CardFooter>
       </Card>
     </AuthLayout>

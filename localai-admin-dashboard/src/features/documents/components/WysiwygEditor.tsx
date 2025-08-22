@@ -7,8 +7,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 
 // Dynamic imports for React-Quill to handle SSR issues
-import 'react-quill/dist/quill.snow.css';
-const ReactQuill = React.lazy(() => import('react-quill'));
+import 'react-quill-new/dist/quill.snow.css';
+const ReactQuill = React.lazy(() => import('react-quill-new'));
 
 interface WysiwygEditorProps {
   value?: string;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Search, SlidersHorizontal, Grid3X3, List, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,10 +22,14 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { TemplateCard } from './TemplateCard'
+import { SmartTemplateEditor } from './SmartTemplateEditor'
 import { WorkflowTemplate, TemplateCategory, TemplateFilters } from '@/types/workflows'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth-context'
 import { cn } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
+import { SmartVariable } from '@/lib/template-validator'
 
 interface TemplateGalleryProps {
   onCreateTemplate?: () => void
@@ -48,8 +52,9 @@ export function TemplateGallery({
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [editingTemplate, setEditingTemplate] = useState<WorkflowTemplate | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [sortBy, setSortBy] = useState<'name' | 'usage_count' | 'created_at'>('name')
+  const [sortBy, setSortBy] = useState<'name' | 'created_at'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   
@@ -166,10 +171,6 @@ export function TemplateGallery({
           aValue = a.name.toLowerCase()
           bValue = b.name.toLowerCase()
           break
-        case 'usage_count':
-          aValue = a.usageCount || 0
-          bValue = b.usageCount || 0
-          break
         case 'created_at':
           aValue = new Date(a.createdAt || 0)
           bValue = new Date(b.createdAt || 0)
@@ -196,13 +197,12 @@ export function TemplateGallery({
       case 'use':
         onUseTemplate?.(template)
         // Increment usage count
-        await supabase
-          .from('workflow_templates')
-          .update({ usage_count: (template.usageCount || 0) + 1 })
-          .eq('id', template.id)
+        // Usage tracking removed
         break
       case 'edit':
-        // Handle edit - this would typically open an editor
+        // Handle edit - open the editor dialog
+        console.log('Editing template:', template)
+        setEditingTemplate(template)
         break
       case 'duplicate':
         // Handle duplication
@@ -316,7 +316,6 @@ export function TemplateGallery({
           <SelectContent>
             <SelectItem value="name-asc">Name A-Z</SelectItem>
             <SelectItem value="name-desc">Name Z-A</SelectItem>
-            <SelectItem value="usage_count-desc">Most Used</SelectItem>
             <SelectItem value="created_at-desc">Newest</SelectItem>
             <SelectItem value="created_at-asc">Oldest</SelectItem>
           </SelectContent>
@@ -348,11 +347,11 @@ export function TemplateGallery({
               <div>
                 <Label className="text-sm font-medium">Complexity</Label>
                 <Select
-                  value={filters.complexity || ''}
+                  value={filters.complexity || 'all'}
                   onValueChange={(value) =>
                     setFilters(prev => ({
                       ...prev,
-                      complexity: (value as 'beginner' | 'intermediate' | 'advanced') || undefined
+                      complexity: value === 'all' ? undefined : (value as 'beginner' | 'intermediate' | 'advanced')
                     }))
                   }
                 >
@@ -360,7 +359,7 @@ export function TemplateGallery({
                     <SelectValue placeholder="Any complexity" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any complexity</SelectItem>
+                    <SelectItem value="all">Any complexity</SelectItem>
                     <SelectItem value="beginner">Beginner</SelectItem>
                     <SelectItem value="intermediate">Intermediate</SelectItem>
                     <SelectItem value="advanced">Advanced</SelectItem>
@@ -372,11 +371,11 @@ export function TemplateGallery({
               <div>
                 <Label className="text-sm font-medium">Template Type</Label>
                 <Select
-                  value={filters.templateType || ''}
+                  value={filters.templateType || 'all'}
                   onValueChange={(value) =>
                     setFilters(prev => ({
                       ...prev,
-                      templateType: (value as 'n8n' | 'flowise' | 'hybrid' | 'other') || undefined
+                      templateType: value === 'all' ? undefined : (value as 'n8n' | 'flowise' | 'hybrid' | 'other')
                     }))
                   }
                 >
@@ -384,7 +383,7 @@ export function TemplateGallery({
                     <SelectValue placeholder="Any type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any type</SelectItem>
+                    <SelectItem value="all">Any type</SelectItem>
                     <SelectItem value="n8n">N8N</SelectItem>
                     <SelectItem value="flowise">Flowise</SelectItem>
                     <SelectItem value="hybrid">Hybrid</SelectItem>
@@ -479,6 +478,117 @@ export function TemplateGallery({
           ))}
         </div>
       )}
+
+      {/* Edit Template Dialog */}
+      <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+          </DialogHeader>
+          {editingTemplate && (
+            <EditTemplateWrapper 
+              editingTemplate={editingTemplate}
+              user={user}
+              onSave={async (updatedTemplate) => {
+                try {
+                  // Update the template in the database
+                  const currentTemplateData = (typeof editingTemplate.templateData === 'object' && editingTemplate.templateData) || {}
+                  const templateData = {
+                    ...currentTemplateData,
+                    content: updatedTemplate.template_content,
+                    variables: updatedTemplate.smart_variables,
+                    extraction_rules: updatedTemplate.extraction_rules,
+                    generation_settings: updatedTemplate.generation_settings
+                  }
+
+                  const { error } = await supabase
+                    .from('workflow_templates')
+                    .update({
+                      name: updatedTemplate.name,
+                      description: updatedTemplate.description,
+                      template_data: templateData,
+                      category: updatedTemplate.category,
+                      tags: updatedTemplate.tags,
+                      thumbnail_url: updatedTemplate.thumbnail_url,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', editingTemplate.id)
+                    .eq('created_by', user?.id) // Ensure user can only update their own templates
+
+                  if (error) {
+                    console.error('Failed to update template:', error)
+                    console.error('Error details:', JSON.stringify(error, null, 2))
+                    toast.error(`Failed to update template: ${error.message}`)
+                    throw error
+                  }
+
+                  toast.success('Template updated successfully')
+                  setEditingTemplate(null)
+                  // Refresh the templates list
+                  loadTemplatesAndCategories()
+                } catch (error) {
+                  console.error('Error updating template:', error)
+                  toast.error('An error occurred while updating the template')
+                }
+              }}
+              onCancel={() => setEditingTemplate(null)}
+              loadTemplatesAndCategories={loadTemplatesAndCategories}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
+// Memoized wrapper component to prevent infinite re-renders
+const EditTemplateWrapper = React.memo(function EditTemplateWrapper({
+  editingTemplate,
+  user,
+  onSave,
+  onCancel,
+  loadTemplatesAndCategories
+}: {
+  editingTemplate: WorkflowTemplate
+  user: any
+  onSave: (updatedTemplate: any) => Promise<void>
+  onCancel: () => void
+  loadTemplatesAndCategories: () => Promise<void>
+}) {
+  // Memoize the template object to prevent recreation on every render
+  const memoizedTemplate = React.useMemo(() => ({
+    id: parseInt(editingTemplate.id),
+    uuid: editingTemplate.id,
+    name: editingTemplate.name,
+    description: editingTemplate.description || '',
+    template_content: (typeof editingTemplate.templateData === 'object' && editingTemplate.templateData?.content) || editingTemplate.name || '',
+    template_type: 'markdown',
+    smart_variables: (typeof editingTemplate.templateData === 'object' && Array.isArray(editingTemplate.templateData?.variables)) 
+      ? editingTemplate.templateData.variables as SmartVariable[]
+      : [],
+    extraction_rules: (typeof editingTemplate.templateData === 'object' && Array.isArray(editingTemplate.templateData?.extraction_rules)) 
+      ? editingTemplate.templateData.extraction_rules 
+      : [],
+    generation_settings: (typeof editingTemplate.templateData === 'object' && editingTemplate.templateData?.generation_settings) 
+      ? editingTemplate.templateData.generation_settings 
+      : {},
+    category: editingTemplate.category || 'Other',
+    tags: editingTemplate.tags || [],
+    is_public: true,
+    usage_count: 0,
+    rating: 0,
+    thumbnail_url: editingTemplate.thumbnailUrl,
+    created_by: editingTemplate.createdBy,
+    created_at: editingTemplate.createdAt,
+    updated_at: editingTemplate.updatedAt
+  }), [editingTemplate])
+
+  return (
+    <SmartTemplateEditor
+      template={memoizedTemplate}
+      onSave={onSave}
+      onCancel={onCancel}
+      isNew={false}
+    />
+  )
+})
