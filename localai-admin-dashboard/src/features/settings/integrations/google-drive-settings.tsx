@@ -13,13 +13,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 
 const googleDriveSettingsSchema = z.object({
-  enabled: z.boolean().default(false),
+  enabled: z.boolean(),
+  auth_method: z.enum(['oauth2', 'service_account']),
   client_id: z.string().optional(),
   client_secret: z.string().optional(),
   service_account_email: z.string().email().optional(),
   service_account_key: z.string().optional(),
   project_id: z.string().optional(),
-  auth_method: z.enum(['oauth2', 'service_account']).default('oauth2'),
 })
 
 type GoogleDriveSettingsValues = z.infer<typeof googleDriveSettingsSchema>

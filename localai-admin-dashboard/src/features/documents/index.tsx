@@ -11,7 +11,7 @@ import {
   Download,
   Eye,
   Plus,
-  Upload,
+  // Upload,
   Sparkles,
   Image
 } from 'lucide-react';
@@ -31,28 +31,12 @@ export interface TemplateSelectionItem {
   variableCount: number;
 }
 import { CreateTemplateModal } from './components/CreateTemplateModal';
-import { ProcessedDocumentsService, ProcessedDocument } from './services/processed-documents-service';
+import { UnifiedDocumentService, DocumentRecord } from '@/services/unified-document-service';
+//
 import { useQuery } from '@tanstack/react-query';
 
 // Define interfaces
-interface SmartVariable {
-  id: string;
-  name: string;
-  type: 'text' | 'number' | 'date' | 'currency' | 'percentage';
-  description: string;
-  extraction_hints: string[];
-  default_value?: string | number;
-}
-
-interface SmartTemplate {
-  id: number;
-  uuid: string;
-  name: string;
-  description: string;
-  template_content: string;
-  smart_variables: SmartVariable[];
-  category: string;
-}
+// Note: Removed unused local type declarations
 
 export default function DocumentsPage() {
   const navigate = useNavigate();
@@ -66,17 +50,17 @@ export default function DocumentsPage() {
     error: documentsError 
   } = useQuery({
     queryKey: ['processedDocuments'],
-    queryFn: ProcessedDocumentsService.getProcessedDocuments,
+    queryFn: UnifiedDocumentService.getUserDocuments,
   });
 
   const handleTemplateSelect = useCallback((template: TemplateSelectionItem) => {
     // Navigate to the document processor route with template data
-    console.log('Navigating to /documents/process-document with template:', template.name, 'ID:', template.id, 'Source:', template.source);
+    const urlSource = template.source === 'smart' ? 'smart_templates' : template.source === 'standard' ? 'templates' : template.source;
     navigate({ 
       to: '/documents/process-document',
       search: { 
         templateId: template.id,
-        templateSource: template.source
+        templateSource: urlSource as 'smart_templates' | 'templates' | 'workflow' | 'gallery'
       }
     });
   }, [navigate]);
@@ -85,18 +69,19 @@ export default function DocumentsPage() {
     setIsModalOpen(true);
   }, []);
 
-  const downloadDocument = useCallback(async (document: ProcessedDocument) => {
+  const downloadDocument = useCallback(async (document: DocumentRecord) => {
     try {
       // Use the export functionality from the service
-      const blob = await ProcessedDocumentsService.exportDocument(document.id, 'json');
+      // Simple JSON export of document
+      const content = JSON.stringify(document, null, 2);
+      const blob = new Blob([content], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = window.document.createElement('a');
       a.href = url;
       a.download = `${document.name.replace(/\.[^/.]+$/, '')}_processed.json`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to download document:', error);
+    } catch (_error) {
       // Fallback to simple content download
       const content = document.content_text || 'No content available';
       const blob = new Blob([content], { type: 'text/plain' });
@@ -128,10 +113,10 @@ export default function DocumentsPage() {
     }
   }, []);
 
-  const getDocumentPreview = useCallback((document: ProcessedDocument) => {
-    if (document.extracted_fields) {
-      // Show extracted fields preview
-      const fieldCount = Object.keys(document.extracted_fields).length;
+  const getDocumentPreview = useCallback((document: DocumentRecord) => {
+    const extracted = document.metadata?.extracted_fields;
+    if (extracted && typeof extracted === 'object') {
+      const fieldCount = Object.keys(extracted).length;
       return `${fieldCount} fields extracted from ${document.name}`;
     }
     return document.content_text?.substring(0, 100) || 'No content preview available';
@@ -221,14 +206,14 @@ export default function DocumentsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium text-gray-900">
-                            {document.template_name || document.name}
+                            {document.metadata?.template_name || document.name}
                           </h4>
                           <Badge className={getStatusColor(document.processing_status)}>
                             {document.processing_status || 'completed'}
                           </Badge>
-                          {document.processing_method && (
+                          {document.metadata?.processing_method && (
                             <Badge variant="outline" className="text-xs">
-                              {document.processing_method}
+                              {document.metadata.processing_method}
                             </Badge>
                           )}
                         </div>

@@ -1,0 +1,46 @@
+SERVICE AGREEMENT
+
+Contract Number: SA-2024-0089
+Date: February 20, 2024
+
+PARTIES:
+Client: Digital Marketing Solutions LLC
+Address: 567 Corporate Blvd, Suite 200, Austin, TX 78701
+Contact: Jennifer Wilson, CEO
+Phone: (512) 555-0199
+Email: jwilson@dms.com
+
+Service Provider: Creative Design Studio Inc.
+Address: 890 Design District, Portland, OR 97205
+Contact: Robert Chen, Creative Director
+Phone: (503) 555-0156
+Email: rchen@cds.com
+
+SERVICES:
+1. Brand Identity Development
+2. Website Design & Development
+3. Marketing Material Creation
+4. Social Media Asset Design
+
+PROJECT DETAILS:
+Start Date: March 1, 2024
+End Date: June 30, 2024
+Project Duration: 4 months
+Total Contract Value: $45,000.00
+
+PAYMENT TERMS:
+- 30% deposit upon signing: $13,500.00
+- 40% at milestone completion: $18,000.00
+- 30% final payment: $13,500.00
+Payment due within 15 days of invoice
+
+DELIVERABLES:
+- Complete brand guidelines
+- Responsive website with CMS
+- Print and digital marketing materials
+- Social media template library
+
+This agreement is governed by the laws of Texas.
+
+Client Signature: ___________________ Date: _______
+Service Provider Signature: _________ Date: _______

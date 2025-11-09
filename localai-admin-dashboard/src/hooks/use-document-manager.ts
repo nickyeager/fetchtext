@@ -104,7 +104,10 @@ export function useDocumentManager(options: UseDocumentManagerOptions = {}) {
       queryClient.setQueryData(['documents'], (oldData: DocumentRecord[] = []) =>
         oldData.map(doc => doc.id === updatedDocument.id ? updatedDocument : doc)
       );
-      
+
+      // CRITICAL: Invalidate the processedDocument query to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['processedDocument', String(updatedDocument.id)] });
+
       // Update upload progress
       const metadata = updatedDocument.metadata as any;
       if (metadata?.processing_status) {

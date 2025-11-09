@@ -34,6 +34,25 @@ logs/
 monitoring/data/
 langfuse_*_data/
 
+# Test/Build artifacts (workspace-wide)
+test-results/
+playwright-report/
+htmlcov/
+coverage/
+coverage.xml
+.coverage
+.pw-results.json
+.pw-run.json
+.pw.xml
+.auth-preview.*
+.preview.*
+current-ui-state.png
+no-file-input-found.png
+debug-ui-state.png
+
+# Ephemeral process tracking (do not commit)
+Copilot-Processing.md
+
 # Node.js (for admin dashboard)
 node_modules/
 npm-debug.log*

@@ -28,6 +28,10 @@ const mockModels: OllamaModel[] = [
 ]
 
 describe('ModelSelector', () => {
+  // Radix calls scrollIntoView; jsdom misses it
+  beforeAll(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
   const defaultProps = {
     models: mockModels,
     selectedModel: '',
@@ -41,8 +45,7 @@ describe('ModelSelector', () => {
 
   it('renders select trigger when models are available', () => {
     render(<ModelSelector {...defaultProps} />)
-    
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByTestId('model-select-trigger')).toBeInTheDocument()
     expect(screen.getByText('Select a model')).toBeInTheDocument()
   })
 
@@ -88,20 +91,12 @@ describe('ModelSelector', () => {
 
   it('calls onModelChange when a model is selected', async () => {
     const mockOnModelChange = vi.fn()
-    
-    render(
-      <ModelSelector 
-        {...defaultProps} 
-        onModelChange={mockOnModelChange}
-      />
-    )
-    
-    // Click on select trigger to open dropdown
-    fireEvent.click(screen.getByRole('combobox'))
-    
-    // Select a model (this is simplified - actual testing would need to handle the select component properly)
-    // In a real test, you'd need to use proper testing library methods for the Select component
-    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    render(<ModelSelector {...defaultProps} onModelChange={mockOnModelChange} />)
+    fireEvent.click(screen.getByTestId('model-select-trigger'))
+    // open content should appear (Radix portals into body) - rely on option text
+  const option = await screen.findByTestId('model-option-llama2:7b')
+  fireEvent.click(option)
+    expect(mockOnModelChange).toHaveBeenCalledWith('llama2:7b')
   })
 
   it('formats model names correctly in display', () => {

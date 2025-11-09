@@ -38,7 +38,7 @@ interface DocumentEvaluation {
   };
 }
 
-const DEFAULT_ACCEPTED_FORMATS = ['.pdf', '.docx', '.html', '.htm', '.jpg', '.jpeg', '.png', '.txt'];
+const DEFAULT_ACCEPTED_FORMATS = ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.htm', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff'];
 const DEFAULT_MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
 export function DragDropZone({

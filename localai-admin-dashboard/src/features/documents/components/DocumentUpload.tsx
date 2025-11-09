@@ -173,11 +173,11 @@ export default function DocumentUpload({ documents, onDocumentSelect, onRefresh 
                   className="sr-only"
                   disabled={uploading}
                   onChange={(e) => handleFileSelect(e.target.files)}
-                  accept=".txt,.pdf,.doc,.docx,.md"
+                  accept=".pdf,.docx,.pptx,.xlsx,.html,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
                 />
               </label>
               <p className="text-xs text-muted-foreground mt-2">
-                Supports: TXT, PDF, DOC, DOCX, MD files
+                Supports: PDF, DOCX, PPTX, XLSX, HTML, TXT, MD, PNG, JPG, JPEG, GIF, WEBP, BMP, TIFF files
               </p>
             </div>
           </div>

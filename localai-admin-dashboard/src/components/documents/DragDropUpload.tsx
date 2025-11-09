@@ -1,13 +1,12 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Upload, File, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
-import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { useDocumentManager } from '@/hooks/use-document-manager';
-import { UploadSource } from '@/services/unified-document-service';
+import { UploadSource, DocumentStatus } from '@/services/unified-document-service';
 import { toast } from 'sonner';
 
 interface DragDropUploadProps {
@@ -16,7 +15,7 @@ interface DragDropUploadProps {
   onUploadComplete?: (documentId: string) => void;
 }
 
-const ACCEPTED_FORMATS = ['.pdf', '.docx', '.html', '.htm', '.jpg', '.jpeg', '.png', '.txt', '.md', '.pptx', '.xlsx', '.csv'];
+const ACCEPTED_FORMATS = ['.pdf', '.docx', '.html', '.htm', '.jpg', '.jpeg', '.png', '.txt', '.md', '.pptx', '.xlsx', '.csv', '.gif', '.webp', '.bmp', '.tiff'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
 export function DragDropUpload({ 
@@ -30,8 +29,19 @@ export function DragDropUpload({
   
   const navigate = useNavigate();
   const { user, session } = useAuth();
-  const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
+
+  // Dev-safe logger to avoid lint errors in production builds
+  const isDev = (() => {
+    // Prefer Vite env if present, otherwise fall back to NODE_ENV
+    try { return (import.meta as unknown as { env?: { DEV?: boolean } })?.env?.DEV === true; } catch { /* noop */ }
+    try { return typeof process !== 'undefined' && process.env?.NODE_ENV === 'development'; } catch { /* noop */ }
+    return false;
+  })();
+  // eslint-disable-next-line no-console
+  const devLog = React.useCallback((...args: unknown[]) => { if (isDev) { console.log(...args); } }, [isDev]);
+  // eslint-disable-next-line no-console
+  const devError = React.useCallback((...args: unknown[]) => { if (isDev) { console.error(...args); } }, [isDev]);
 
   const validateFile = useCallback((file: File): string | null => {
     // Check file size
@@ -49,49 +59,84 @@ export function DragDropUpload({
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
+    devLog('🔵 UPLOAD: Starting file upload process', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      timestamp: new Date().toISOString()
+    });
+
     // Validate file
     const validationError = validateFile(file);
     if (validationError) {
+      devLog('🔴 UPLOAD ERROR: File validation failed', { error: validationError });
       toast.error(validationError);
       return;
     }
+    devLog('🔵 UPLOAD: File validation passed');
 
     // Check authentication
     if (!user || !session) {
-      toast.error('Please sign in to upload documents');
-      navigate({ to: '/login' });
+      devLog('🔴 UPLOAD ERROR: User not authenticated');
+  toast.error('Please sign in to upload documents');
+      navigate({ to: '/sign-in' });
       return;
     }
+    devLog('🔵 UPLOAD: Authentication verified', { userId: user.id });
 
     setIsUploading(true);
     onUploadStart?.();
 
     try {
+      devLog('🔵 UPLOAD: Creating document record...');
+      
       // Create document record
       const documentRecord = await documentManager.createDocument({
         file,
         uploadSource: UploadSource.SMART_UPLOAD,
       });
+      
+      devLog('🔵 UPLOAD: Document record created', {
+        documentId: documentRecord.id,
+        documentName: documentRecord.name,
+        processingStatus: documentRecord.processing_status,
+        filePath: documentRecord.file_path
+      });
 
+      devLog('🟡 ANALYSIS: Triggering AI analysis...');
+      
       // Update status to analyzing
       await documentManager.updateDocumentStatus(documentRecord.id, {
-        status: 'analyzing' as any,
+        status: DocumentStatus.ANALYZING,
       });
+      
+      devLog('🟡 ANALYSIS: Status updated to analyzing');
 
       toast.success('Document uploaded successfully!');
       
+      devLog('🔵 UPLOAD: Navigating to document detail page', { 
+        documentId: documentRecord.id,
+        route: `/documents/${documentRecord.id}` 
+      });
+      
       // Navigate to document detail page for AI evaluation
-      navigate({ to: `/documents/${documentRecord.id}` });
+  navigate({ to: `/documents/${documentRecord.id}` });
       
       onUploadComplete?.(documentRecord.id);
 
     } catch (err) {
-      console.error('Document upload failed:', err);
+      devError('🔴 UPLOAD ERROR: Document upload failed:', err);
+      devLog('🔴 UPLOAD ERROR: Error details', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        timestamp: new Date().toISOString()
+      });
       toast.error(err instanceof Error ? err.message : 'Document upload failed');
     } finally {
       setIsUploading(false);
+      devLog('🔵 UPLOAD: Upload process completed, isUploading set to false');
     }
-  }, [user, session, navigate, documentManager, validateFile, onUploadStart, onUploadComplete]);
+  }, [user, session, navigate, documentManager, validateFile, onUploadStart, onUploadComplete, devError, devLog]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -143,6 +188,9 @@ export function DragDropUpload({
         onChange={handleFileInputChange}
         className="hidden"
         disabled={isUploading}
+        aria-hidden="true"
+        tabIndex={-1}
+        title="Select file to upload"
       />
 
       {/* Drag Drop Zone */}

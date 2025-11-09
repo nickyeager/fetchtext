@@ -5,16 +5,24 @@ import { Search } from '@/components/search';
 import { ThemeSwitch } from '@/components/theme-switch';
 import { ProfileDropdown } from '@/components/profile-dropdown';
 
+type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery';
 interface ProcessDocumentSearch {
   templateId?: string | number;
-  templateSource?: 'templates' | 'smart_templates';
+  // search param uses backend terms, map to internal TemplateSource
+  templateSource?: 'templates' | 'smart_templates' | 'workflow' | 'gallery';
 }
 
 function ProcessDocumentPage() {
   const { templateId, templateSource } = Route.useSearch();
+  // Map URL search param to internal TemplateSource union
+  const mappedSource: TemplateSource | undefined =
+    templateSource === 'smart_templates' ? 'smart'
+    : templateSource === 'templates' ? 'standard'
+    : templateSource === 'workflow' ? 'workflow'
+    : templateSource === 'gallery' ? 'gallery'
+    : undefined;
   
   // Use the actual template ID from URL parameter
-  console.log('ProcessDocumentPage templateId:', templateId);
   
   return (
     <div className="container mx-auto py-6">
@@ -40,7 +48,7 @@ function ProcessDocumentPage() {
         )}
       </div>
       
-      <DocumentWorkflow selectedTemplateId={templateId} templateSource={templateSource} />
+  <DocumentWorkflow selectedTemplateId={templateId} templateSource={mappedSource} />
     </div>
   );
 }
@@ -50,9 +58,12 @@ export const Route = createFileRoute('/_authenticated/documents/process-document
   validateSearch: (search: Record<string, unknown>): ProcessDocumentSearch => {
     return {
       templateId: search.templateId ? String(search.templateId) : undefined,
-      templateSource: search.templateSource === 'smart_templates' || search.templateSource === 'templates' 
-        ? search.templateSource 
-        : undefined,
+      templateSource: (
+        search.templateSource === 'smart_templates' ||
+        search.templateSource === 'templates' ||
+        search.templateSource === 'workflow' ||
+        search.templateSource === 'gallery'
+      ) ? (search.templateSource as ProcessDocumentSearch['templateSource']) : undefined,
     };
   },
 });

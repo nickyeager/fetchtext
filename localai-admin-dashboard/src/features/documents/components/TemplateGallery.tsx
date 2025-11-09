@@ -5,58 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileText, Search, Plus, Eye, Zap } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { masterTemplateService } from '@/services/master-template-service';
+import { templateService } from '@/services/template-service';
 import { TemplateSelectionItem } from '../index';
-import { UnifiedTemplate } from '@/types/unified-template';
+import { UnifiedTemplate, isSmartTemplate, isStandardTemplate } from '@/types/unified-template';
 
-interface ValidationRule {
-  type: string;
-  value: string | number;
-  message: string;
-}
+// Local interfaces removed in favor of unified types
 
-interface SmartVariable {
-  id: string;
-  name: string;
-  type: 'text' | 'number' | 'date' | 'currency' | 'percentage';
-  description: string;
-  extraction_hints: string[];
-  validation_rules?: ValidationRule[];
-  default_value?: string | number;
-}
-
-interface ExtractionRule {
-  variable_id: string;
-  ai_prompt: string;
-  fallback_rules: string[];
-  confidence_threshold: number;
-}
-
-interface GenerationSettings {
-  model?: string;
-  temperature?: number;
-  max_tokens?: number;
-}
-
-interface SmartTemplate {
-  id: number;
-  uuid: string;
-  name: string;
-  description: string;
-  template_content: string;
-  template_type: string;
-  smart_variables: SmartVariable[];
-  extraction_rules: ExtractionRule[];
-  generation_settings: GenerationSettings;
-  category: string;
-  tags: string[];
-  thumbnail_url?: string;
-  usage_count: number;
-  rating: number;
-  is_public: boolean;
-  created_at: string;
-  updated_at: string;
-}
+// Note: Using UnifiedTemplate from types; remove duplicate SmartTemplate interface to avoid drift
 
 interface TemplateGalleryProps {
   onSelectTemplate: (template: TemplateSelectionItem) => void;
@@ -64,19 +19,28 @@ interface TemplateGalleryProps {
 }
 
 // Helper function to convert UnifiedTemplate to TemplateSelectionItem
-const convertToSelectionItem = (template: UnifiedTemplate): TemplateSelectionItem => ({
-  id: template.id,
-  name: template.name,
-  description: template.description,
-  category: template.category,
-  type: template.type,
-  source: template.type, // source matches type for unified templates
-  tags: template.tags || [],
-  usageCount: template.usage_count || 0,
-  rating: template.rating || 0,
-  isSmartTemplate: template.type === 'smart',
-  variableCount: template.smart_variables?.length || template.fields?.length || 0
-});
+const convertToSelectionItem = (template: UnifiedTemplate): TemplateSelectionItem => {
+  const variableCount = isSmartTemplate(template)
+    ? (template.smart_variables?.length || 0)
+    : isStandardTemplate(template)
+      ? (template.fields?.length || 0)
+      : 0;
+
+  return {
+    id: template.id,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    type: template.type,
+    // Our TemplateSelectionItem.source is a friendly string; align to template.type
+    source: template.type,
+    tags: template.tags || [],
+    usageCount: template.usage_count || 0,
+    rating: template.rating || 0,
+    isSmartTemplate: template.type === 'smart',
+    variableCount,
+  };
+};
 
 export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: TemplateGalleryProps) {
   const {
@@ -86,7 +50,7 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
   } = useQuery<TemplateSelectionItem[]>({
     queryKey: ['unified-templates'],
     queryFn: async () => {
-      const unifiedTemplates = await masterTemplateService.getTemplates();
+      const unifiedTemplates = (await templateService.getTemplates()) as unknown as UnifiedTemplate[];
       return unifiedTemplates.map(convertToSelectionItem);
     },
   });
@@ -205,7 +169,7 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
                     </Badge>
                   )}
                   <Badge variant="outline" className="text-xs">
-                    {template.source === 'smart_templates' ? 'Smart Template' : 'Standard'}
+                    {template.type === 'smart' ? 'Smart Template' : template.type === 'workflow' ? 'Workflow' : 'Standard'}
                   </Badge>
                 </div>
               </div>
@@ -261,7 +225,7 @@ export function TemplateGallery({ onSelectTemplate, onCreateTemplate }: Template
                   Use Template
                 </Button>
                 <Button
-                  onClick={() => console.log('Preview template:', template)}
+                  onClick={() => {/* TODO: open preview modal */}}
                   variant="outline"
                   size="sm"
                   className="px-3"

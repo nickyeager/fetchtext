@@ -3,6 +3,7 @@ Smart Field Extractor - LLM-based intelligent field extraction
 """
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -30,6 +31,9 @@ class SmartFieldExtractor:
         """
         Use LLM to intelligently extract field values from text content
         """
+        import time
+        start_time = time.time()
+        
         self.logger.info(f"Starting smart extraction for {len(template_variables)} fields with provider: {provider}")
         
         try:
@@ -41,7 +45,10 @@ class SmartFieldExtractor:
             
             # Optimize LLM parameters based on document type and field count
             llm_params = self._get_optimized_llm_params(text_content, template_variables, provider)
-            self.logger.info(f"LLM params: {llm_params}")
+            # Ensure max_tokens is an integer
+            if 'max_tokens' in llm_params:
+                llm_params['max_tokens'] = int(llm_params['max_tokens'])
+            self.logger.info(f"LLM params: {llm_params}, max_tokens type: {type(llm_params.get('max_tokens'))}")
             
             # Call LLM for intelligent extraction
             self.logger.info(f"Calling LLM service with provider: {llm_params.get('provider', provider)}")
@@ -60,6 +67,9 @@ class SmartFieldExtractor:
             filtered_data = self._apply_confidence_threshold(extracted_data, confidence_threshold)
             self.logger.info(f"After confidence filtering: {len(filtered_data)} fields remain")
             
+            # Calculate actual processing time
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            
             # Return in the expected format
             return {
                 "extraction_method": "llm_intelligent", 
@@ -69,7 +79,7 @@ class SmartFieldExtractor:
                 "confidence_threshold": confidence_threshold,
                 "extraction_notes": f"AI-powered extraction using {provider} provider",
                 "success_rate": len(filtered_data) / len(template_variables) if template_variables else 0,
-                "processing_time_ms": 100  # Placeholder
+                "processing_time_ms": processing_time_ms
             }
             
         except Exception as e:
@@ -110,7 +120,19 @@ class SmartFieldExtractor:
         # Detect document type for context
         doc_type = self._detect_document_type(text_content)
         
-        # Build the enhanced smart extraction prompt
+        # Build the enhanced smart extraction prompt with receipt-specific guidance
+        receipt_guidance = ""
+        if doc_type in ['receipt', 'invoice']:
+            receipt_guidance = f"""
+SPECIAL {doc_type.upper()} EXTRACTION GUIDELINES:
+- Document numbers may appear at the top, in headers, or with prefixes like "Receipt-", "Inv-", "#"
+- Look for alphanumeric patterns that could be document IDs (e.g., "2975-4330", "Receipt-2975-4330")
+- Amounts usually appear with currency symbols and may be highlighted or in larger text
+- Dates may be in various formats (MM/DD/YYYY, DD/MM/YYYY, Month DD, YYYY)
+- Company names often appear at the top of the document
+- Reference numbers can appear anywhere in the document structure
+"""
+
         prompt = f"""You are an expert document data extractor specializing in {doc_type} documents. Extract the following fields from this document text.
 
 DOCUMENT TEXT:
@@ -118,7 +140,7 @@ DOCUMENT TEXT:
 
 FIELDS TO EXTRACT:
 {chr(10).join(field_descriptions)}
-
+{receipt_guidance}
 EXTRACTION STRATEGY:
 1. Read the document carefully and understand its structure ({doc_type} format)
 2. Look for field variations and aliases - don't just match exact field names
@@ -129,15 +151,17 @@ EXTRACTION STRATEGY:
 7. For IDs/numbers: Extract clean values without labels like "Invoice #", "Receipt:"
 8. For emails: Extract complete email addresses
 9. For companies: Look for business names, may include "LLC", "Ltd", "Inc"
-10. If uncertain, provide your best guess with lower confidence
-11. NEVER leave a field null if there's any possible match in the text
+10. Pay special attention to document numbers - they can appear in filenames, headers, or body text
+11. If uncertain, provide your best guess with confidence reflecting certainty
+12. NEVER leave a field null if there's any possible match in the text
 
-CONFIDENCE SCORING:
-- 0.9-1.0: Exact match found with clear context
-- 0.7-0.9: Good match with reasonable confidence
-- 0.5-0.7: Possible match but uncertain
-- 0.3-0.5: Weak match, best guess
-- 0.0-0.3: No reasonable match found
+CONFIDENCE SCORING (be accurate with confidence levels):
+- 0.9-1.0: Exact match found with clear context and high certainty
+- 0.7-0.9: Good match with reasonable confidence, clear context
+- 0.5-0.7: Possible match but some uncertainty about context or format
+- 0.3-0.5: Weak match, educated guess based on available information
+- 0.1-0.3: Very uncertain match, may be incorrect but best available option
+- 0.0: No reasonable match found at all
 
 Return ONLY this JSON format (no markdown, no explanations):
 {{
@@ -145,7 +169,7 @@ Return ONLY this JSON format (no markdown, no explanations):
         "field_name": {{
             "value": "extracted_value_or_null",
             "confidence": 0.95,
-            "reasoning": "brief explanation of match"
+            "reasoning": "brief explanation of match and confidence level"
         }}
     }}
 }}"""
@@ -183,9 +207,9 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         # Adjust for text length
         if text_length > 2000:
-            params['max_tokens'] = min(params['max_tokens'] * 1.2, 1500)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.2), 1500)
         elif text_length < 500:
-            params['max_tokens'] = max(params['max_tokens'] * 0.8, 300)
+            params['max_tokens'] = max(int(params['max_tokens'] * 0.8), 300)
         
         # Provider-specific optimizations
         if provider == 'azure':
@@ -193,7 +217,7 @@ Return ONLY this JSON format (no markdown, no explanations):
             params['temperature'] = min(params['temperature'] + 0.02, 0.2)
         elif provider == 'ollama':
             # Ollama local models might need more tokens
-            params['max_tokens'] = min(params['max_tokens'] * 1.1, 1000)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.1), 1000)
         
         self.logger.debug(f"Optimized LLM params for {doc_type} with {field_count} fields: {params}")
         return params
@@ -206,10 +230,10 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         # Define examples and variations by field patterns
         if 'invoice' in field_lower and ('number' in field_lower or 'id' in field_lower):
-            return (['INV-001', 'TTKRPHII0001', '12345'], ['Invoice #', 'Invoice:', 'Inv:', 'Invoice Number', 'Receipt #'])
+            return (['INV-001', 'TTKRPHII0001', '12345', '2975-4330', 'Receipt-2975-4330'], ['Invoice #', 'Invoice:', 'Inv:', 'Invoice Number', 'Receipt #', 'Receipt:', 'Document #', 'Ref #', 'Reference'])
             
         elif 'receipt' in field_lower and ('number' in field_lower or 'id' in field_lower):
-            return (['R-12345', 'TTKRPHII0001'], ['Receipt #', 'Receipt:', 'Invoice number', 'Transaction ID'])
+            return (['R-12345', 'TTKRPHII0001', '2975-4330', 'Receipt-2975-4330'], ['Receipt #', 'Receipt:', 'Invoice number', 'Transaction ID', 'Document #', 'Ref #', 'Reference'])
             
         elif 'payment' in field_lower and 'date' in field_lower:
             return (['July 23, 2025', 'March 15, 2024'], ['Date paid', 'Payment Date', 'Paid on', 'Transaction Date'])
@@ -453,6 +477,28 @@ Return ONLY this JSON format (no markdown, no explanations):
             match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
             if match:
                 return match.group(0), 0.8, match.group(0)
+        
+        # Invoice/Receipt number extraction with enhanced patterns
+        if any(word in field_lower for word in ['invoice', 'receipt']) and any(word in field_lower for word in ['number', 'id', 'ref']):
+            # Look for receipt/invoice patterns
+            patterns = [
+                r'(?:Receipt[-\s#]?)(\d{4}-\d{4})',  # Receipt-2975-4330
+                r'(?:Invoice[-\s#]?)(\d{4}-\d{4})',  # Invoice-2975-4330
+                r'(?:Receipt[-\s#]?)([A-Z0-9]{8,})',  # Receipt-ABCD1234
+                r'(?:Invoice[-\s#]?)([A-Z0-9]{8,})',  # Invoice-ABCD1234
+                r'(?:#|No\.?\s?)(\d{4}-\d{4})',      # #2975-4330 or No. 2975-4330
+                r'\b(\d{4}-\d{4})\b',                 # Just 2975-4330 by itself
+                r'(?:REF[-\s#]?)([A-Z0-9]{6,})',     # REF-123456
+                r'(?:Doc[-\s#]?)([A-Z0-9]{6,})',     # Doc-123456
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    value = match.group(1)
+                    # Higher confidence for receipt/invoice numbers that match expected patterns
+                    confidence = 0.9 if re.match(r'\d{4}-\d{4}', value) else 0.8
+                    return value, confidence, match.group(0)
         
         # Currency/amount extraction  
         if field_type == 'currency' or any(word in field_lower for word in ['amount', 'total', 'price', 'cost']):

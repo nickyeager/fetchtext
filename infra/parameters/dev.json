@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "dev"
+    },
+    "staticWebAppName": {
+      "value": "ft-dashboard-dev"
+    },
+    "containerAppName": {
+      "value": "ft-document-processor-dev"
+    },
+    "containerImage": {
+      "value": "ftplatformdev.azurecr.io/document-processor:latest"
+    },
+    "acrName": {
+      "value": "ftplatformdev"
+    },
+    "logAnalyticsName": {
+      "value": "ft-dev-law"
+    },
+    "keyVaultName": {
+      "value": "ft-dev-kv"
+    },
+    "deploymentPrincipalObjectId": {
+      "value": "<replace-with-object-id>"
+    }
+  }
+}

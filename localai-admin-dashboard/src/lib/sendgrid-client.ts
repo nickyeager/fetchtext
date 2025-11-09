@@ -2,11 +2,11 @@
  * SendGrid Email Client for FetchText
  * 
  * Production-ready email delivery using SendGrid API via Supabase Edge Functions
- * 
+ *
  * Configuration:
- * - Verified Sender: yeag123@gmail.com
- * - API Key: REDACTED_SENDGRID_KEY
- * 
+ * - Verified Sender configured via environment variables
+ * - API key provided at runtime through environment variables (never stored in source)
+ *
  * Architecture: Frontend → Supabase Edge Function → SendGrid API
  * Benefits: No CORS issues, secure API key handling, serverless scaling
  */
@@ -25,14 +25,31 @@ interface SendGridEmailRequest {
   data?: Record<string, string | number | boolean>;
 }
 
+/*
 // Edge Function URL (when deployed)
-const _getEdgeFunctionUrl = () => {
+// Note: Unused function kept for future reference
+function getEdgeFunctionUrl() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) {
+    console.warn('Supabase URL not set, email functions will not work in production.');
+    return '';
+  }
   return `${supabaseUrl}/functions/v1/send-email`;
 };
+*/
 
 /**
- * Send email via SendGrid (through Edge Function in production)
+ * Sends an email using the SendGrid API via a Supabase Edge Function.
+ * This function is designed to be called from the frontend, and it handles
+ * the differences between development and production environments.
+ * 
+ * In development, it simulates a successful email send immediately.
+ * In production, it calls the Supabase Edge Function which in turn calls
+ * the SendGrid API to send the email.
+ * 
+ * @param request - The email request containing recipient, subject, html content,
+ *                  and optional template and data for dynamic content.
+ * @returns A promise that resolves to an EmailResult indicating success or failure.
  */
 export async function sendEmailViaSendGrid(request: SendGridEmailRequest): Promise<EmailResult> {
   // In development, return success without sending
@@ -377,4 +394,4 @@ export const SENDGRID_DOCUMENTATION = {
     'Production requires Edge Function deployment',
     'All templates are responsive and branded for FetchText'
   ]
-}; 
+};

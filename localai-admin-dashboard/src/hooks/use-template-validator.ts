@@ -16,12 +16,12 @@ export interface UseTemplateValidatorResult {
   isValidating: boolean;
   
   // Validation actions
-  validate: (template: Partial<Template>) => ValidationResult;
+  validate: (template: Partial<Template>) => Promise<ValidationResult>;
   validateAsync: (template: Partial<Template>) => Promise<ValidationResult>;
   clearValidation: () => void;
   
   // Auto-fix functionality
-  autoFix: (template: Partial<Template>) => Template;
+  autoFix: (template: Partial<Template>) => Promise<Template>;
   
   // Convenience getters
   isValid: boolean;
@@ -44,10 +44,10 @@ export function useTemplateValidator(): UseTemplateValidatorResult {
   const [isValidating, setIsValidating] = useState(false);
 
   /**
-   * Synchronous validation
+   * Synchronous validation (now async)
    */
-  const validate = useCallback((template: Partial<Template>): ValidationResult => {
-    const result = templateValidator.validate(template);
+  const validate = useCallback(async (template: Partial<Template>): Promise<ValidationResult> => {
+    const result = await templateValidator.validate(template);
     setValidationResult(result);
     return result;
   }, []);
@@ -62,7 +62,7 @@ export function useTemplateValidator(): UseTemplateValidatorResult {
       // Simulate async validation (could be server-side in the future)
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const result = templateValidator.validate(template);
+      const result = await templateValidator.validate(template);
       setValidationResult(result);
       return result;
     } finally {
@@ -80,8 +80,8 @@ export function useTemplateValidator(): UseTemplateValidatorResult {
   /**
    * Auto-fix template issues
    */
-  const autoFix = useCallback((template: Partial<Template>): Template => {
-    return templateValidator.autoFix(template);
+  const autoFix = useCallback(async (template: Partial<Template>): Promise<Template> => {
+    return await templateValidator.autoFix(template);
   }, []);
 
   /**
@@ -181,8 +181,8 @@ export function useRealtimeTemplateValidation(
     }
 
     // Set new timer
-    debounceTimerRef.current = setTimeout(() => {
-      validator.validate(templateToValidate);
+    debounceTimerRef.current = setTimeout(async () => {
+      await validator.validate(templateToValidate);
     }, debounceMs);
   }, [enabled, debounceMs, validator]);
 

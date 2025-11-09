@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { TemplateCard } from './TemplateCard'
-import { SmartTemplateEditor } from './SmartTemplateEditor'
+import { TemplateEditor } from './TemplateEditor'
 import { WorkflowTemplate, TemplateCategory, TemplateFilters } from '@/types/workflows'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/auth-context'
@@ -584,7 +584,7 @@ const EditTemplateWrapper = React.memo(function EditTemplateWrapper({
   }), [editingTemplate])
 
   return (
-    <SmartTemplateEditor
+    <TemplateEditor
       template={memoizedTemplate}
       onSave={onSave}
       onCancel={onCancel}

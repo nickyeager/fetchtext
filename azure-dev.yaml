@@ -1,0 +1,29 @@
+name: fetchtext-platform
+metadata:
+  template: custom
+  description: |
+    Provision Azure Container Apps for the document processor and Static Web Apps for the dashboard.
+
+services:
+  dashboard:
+    project: ./localai-admin-dashboard
+    language: javascript
+    host: staticwebapp
+    config:
+      appLocation: .
+      outputLocation: dist
+      nodeVersion: 20
+      buildCommand: pnpm install && pnpm build
+
+  document-processor:
+    project: ./document-processor
+    language: python
+    host: containerapp
+    docker:
+      path: ./document-processor/Dockerfile
+      context: .
+
+infra:
+  provider: bicep
+  path: infra/main.bicep
+  parameters: infra/parameters/${AZURE_ENV_NAME}.json

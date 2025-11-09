@@ -5,6 +5,8 @@ import uuid
 import os
 import shutil
 from pathlib import Path
+import requests
+from datetime import datetime
 
 from app.services.docling_service import DoclingService
 from app.models.document import (
@@ -23,6 +25,78 @@ docling_service = DoclingService()
 # Storage for tracking processing status
 processing_status = {}
 
+async def save_document_to_database(job_id: str, filename: str, content: dict, metadata: dict) -> bool:
+    """Save processed document to Supabase database"""
+    
+    # Get Supabase connection details from environment
+    supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
+    service_key = os.getenv('SERVICE_ROLE_KEY', '')
+    anon_key = os.getenv('SUPABASE_ANON_KEY', '')
+    # Optional explicit uploader when running trusted server-side flows
+    # If provided, must be a valid UUID present in auth.users, otherwise the insert will fail due to FK.
+    explicit_uploaded_by = os.getenv('UPLOAD_USER_ID', '').strip()
+
+    # Use service role key for admin access to bypass RLS, fallback to anon key
+    auth_key = service_key if service_key else anon_key
+    
+    if not supabase_url or not auth_key:
+        print(f"Database save failed: Missing config. URL={bool(supabase_url)}, KEY={bool(auth_key)}")
+        return False
+    
+    headers = {
+        'apikey': auth_key,
+        'Authorization': f'Bearer {auth_key}',
+        'Content-Type': 'application/json',
+        # Ask PostgREST to return the inserted row for easier diagnostics
+        'Prefer': 'return=representation',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        # Prepare document data with correct schema
+        document_data = {
+            'name': filename,
+            'file_path': f'/uploads/{job_id}_{filename}',  # Virtual path
+            'file_type': metadata.get('mime_type', 'text/plain'),
+            'file_size': metadata.get('file_size', 0),
+            'content_text': content.get('text', ''),
+            'metadata': {
+                'job_id': job_id,
+                'processing_result': metadata,
+                'content_preview': content.get('markdown', '')[:500] if content.get('markdown') else content.get('text', '')[:500]
+            },
+            'processing_status': 'completed'
+        }
+        # Only include uploaded_by when explicitly provided to avoid FK violations
+        if explicit_uploaded_by:
+            document_data['uploaded_by'] = explicit_uploaded_by
+
+        print(f"Saving document: {filename} (uploaded_by: {document_data.get('uploaded_by', 'NULL')})")
+        
+        # Insert document into database
+        url = f"{supabase_url}/rest/v1/documents"
+        response = requests.post(url, headers=headers, json=document_data, timeout=10)
+        
+        print(f"Database response: {response.status_code}")
+        try:
+            # Attempt to parse JSON errors/row
+            body_preview = response.text[:1000]
+            print(f"Database response body (preview): {body_preview}")
+        except Exception:
+            pass
+        
+        if response.status_code in [200, 201]:
+            return True
+        else:
+            print(f"Failed to save document to database: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error saving document to database: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 @router.post("/upload", response_model=DocumentProcessingResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
@@ -35,7 +109,7 @@ async def upload_document(
     Upload and process a single document
     """
     # Validate file type
-    allowed_extensions = {'.pdf', '.docx', '.pptx', '.html', '.md', '.txt'}
+    allowed_extensions = {'.pdf', '.docx', '.pptx', '.xlsx', '.html', '.md', '.txt', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff'}
     file_extension = Path(file.filename).suffix.lower()
     
     if file_extension not in allowed_extensions:
@@ -271,6 +345,9 @@ async def process_document_background(
     """
     Background task for processing a single document
     """
+    # Log to file to ensure we can see it
+    with open('/tmp/debug_processing.log', 'a') as f:
+        f.write(f"Job {job_id}: Starting background processing\n")
     try:
         # Update status
         processing_status[job_id]["status"] = "processing"
@@ -294,6 +371,39 @@ async def process_document_background(
         processing_status[job_id]["status"] = "completed"
         processing_status[job_id]["progress"] = 100
         processing_status[job_id]["message"] = "Processing completed successfully"
+        
+        # Save to database - wrap in try/catch for debugging
+        filename = processing_status[job_id]["filename"]
+        try:
+            # Log debug info to file
+            with open('/tmp/debug_processing.log', 'a') as f:
+                f.write(f"Job {job_id}: Processing result status: {result.get('status')}\n")
+                f.write(f"Job {job_id}: Processing result keys: {list(result.keys()) if result else 'None'}\n")
+            
+            if result.get("status") == "completed":
+                content = result.get("content", {})
+                metadata = result.get("metadata", {})
+                
+                with open('/tmp/debug_processing.log', 'a') as f:
+                    f.write(f"Job {job_id}: Attempting to save document to database...\n")
+                
+                db_saved = await save_document_to_database(job_id, filename, content, metadata)
+                if db_saved:
+                    processing_status[job_id]["message"] = "Processing completed and saved to database"
+                    with open('/tmp/debug_processing.log', 'a') as f:
+                        f.write(f"Job {job_id}: Document saved successfully\n")
+                else:
+                    processing_status[job_id]["message"] = "Processing completed but failed to save to database"
+                    with open('/tmp/debug_processing.log', 'a') as f:
+                        f.write(f"Job {job_id}: Document save failed\n")
+            else:
+                with open('/tmp/debug_processing.log', 'a') as f:
+                    f.write(f"Job {job_id}: Skipping database save - status is not 'completed'\n")
+                processing_status[job_id]["message"] = f"Processing finished with status: {result.get('status', 'unknown')}"
+        except Exception as db_error:
+            with open('/tmp/debug_processing.log', 'a') as f:
+                f.write(f"Job {job_id}: Database save section error: {str(db_error)}\n")
+            # Don't re-raise, just continue
         
     except Exception as e:
         processing_status[job_id]["status"] = "failed"

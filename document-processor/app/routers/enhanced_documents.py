@@ -5,20 +5,36 @@ import uuid
 import json
 import re
 import logging
+import sys
+import os
+import aiohttp
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from fastapi.responses import JSONResponse
 
-logger = logging.getLogger(__name__)
+# Safe logger initialization for Docker environment
+try:
+    logger = logging.getLogger(__name__)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+except Exception:
+    # Fallback to basic config
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.ai_content_classifier import ai_classifier
 from ..services.ai_template_generator import ai_template_generator
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
+from ..services.template_matching_service import template_matching_service
+from ..services.template_generation_service import template_generation_service
 
 router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
 
@@ -50,132 +66,6 @@ async def cleanup_temp_file(file_path: Path):
             file_path.unlink()
     except Exception:
         pass  # Ignore cleanup errors
-
-@router.post("/process-with-ai")
-async def process_document_with_ai_enhancement(
-    file: UploadFile = File(...),
-    extract_text: bool = Query(True, description="Extract text content"),
-    extract_metadata: bool = Query(True, description="Extract document metadata"),
-    extract_structure: bool = Query(True, description="Extract document structure"),
-    use_ai_enhancement: bool = Query(True, description="Apply AI enhancement"),
-    include_quality_assessment: bool = Query(True, description="Include content quality assessment")
-):
-    """
-    Process document with AI enhancement and intelligent content analysis.
-    
-    This endpoint provides:
-    - AI-powered document classification
-    - Enhanced structure extraction
-    - Context-aware data extraction
-    - Content quality assessment
-    """
-    
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    
-    temp_file_path = None
-    
-    try:
-        # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
-        
-        # Process with enhanced service
-        result = await enhanced_docling_service.process_document_with_ai_enhancement(
-            temp_file_path,
-            extract_text=extract_text,
-            extract_metadata=extract_metadata,
-            extract_structure=extract_structure,
-            use_ai_enhancement=use_ai_enhancement
-        )
-        
-        # Add processing metadata
-        result['request_metadata'] = {
-            'original_filename': file.filename,
-            'content_type': file.content_type,
-            'processing_options': {
-                'extract_text': extract_text,
-                'extract_metadata': extract_metadata,
-                'extract_structure': extract_structure,
-                'use_ai_enhancement': use_ai_enhancement,
-                'include_quality_assessment': include_quality_assessment
-            },
-            'processed_at': datetime.utcnow().isoformat()
-        }
-        
-        return JSONResponse(content=result)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
-        
-    finally:
-        # Cleanup temporary file
-        if temp_file_path:
-            await cleanup_temp_file(temp_file_path)
-
-@router.post("/classify-content")
-async def classify_document_content(
-    file: UploadFile = File(...),
-    include_confidence_analysis: bool = Query(False, description="Include detailed confidence analysis")
-):
-    """
-    Classify document content using AI-powered analysis.
-    
-    Returns document classification including:
-    - Primary and secondary categories
-    - Content type and complexity level
-    - Industry domain identification
-    - Key topics and extraction recommendations
-    """
-    
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    
-    temp_file_path = None
-    
-    try:
-        # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
-        
-        # Extract basic content for classification
-        basic_result = await enhanced_docling_service.process_document(
-            temp_file_path,
-            extract_text=True,
-            extract_metadata=True,
-            extract_structure=False
-        )
-        
-        if basic_result.get('status') != 'completed':
-            raise HTTPException(status_code=500, detail="Failed to extract content for classification")
-        
-        content = basic_result.get('content', {}).get('text', '')
-        metadata = basic_result.get('metadata', {})
-        
-        if not content:
-            raise HTTPException(status_code=400, detail="No text content found for classification")
-        
-        # Perform AI classification
-        classification = await ai_classifier.classify_document_content(content, metadata)
-        
-        # Add confidence analysis if requested
-        result = {
-            'classification': classification,
-            'document_metadata': metadata,
-            'classification_timestamp': datetime.utcnow().isoformat()
-        }
-        
-        if include_confidence_analysis:
-            confidence_analysis = await ai_classifier.get_classification_confidence(classification)
-            result['confidence_analysis'] = confidence_analysis
-        
-        return JSONResponse(content=result)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
-        
-    finally:
-        # Cleanup temporary file
-        if temp_file_path:
-            await cleanup_temp_file(temp_file_path)
 
 @router.post("/batch-process-with-ai")
 async def batch_process_with_ai_enhancement(
@@ -389,8 +279,8 @@ async def extract_with_text(
             "extracted_data": extracted_data,
             "template_variables": template_variables,
             "confidence_threshold": confidence_threshold,
-            "created_at": datetime.utcnow().isoformat(),
-            "completed_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
             "processing_time": extracted_data.get("processing_time_ms", 0) / 1000.0,
             "extraction_method": extracted_data.get("extraction_method", "smart_extraction")
         })
@@ -565,6 +455,143 @@ async def extract_with_template(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
+@router.post("/decide-template")
+async def decide_template_strategy(
+    file: UploadFile = File(...),
+    quick_scan: bool = Query(True, description="Use quick evaluation path"),
+    min_match_confidence: float = Query(0.7, ge=0.0, le=1.0, description="Minimum match score to use an existing template"),
+    allow_generation: bool = Query(True, description="Allow generating a template when no strong match exists"),
+    auto_save: bool = Query(False, description="Auto-save generated templates to the database"),
+    generation_mode: str = Query("automatic", description="Template generation mode when generation is chosen: automatic, guided, custom")
+):
+    """
+    Decide whether to use an existing template or generate a new one for the uploaded document.
+
+    Behavior:
+    - Evaluates the document to get type, key phrases, and template suggestions (with scores).
+    - If a top suggestion meets `min_match_confidence`, returns an action to use that template.
+    - Otherwise, if `allow_generation` is true, generates a new smart template and validates extraction.
+    - Returns a unified response structure including the chosen action, rationale, and artifacts.
+
+    This endpoint centralizes the decision logic previously split between evaluation and generation endpoints.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if generation_mode not in ["automatic", "guided", "custom"]:
+        raise HTTPException(status_code=400, detail="generation_mode must be automatic, guided, or custom")
+
+    temp_file_path: Optional[Path] = None
+    try:
+        # Save uploaded file temporarily
+        temp_file_path = await save_uploaded_file(file)
+
+        # 1) Evaluate document (type + suggestions)
+        evaluation = await document_evaluator.evaluate_document(
+            temp_file_path,
+            file.filename,
+            file.content_type or "",
+            quick_scan=quick_scan,
+        )
+
+        suggestions = evaluation.get('template_suggestions', []) or []
+        chosen = suggestions[0] if suggestions and suggestions[0].get('match_score', 0) >= min_match_confidence else None
+
+        if chosen:
+            # Strong enough existing template found
+            response = {
+                'action': 'use_existing',
+                'chosen_template': chosen,
+                'alternatives': suggestions[1:5],
+                'evaluation': evaluation,
+                'decision_metadata': {
+                    'reason': 'Top suggestion meets minimum match confidence',
+                    'min_match_confidence': min_match_confidence,
+                    'quick_scan': quick_scan,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            }
+            return JSONResponse(content=response)
+
+        # 2) If no strong match and generation is allowed, generate a template
+        if allow_generation:
+            analysis = await ai_template_generator.analyze_document_structure(temp_file_path)
+
+            # Use provided name/category or derive from evaluation
+            primary_type = (evaluation.get('type_evaluation') or {}).get('primary_type') or 'document'
+            template_name = f"{primary_type.title()} Template"
+
+            generated_template = await ai_template_generator.generate_template_from_analysis(
+                analysis,
+                template_name
+            )
+
+            # Override category with detected type if missing
+            if 'category' not in generated_template or not generated_template['category']:
+                generated_template['category'] = primary_type
+
+            # Validate extraction with the same source document
+            test_extraction = await _test_template_extraction(temp_file_path, generated_template)
+
+            decision = {
+                'action': 'generated',
+                'template': generated_template,
+                'evaluation': evaluation,
+                'generation_metadata': {
+                    'generation_method': generation_mode,
+                    'ai_confidence': analysis.get('confidence'),
+                    'fields_detected': len(analysis.get('detected_fields', [])),
+                    'original_filename': file.filename,
+                    'auto_save': auto_save,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                },
+                'validation_results': {
+                    'template_valid': True,
+                    'validation_warnings': [],
+                    'suggested_improvements': []
+                },
+                'test_extraction': test_extraction,
+                'decision_metadata': {
+                    'reason': 'No template met minimum match confidence; generation allowed',
+                    'min_match_confidence': min_match_confidence,
+                    'quick_scan': quick_scan,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            }
+
+            # Optional auto-save
+            if auto_save:
+                try:
+                    saved_template = await _save_template_to_database(generated_template, template_name, generated_template.get('category', primary_type))
+                    decision['generation_metadata']['saved_to_database'] = True
+                    decision['generation_metadata']['template_id'] = saved_template['id']
+                    decision['template']['id'] = saved_template['id']
+                except Exception as e:
+                    logger.error(f"Failed to auto-save generated template: {str(e)}")
+                    decision['generation_metadata']['saved_to_database'] = False
+                    decision['generation_metadata']['save_error'] = str(e)
+
+            return JSONResponse(content=decision)
+
+        # 3) Neither a strong match nor generation allowed
+        return JSONResponse(content={
+            'action': 'no_suitable_template',
+            'evaluation': evaluation,
+            'alternatives': suggestions,
+            'decision_metadata': {
+                'reason': 'No suggestion met minimum confidence and generation not allowed',
+                'min_match_confidence': min_match_confidence,
+                'quick_scan': quick_scan,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Template decision failed: {str(e)}")
+    finally:
+        if temp_file_path:
+            await cleanup_temp_file(temp_file_path)
+
 @router.post("/extract-structured-data")
 async def extract_structured_data(
     file: UploadFile = File(...),
@@ -703,6 +730,147 @@ async def evaluate_document_type(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
+@router.post("/extract-with-smart-template")
+async def extract_with_smart_template(
+    file: UploadFile = File(...),
+    template_data: Optional[str] = Query(None, description="JSON string containing smart template data"),
+    processing_mode: str = Query("smart_template", description="Processing mode: smart_template or progressive"), 
+    confidence_threshold: float = Query(0.7, description="Minimum confidence threshold for extraction"),
+    enable_validation: bool = Query(True, description="Enable extraction validation"),
+    provider: str = Query("azure", description="AI provider to use (azure or ollama)")
+):
+    """
+    Extract structured data from document using smart template with AI-based field extraction.
+    
+    This endpoint is specifically designed for smart template processing with:
+    - AI-powered field extraction using smart variables
+    - Template-guided document analysis
+    - High-accuracy extraction with confidence scoring
+    - Support for progressive processing modes
+    
+    Expected template data format:
+    {
+        "id": "template_id",
+        "name": "template_name", 
+        "smart_variables": [
+            {
+                "name": "field_name",
+                "type": "text|currency|date|email",
+                "description": "Description of what this field contains",
+                "extraction_hints": ["hint1", "hint2"]
+            }
+        ],
+        "extraction_rules": [...],
+        "confidence_threshold": 0.7
+    }
+    """
+    
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    temp_file_path = None
+    
+    try:
+        # Parse template data if provided
+        template_info = None
+        template_variables = []
+        if template_data:
+            try:
+                template_info = json.loads(template_data)
+                template_variables = template_info.get('smart_variables', [])
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
+        
+        if not template_variables:
+            raise HTTPException(status_code=400, detail="No smart template variables provided")
+        
+        # Save uploaded file temporarily
+        temp_file_path = await save_uploaded_file(file)
+        
+        # Extract text content from document
+        try:
+            # Handle different file types for text extraction
+            if temp_file_path.suffix.lower() in ['.html', '.htm']:
+                async with aiofiles.open(temp_file_path, 'r', encoding='utf-8') as f:
+                    html_content = await f.read()
+                # Simple HTML tag removal
+                text_content = re.sub(r'<[^>]+>', ' ', html_content)
+                text_content = re.sub(r'\s+', ' ', text_content).strip()
+            elif temp_file_path.suffix.lower() in ['.txt', '.md']:
+                async with aiofiles.open(temp_file_path, 'r', encoding='utf-8') as f:
+                    text_content = await f.read()
+            else:
+                # Use enhanced Docling service for complex formats
+                docling_result = await enhanced_docling_service.process_document_with_ai_enhancement(
+                    temp_file_path,
+                    extract_text=True,
+                    extract_metadata=False,
+                    extract_structure=False,
+                    use_ai_enhancement=False  # Skip AI enhancement for faster text extraction
+                )
+                
+                if docling_result.get('status') != 'completed':
+                    raise HTTPException(status_code=500, detail="Failed to extract text from document")
+                
+                text_content = docling_result.get('content', {}).get('text', '')
+                
+        except Exception as e:
+            logger.error(f"Text extraction failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
+        
+        if not text_content:
+            raise HTTPException(status_code=400, detail="No text content found in document")
+        
+        # Use smart field extractor for AI-powered extraction
+        logger.info(f"Smart template extraction: processing {len(template_variables)} variables with {provider} provider")
+        extracted_data = await smart_field_extractor.extract_fields_intelligently(
+            text_content,
+            template_variables,
+            confidence_threshold,
+            provider=provider
+        )
+        
+        # Build response in format expected by frontend
+        response_data = {
+            "job_id": str(uuid.uuid4()),
+            "status": "completed",
+            "endpoint": "extract-with-smart-template",
+            "filename": file.filename,
+            "content": {"text": text_content},
+            "metadata": {
+                "format": temp_file_path.suffix,
+                "source": "smart_template_extraction",
+                "provider_used": provider,
+                "processing_mode": processing_mode
+            },
+            "extracted_data": extracted_data,
+            "template_info": template_info,
+            "confidence_threshold": confidence_threshold,
+            "validation_enabled": enable_validation,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "processing_time": extracted_data.get("processing_time_ms", 100) / 1000.0,
+            "extraction_method": "smart_template_based"
+        }
+        
+        # Add validation results if enabled
+        if enable_validation:
+            validation_results = _validate_extraction_results(extracted_data, template_variables)
+            response_data["validation_results"] = validation_results
+        
+        return JSONResponse(content=response_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Smart template extraction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Smart template extraction failed: {str(e)}")
+        
+    finally:
+        # Cleanup temporary file
+        if temp_file_path:
+            await cleanup_temp_file(temp_file_path)
+
 @router.post("/smart-extract")
 async def smart_field_extraction(
     text_content: str = Query(..., description="Text content to extract from"),
@@ -828,97 +996,7 @@ async def analyze_document_for_template_generation(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
-@router.post("/generate-template")
-async def generate_template_from_document(
-    file: UploadFile = File(...),
-    template_name: str = Query(..., description="Name for the generated template"),
-    category: str = Query("Generated", description="Category for the template"),
-    auto_save: bool = Query(False, description="Automatically save generated template"),
-    field_filter: Optional[str] = Query(None, description="Comma-separated list of fields to include"),
-    generation_mode: str = Query("automatic", description="Template generation mode: automatic, guided, custom")
-):
-    """
-    Generate a complete document processing template based on AI analysis of the uploaded document.
-    
-    This endpoint creates a fully functional template with suggested fields, types, and extraction hints.
-    
-    The generated template can be:
-    - Used immediately for document processing
-    - Saved to the template library for future use
-    - Customized and refined by the user
-    """
-    
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    
-    if generation_mode not in ["automatic", "guided", "custom"]:
-        raise HTTPException(status_code=400, detail="Generation mode must be automatic, guided, or custom")
-    
-    temp_file_path = None
-    
-    try:
-        # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
-        
-        # Analyze document first
-        analysis = await ai_template_generator.analyze_document_structure(temp_file_path)
-        
-        # Filter fields if specified
-        if field_filter:
-            allowed_fields = [field.strip() for field in field_filter.split(',')]
-            filtered_fields = [
-                field for field in analysis['detected_fields']
-                if field['name'] in allowed_fields
-            ]
-            analysis['detected_fields'] = filtered_fields
-        
-        # Generate template
-        generated_template = await ai_template_generator.generate_template_from_analysis(
-            analysis, 
-            template_name
-        )
-        
-        # Override category if specified
-        if category != "Generated":
-            generated_template['category'] = category
-        
-        # Test the template with the source document
-        test_extraction = await _test_template_extraction(temp_file_path, generated_template)
-        
-        # Prepare response
-        response = {
-            'template_id': str(uuid.uuid4()),
-            'template': generated_template,
-            'generation_metadata': {
-                'generation_time': 3.2,  # Simulated time
-                'ai_confidence': analysis['confidence'],
-                'fields_detected': len(analysis['detected_fields']),
-                'generation_method': generation_mode,
-                'original_filename': file.filename,
-                'auto_save': auto_save
-            },
-            'validation_results': {
-                'template_valid': True,
-                'validation_warnings': [],
-                'suggested_improvements': []
-            },
-            'test_extraction': test_extraction
-        }
-        
-        # TODO: Implement auto_save functionality with database integration
-        if auto_save:
-            response['generation_metadata']['saved_to_database'] = False
-            response['generation_metadata']['save_note'] = "Auto-save not implemented yet"
-        
-        return JSONResponse(content=response)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Template generation failed: {str(e)}")
-        
-    finally:
-        # Cleanup temporary file
-        if temp_file_path:
-            await cleanup_temp_file(temp_file_path)
+ 
 
 @router.post("/suggest-template-improvements")
 async def suggest_template_improvements(
@@ -979,6 +1057,40 @@ async def suggest_template_improvements(
         cleanup_tasks = [cleanup_temp_file(temp_path) for temp_path in temp_files]
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
 
+@router.post("/save-generated-template")
+async def save_generated_template(
+    template_data: str = Query(..., description="JSON string containing generated template data"),
+    template_name: str = Query(..., description="Name for the template"),
+    category: str = Query("Generated", description="Category for the template")
+):
+    """
+    Save a generated template to the database.
+    
+    This endpoint allows saving templates that were generated via /decide-template
+    but not initially saved.
+    """
+    
+    try:
+        # Parse template data
+        import json
+        template = json.loads(template_data)
+        
+        # Save to database
+        saved_template = await _save_template_to_database(template, template_name, category)
+        
+        return JSONResponse(content={
+            'success': True,
+            'template_id': saved_template['id'],
+            'message': f'Template "{template_name}" saved successfully',
+            'saved_template': saved_template
+        })
+        
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
+    except Exception as e:
+        logger.error(f"Failed to save generated template: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
+
 async def _test_template_extraction(document_path: Path, template: Dict[str, Any]) -> Dict[str, Any]:
     """Test template extraction on the source document"""
     
@@ -1031,6 +1143,126 @@ async def _test_template_extraction(document_path: Path, template: Dict[str, Any
             'average_confidence': 0.0,
             'failed_fields': [var['name'] for var in template.get('variables', [])]
         }
+
+def _validate_extraction_results(
+    extracted_data: Dict[str, Any], 
+    template_variables: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Validate extraction results against template expectations"""
+    
+    extracted_values = extracted_data.get('extracted_values', {})
+    validation_results = {
+        'validation_passed': True,
+        'field_validations': [],
+        'overall_confidence': extracted_data.get('success_rate', 0.0),
+        'warnings': [],
+        'errors': []
+    }
+    
+    for variable in template_variables:
+        field_name = variable['name']
+        field_type = variable.get('type', 'text')
+        
+        field_validation = {
+            'field_name': field_name,
+            'expected_type': field_type,
+            'found': field_name in extracted_values,
+            'confidence': 0.0,
+            'status': 'missing'
+        }
+        
+        if field_name in extracted_values:
+            field_value = extracted_values[field_name]
+            field_validation['extracted_value'] = field_value
+            field_validation['status'] = 'extracted'
+            field_validation['confidence'] = 0.8  # Default confidence
+            
+            # Basic type validation
+            if field_type == 'currency' and not any(symbol in str(field_value) for symbol in ['$', '€', '£']):
+                validation_results['warnings'].append(f"Field '{field_name}' expected currency but no currency symbol found")
+            elif field_type == 'email' and '@' not in str(field_value):
+                validation_results['warnings'].append(f"Field '{field_name}' expected email but no @ symbol found")
+        else:
+            validation_results['warnings'].append(f"Required field '{field_name}' not extracted")
+        
+        validation_results['field_validations'].append(field_validation)
+    
+    # Calculate overall validation status
+    successful_extractions = sum(1 for fv in validation_results['field_validations'] if fv['found'])
+    validation_results['extraction_rate'] = successful_extractions / len(template_variables) if template_variables else 0
+    validation_results['validation_passed'] = validation_results['extraction_rate'] > 0.5
+    
+    return validation_results
+
+async def _save_template_to_database(
+    template: Dict[str, Any], 
+    template_name: str, 
+    category: str
+) -> Dict[str, Any]:
+    """Save generated template to the Supabase database"""
+    
+    # Get Supabase connection details from environment
+    supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
+    supabase_key = os.getenv('ANON_KEY', '')
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError("Supabase credentials not configured")
+    
+    headers = {
+        'apikey': supabase_key,
+        'Authorization': f'Bearer {supabase_key}',
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+    }
+    
+    # Prepare template data for database
+    template_data = {
+        'name': template_name,
+        'description': template.get('description', f'AI-generated template for {category} documents'),
+        'category': category,
+        'template_content': template.get('template_content', ''),
+        'template_type': 'smart',
+        'smart_variables': template.get('variables', []),
+        'tags': ['ai-generated', category],
+        'is_public': False,
+        'extraction_rules': [
+            {
+                'variable_id': var.get('id', var.get('name')),
+                'extraction_method': 'ai_powered',
+                'confidence_threshold': 0.7,
+                'ai_prompt': f"Extract the {var.get('name')} from the document",
+                'fallback_rules': var.get('extraction_hints', [])
+            }
+            for var in template.get('variables', [])
+        ],
+        'generation_settings': {
+            'model': 'ai_template_generator',
+            'temperature': 0.3,
+            'max_tokens': 1000,
+            'generation_method': 'automatic'
+        }
+    }
+    
+    try:
+        # Insert template into smart_templates table
+        url = f"{supabase_url}/rest/v1/smart_templates"
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=template_data, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise aiohttp.ClientResponseError(request_info=resp.request_info, history=resp.history, status=resp.status, message=text)
+                saved_templates = await resp.json()
+        
+        if not saved_templates or len(saved_templates) == 0:
+            raise LookupError("No template returned from database")
+        
+        saved_template = saved_templates[0]
+        logger.info(f"Successfully saved template with ID: {saved_template['id']}")
+        return saved_template
+        
+    except Exception as e:
+        logger.error(f"Database save failed: {str(e)}")
+        raise RuntimeError(f"Failed to save template to database: {str(e)}")
 
 async def _generate_template_improvements(
     template_id: int, 

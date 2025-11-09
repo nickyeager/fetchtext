@@ -1,22 +1,21 @@
 import React from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { UnifiedTemplateEditor } from '@/components/templates/UnifiedTemplateEditor';
-import { masterTemplateService } from '@/services/master-template-service';
-import { TemplatePayload } from '@/types/unified-template';
+import { TemplateEditor } from '@/components/templates/TemplateEditor';
+import { templateService, SmartTemplate } from '@/services/template-service';
 
 export const Route = createFileRoute('/_authenticated/templates/$templateId/edit')({
-  component: TemplateEditPage,
+  component: SmartTemplateEditPage,
   errorComponent: ({ error }) => (
     <div className="container mx-auto p-6">
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          Error loading template for editing: {error.message || 'Unknown error occurred'}
+          Error loading smart template for editing: {error.message || 'Unknown error occurred'}
         </AlertDescription>
       </Alert>
     </div>
@@ -26,16 +25,17 @@ export const Route = createFileRoute('/_authenticated/templates/$templateId/edit
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>
-          Template not found. It may have been deleted or you don't have permission to edit it.
+          Smart template not found. It may have been deleted or you don't have permission to edit it.
         </AlertDescription>
       </Alert>
     </div>
   ),
 });
 
-function TemplateEditPage() {
+function SmartTemplateEditPage() {
   const navigate = useNavigate();
   const { templateId } = Route.useParams();
+  const queryClient = useQueryClient();
 
   // Fetch template data
   const { 
@@ -43,45 +43,43 @@ function TemplateEditPage() {
     isLoading, 
     error 
   } = useQuery({
-    queryKey: ['template', templateId],
+    queryKey: ['smart-template', templateId],
     queryFn: async () => {
-      const template = await masterTemplateService.getTemplate(templateId);
-      
-      // If it's a smart template, redirect to the smart template edit route
-      if (template?.type === 'smart') {
-        navigate({ 
-          to: '/templates/smart/$templateId/edit', 
-          params: { templateId },
-          replace: true
-        });
-        return null;
-      }
-      
-      return template;
+      return await templateService.getTemplate(Number(templateId));
     },
     enabled: !!templateId,
   });
 
   // Save mutation
   const saveMutation = useMutation({
-    mutationFn: async (payload: TemplatePayload) => {
-      return await masterTemplateService.updateTemplate(templateId, payload);
+    mutationFn: async (templateData: SmartTemplate) => {
+      if (template?.id) {
+        return await templateService.updateTemplate(template.id, templateData);
+      } else {
+        throw new Error('Template ID not found');
+      }
     },
     onSuccess: () => {
-      toast.success('Template updated successfully');
+      toast.success('Smart template updated successfully');
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['smart-template', templateId] });
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+      
       navigate({ 
         to: '/templates/$templateId', 
-        params: { templateId }
+        params: { templateId },
+        replace: true  // Replace current entry to avoid back button issues
       });
     },
     onError: (error) => {
-      console.error('Error saving template:', error);
+      console.error('Error saving smart template:', error);
       toast.error('Failed to save template: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   });
 
-  const handleSave = async (payload: TemplatePayload) => {
-    saveMutation.mutate(payload);
+  const handleSave = async (templateData: SmartTemplate) => {
+    saveMutation.mutate(templateData);
   };
 
   const handleCancel = () => {
@@ -96,19 +94,7 @@ function TemplateEditPage() {
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-          <span className="ml-2">Loading template...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render if this is a smart template (we're redirecting)
-  if (template?.type === 'smart') {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-          <span className="ml-2">Redirecting to smart template editor...</span>
+          <span className="ml-2">Loading smart template...</span>
         </div>
       </div>
     );
@@ -120,12 +106,12 @@ function TemplateEditPage() {
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            Template not found or failed to load.
+            Smart template not found or failed to load.
           </AlertDescription>
         </Alert>
         <Button onClick={handleCancel} className="mt-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Template
+          Back to Smart Template
         </Button>
       </div>
     );
@@ -133,11 +119,18 @@ function TemplateEditPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8">
-      <UnifiedTemplateEditor
+      {/* Debug header to confirm we're on the edit route */}
+      <div className="mb-4 p-3 bg-green-100 border border-green-300 rounded">
+        <h2 className="text-green-800 font-bold">🛠️ EDITING MODE - Smart Template Editor</h2>
+        <p className="text-sm text-green-600">Template ID: {templateId}</p>
+      </div>
+      
+      <TemplateEditor
         template={template}
         onSave={handleSave}
         onCancel={handleCancel}
         isNew={false}
+        isEditMode={true}
       />
     </div>
   );

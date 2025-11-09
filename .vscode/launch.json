@@ -5,11 +5,35 @@
     "version": "0.2.0",
     "configurations": [
         {
+            // Starts the Vite dev server in the dashboard folder
+            "type": "node-terminal",
+            "request": "launch",
+            "name": "Run Vite (pnpm dev)",
+            "command": "pnpm dev",
+            "cwd": "${workspaceFolder}/localai-admin-dashboard"
+        },
+        {
+            // Launch Chrome with proper webRoot and Vite source map mappings
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
-            "url": "http://localhost:8080",
-            "webRoot": "${workspaceFolder}"
+            "name": "Chrome: Vite App",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/localai-admin-dashboard",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "vite://*": "${webRoot}/*",
+                "/src/*": "${webRoot}/src/*",
+                "/*": "${webRoot}/*"
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Dev: Vite + Debug Chrome",
+            "configurations": [
+                "Run Vite (pnpm dev)",
+                "Chrome: Vite App"
+            ]
         }
     ]
 }

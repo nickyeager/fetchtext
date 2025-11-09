@@ -1,4 +1,4 @@
-import { ContentSection } from '../components/content-section'
+import ContentSection from '../components/content-section'
 import { GoogleDriveSettings } from './google-drive-settings'
 
 export default function Integrations() {

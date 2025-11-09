@@ -2,6 +2,55 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Application Goal
+
+**FetchText** is a document processing and generation platform that:
+1. **Processes documents** - Extracts structured data from PDFs, images, and text files
+2. **Extracts variables** - Uses AI-powered smart templates with regex fallback for reliable data extraction  
+3. **Generates new documents** - Automatically creates new documents using extracted data
+
+## ⚠️ CRITICAL: Production Readiness Verification Rule
+
+**Before declaring ANY feature "production ready" or "ready to deploy", you MUST:**
+
+1. **Document the exact end-user workflow** - Provide step-by-step instructions for how a real user would test the feature in the local admin frontend
+2. **Create comprehensive tests** - Write tests that cover the ACTUAL real-world usage, not simplified versions
+3. **RUN THE TESTS** - Actually execute the tests and verify they pass. NEVER declare something done without running tests
+4. **Test the workflow yourself** - Actually follow the steps in the admin dashboard to verify they work
+5. **Identify any blockers** - Note any authentication, UI, or functionality issues that prevent real user testing
+6. **Provide workarounds** - If blockers exist, explain how users can work around them or what needs to be fixed first
+
+**CRITICAL TESTING RULES:**
+- **NEVER simplify tests just to make them pass** - Tests must reflect real-world usage
+- **NEVER declare "production ready" without running the actual tests** - No assumptions
+- **If tests fail, FIX THE CODE, not the tests** - The tests represent user requirements
+- **Document both passing AND failing tests** - Be transparent about what works and what doesn't
+
+**Example Format:**
+```
+## End-User Testing Instructions for [Feature Name]
+
+### Prerequisites:
+- Services running: `python start_services.py --profile cpu`
+- User account created (provide specific steps)
+
+### Step-by-Step User Workflow:
+1. Navigate to http://localhost:5173
+2. [Specific UI interactions...]
+3. [Expected results at each step...]
+
+### Known Issues & Workarounds:
+- [Any authentication or UI blockers]
+- [Temporary solutions for testing]
+
+### Verification Checklist:
+- [ ] User can complete full workflow without technical intervention
+- [ ] All expected functionality works as described
+- [ ] Error states are handled gracefully
+```
+
+**NEVER skip this verification step.** Production readiness means a real user can successfully use the feature.
+
 ## Architecture Overview
 
 This is a comprehensive self-hosted AI platform called "FetchText" that combines multiple AI services into a unified stack. The system consists of three main components:
@@ -12,6 +61,11 @@ Always regenerate routes using the `pnpm run build` command
 
 2. **Document Processor** (`document-processor/`) - Python FastAPI service for document processing using Docling
 3. **Service Infrastructure** - Docker Compose orchestrated services including Supabase, N8N, Ollama, and monitoring
+
+## 📋 **Key Process Documentation**
+
+- **Template Analysis & Selection**: See `TEMPLATE_ANALYSIS_INSTRUCTIONS.md` for complete details on how the system intelligently matches documents with existing templates using Azure OpenAI
+- **Document Upload Flow**: See `localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md` for the complete upload process from gallery to document view
 
 ### Service Architecture
 
@@ -141,6 +195,12 @@ python run_tests.py                    # Comprehensive test suite
 python run_comprehensive_tests.sh      # Shell script runner
 python test_api_quick.py              # Quick API tests
 pytest tests/ -v                      # Direct pytest
+
+# Python development best practices:
+# Use type hints consistently
+# Research packages before adding dependencies  
+# Follow "95/5 Rule" (use 95% package functionality, 5% customization)
+# External research after 3 consecutive implementation failures
 ```
 
 ### Supabase Management
@@ -153,12 +213,92 @@ pnpm setup:cli        # Setup CLI environment
 
 ## Key Technical Patterns
 
+### Development Priorities & Code Quality
+**Always prioritize in this order:**
+1. **Working Code** - Functionality first, optimization later
+2. **Validation** - Comprehensive testing with real data
+3. **Readability** - Clear, maintainable code structure
+4. **Static Analysis** - Type safety and linting
+
+### Module Design Standards
+- **Maximum 500 lines per file** - Break down larger modules
+- **Comprehensive documentation headers** - Document purpose, inputs, outputs
+- **Validation functions** - Include validation in main blocks for testing
+- **Prefer functions over classes** - Functional approach for better testability
+- **Type hints consistently** - Use TypeScript strict mode throughout
+- **Avoid conditional imports** - Keep imports at module top level
+
 ### Testing Framework
 - **Always use Vitest** for all frontend testing needs
 - Use `npx vitest` without `--watch` flag for execution
 - Test files use `.test.ts`, `.test.tsx` extensions
 - Co-locate tests with source files or use `__tests__/` directories
 - Use `vi.mock()` for mocking, not `jest.mock()`
+- **Always test with real data** - Never simplify tests to make them pass
+- **Verify outputs against concrete expected results** - No assumptions
+- **Track and report ALL test failures** - Be transparent about failures
+- **Exit with appropriate status codes** - 0 for success, 1 for failure
+- **Never mock core functionality** - Test against real implementations
+
+### Playwright Integration Testing Requirements
+**CRITICAL: Nothing is "done" or "production ready" without passing Playwright tests**
+
+#### Mandatory Testing Protocol
+1. **Always write Playwright tests for every feature** - No exceptions
+2. **Test complete user journeys** - From login to final action completion
+3. **Run tests before declaring completion** - CRITICAL: Always verify tests actually pass
+4. **NEVER claim tests pass without verification** - Must see actual successful output
+5. **Fix broken imports/modules before testing** - Ensure all dependencies exist
+4. **Include assertion for every user-visible change** - Verify UI updates
+5. **Test error states and edge cases** - Not just happy paths
+6. **Never declare "fixed" without a passing test** - Tests are proof
+
+#### Integration Testing Requirements
+**Before declaring any fix complete, you MUST:**
+1. **Write integration tests that test actual user flows** - Upload → Process → Extract → Display
+2. **Test against real database schema** - Never assume column names exist
+3. **Verify each step with console logging** - Track data flow through entire pipeline
+4. **Test in real browser with Playwright** - Verify UI updates correctly
+5. **Run tests against running services** - Backend + Frontend + Database
+6. **Document test results with screenshots** - Prove the fix works visually
+7. **Never declare "done" without passing integration tests** - Tests must prove functionality
+
+#### Comprehensive Logging Requirements
+**Always include extensive logging for debugging:**
+1. **Log at every major step** - Entry/exit of functions, state changes
+2. **Log all data transformations** - Before/after states
+3. **Include timestamps and context** - Know when and where things happen
+4. **Log API requests and responses** - Full payloads for debugging
+5. **Use structured logging** - JSON format with consistent fields
+6. **Log errors with full stack traces** - Never swallow exceptions
+7. **Add debug flags for verbose output** - `DEBUG=true` for extra logging
+8. **Log performance metrics** - Measure slow operations
+
+#### Example Logging Pattern
+```typescript
+console.log('[DocumentUpload] Starting upload process', {
+  timestamp: new Date().toISOString(),
+  userId: user.id,
+  fileSize: file.size,
+  fileType: file.type
+});
+
+try {
+  const result = await uploadDocument(file);
+  console.log('[DocumentUpload] Upload successful', {
+    timestamp: new Date().toISOString(),
+    documentId: result.id,
+    processingTime: performance.now() - startTime
+  });
+} catch (error) {
+  console.error('[DocumentUpload] Upload failed', {
+    timestamp: new Date().toISOString(),
+    error: error.message,
+    stack: error.stack,
+    fileDetails: { name: file.name, size: file.size }
+  });
+}
+```
 
 ### Docker Infrastructure
 - **Use `docker compose` not `docker-compose`** (modern syntax)
@@ -260,6 +400,7 @@ useEffect(() => {
 
 ### File Structure
 ```
+# Frontend Structure (localai-admin-dashboard/src/)
 src/
 ├── components/       # Reusable UI components
 ├── features/        # Feature-specific modules
@@ -267,6 +408,24 @@ src/
 ├── routes/         # TanStack Router routes
 ├── types/          # TypeScript type definitions
 └── __tests__/      # Test files (when not co-located)
+
+# Python Backend Structure (document-processor/)
+document-processor/
+├── app/
+│   ├── models/      # Pydantic models and data structures
+│   ├── routers/     # FastAPI route handlers
+│   ├── services/    # Business logic and processing services
+│   └── config/      # Configuration management
+├── tests/           # Test files (pytest)
+└── requirements.txt # Python dependencies
+
+# Project Root Structure
+/
+├── localai-admin-dashboard/  # React frontend
+├── document-processor/       # Python FastAPI backend
+├── supabase/                # Database migrations and config
+├── monitoring/              # Observability and health checks
+└── docker-compose.yml       # Service orchestration
 ```
 
 ### Environment Configuration
@@ -339,6 +498,16 @@ The document processor backend (`http://localhost:8090`) manages the provider ro
 - Health endpoint at `:8090/health`
 - Shared volumes for document uploads, processing, and temp files
 
+#### Python Development Standards
+- **Package Management**: Use `uv` with `pyproject.toml` for dependency management
+- **Recommended Libraries**:
+  - **Logging**: `loguru` for structured logging
+  - **CLI**: `typer` for command-line interfaces
+  - **Type Annotations**: Use `typing` library consistently
+- **Code Organization**: Maximum 500 lines per file
+- **Testing**: Always test with real data, verify concrete expected results
+- **Error Handling**: Implement comprehensive failure reporting and tracking
+
 ### Supabase Integration
 - DO NOT create new Supabase projects - use existing Docker infrastructure
 - Local URL: `http://localhost:8000` (Kong gateway)
@@ -347,12 +516,13 @@ The document processor backend (`http://localhost:8090`) manages the provider ro
 - **Storage**: Uses MinIO S3 backend (port 9010) instead of file storage to resolve macOS extended attributes issues
 
 #### Database Schema - Templates
-The system uses multiple template-related tables:
-- **`smart_templates`**: AI-powered templates with smart variables and extraction rules
-- **`workflow_templates`**: N8N/Flowise workflow automation templates  
-- **`templates`**: Legacy standard templates (being phased out)
+The system uses a **unified template architecture** (migration 010):
+- **`smart_templates`**: Single table for all templates with AI-powered extraction and regex fallback
+  - `smart_variables`: AI-powered field definitions with semantic descriptions
+  - `regex_fallback`: Regex patterns for reliable extraction when AI confidence is low
+  - `generation_settings`: Configuration for document generation including workflow integration
 - **`template_categories`**: Categories for organizing templates
-- **Note**: `template_ratings` table was removed in migration 006 - rating functionality is deprecated
+- **Note**: Legacy `templates` and `workflow_templates` tables were consolidated into `smart_templates` for unified document processing → variable extraction → document generation pipeline
 
 ### Monitoring Stack
 - Langfuse for AI observability on port :8007

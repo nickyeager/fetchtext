@@ -1,9 +1,14 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react-swc'
-import tsconfigPaths from 'vite-tsconfig-paths'
+import path from 'path'
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
@@ -15,5 +20,19 @@ export default defineConfig({
       VITE_SUPABASE_URL: 'http://localhost:8000',
       VITE_SUPABASE_ANON_KEY: 'test_anon_key',
     },
+    // Exclude E2E tests from Vitest (they use Playwright)
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/tests/e2e/**',
+      '**/tests/integration/**',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+    ],
+    // Include patterns for Vitest tests
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'src/**/__tests__/**/*.{ts,tsx}',
+    ],
   },
 })

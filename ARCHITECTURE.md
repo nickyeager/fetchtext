@@ -31,7 +31,7 @@ This document provides a comprehensive overview of all services, their ports, an
 | **N8N Workflow Automation** | `:8001` | `n8n:5678` | Workflow automation platform |
 | **Open WebUI (ChatGPT-like)** | `:8002` | `open-webui:8080` | AI chat interface |
 | **Flowise (Low-code AI)** | `:8003` | `flowise:3001` | Visual AI workflow builder |
-| **Supabase Studio** | `:8005` | `kong:8000` | Database & Auth management |
+| **Supabase Studio** | `:8005` | `http://localhost:8000` (host) / `http://supabase-kong:8000` (internal) | Database & Auth management |
 | **Langfuse (AI Observability)** | `:8007` | `langfuse-web:3000` | AI monitoring & analytics |
 | **Neo4j Browser** | `:8008` | `neo4j:7474` | Graph database interface |
 | **Document Processor** | `:8009` | `document-processor:8090` | Document processing API |

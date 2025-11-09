@@ -2,74 +2,43 @@ import { supabase } from '@/lib/supabase';
 import { WorkflowExecution } from '@/types/workflows';
 
 /**
- * Service for real-time workflow execution monitoring
+ * Service for workflow execution monitoring (polling-based, no realtime)
  */
 export class WorkflowMonitoringService {
-  private static subscriptions = new Map<string, any>();
-
   /**
-   * Subscribe to real-time execution updates for a workflow instance
+   * Get executions for a workflow instance
    */
-  static subscribeToExecutions(
-    instanceId: string, 
-    callback: (execution: WorkflowExecution) => void
-  ): () => void {
-    const subscription = supabase
-      .channel(`workflow_executions_${instanceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workflow_executions',
-          filter: `workflow_instance_id=eq.${instanceId}`
-        },
-        (payload) => {
-          if (payload.new) {
-            callback(payload.new as WorkflowExecution);
-          }
-        }
-      )
-      .subscribe();
+  static async getExecutions(instanceId: string): Promise<WorkflowExecution[]> {
+    const { data, error } = await supabase
+      .from('workflow_executions')
+      .select('*')
+      .eq('workflow_instance_id', instanceId)
+      .order('started_at', { ascending: false });
 
-    this.subscriptions.set(instanceId, subscription);
+    if (error) {
+      console.error('Error fetching executions:', error);
+      throw error;
+    }
 
-    // Return unsubscribe function
-    return () => {
-      subscription.unsubscribe();
-      this.subscriptions.delete(instanceId);
-    };
+    return data || [];
   }
 
   /**
-   * Subscribe to real-time node execution updates
+   * Get node executions for a workflow execution
    */
-  static subscribeToNodeExecutions(
-    executionId: string,
-    callback: (nodeExecution: any) => void
-  ): () => void {
-    const subscription = supabase
-      .channel(`node_executions_${executionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'workflow_node_executions',
-          filter: `execution_id=eq.${executionId}`
-        },
-        (payload) => {
-          if (payload.new) {
-            callback(payload.new);
-          }
-        }
-      )
-      .subscribe();
+  static async getNodeExecutions(executionId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('workflow_node_executions')
+      .select('*')
+      .eq('execution_id', executionId)
+      .order('started_at', { ascending: true });
 
-    // Return unsubscribe function
-    return () => {
-      subscription.unsubscribe();
-    };
+    if (error) {
+      console.error('Error fetching node executions:', error);
+      throw error;
+    }
+
+    return data || [];
   }
 
   /**
@@ -101,26 +70,17 @@ export class WorkflowMonitoringService {
    */
   static async startExecution(
     instanceId: string, 
-    triggeredBy: 'manual' | 'schedule' | 'webhook' | 'api' = 'manual',
-    triggerData?: any
-  ): Promise<string> {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      throw new Error('User must be authenticated to start executions');
-    }
-
+    parameters?: Record<string, any>
+  ): Promise<WorkflowExecution> {
     const { data, error } = await supabase
       .from('workflow_executions')
       .insert({
         workflow_instance_id: instanceId,
-        status: 'running',
-        started_at: new Date().toISOString(),
-        triggered_by: triggeredBy,
-        trigger_data: triggerData || {},
-        created_by: user.id
+        status: 'pending',
+        input_parameters: parameters || {},
+        started_at: new Date().toISOString()
       })
-      .select('id')
+      .select()
       .single();
 
     if (error) {
@@ -128,122 +88,43 @@ export class WorkflowMonitoringService {
       throw error;
     }
 
-    return data.id;
+    return data;
   }
 
   /**
-   * Stop a running execution
+   * Cancel a workflow execution
    */
-  static async stopExecution(executionId: string): Promise<void> {
+  static async cancelExecution(executionId: string): Promise<void> {
     const { error } = await supabase
       .from('workflow_executions')
       .update({
         status: 'cancelled',
-        finished_at: new Date().toISOString(),
-        error_message: 'Execution cancelled by user'
+        ended_at: new Date().toISOString()
       })
-      .eq('id', executionId)
-      .eq('status', 'running');
+      .eq('id', executionId);
 
     if (error) {
-      console.error('Error stopping execution:', error);
+      console.error('Error cancelling execution:', error);
       throw error;
     }
   }
 
   /**
-   * Get execution metrics for monitoring dashboard
+   * Get execution history for a workflow instance
    */
-  static async getExecutionMetrics(instanceId: string, timeRange: '1h' | '24h' | '7d' | '30d' = '24h'): Promise<{
-    totalExecutions: number;
-    successRate: number;
-    averageExecutionTime: number;
-    executionTrend: Array<{ timestamp: string; count: number; successCount: number }>;
-  }> {
-    const now = new Date();
-    const timeRangeHours = {
-      '1h': 1,
-      '24h': 24,
-      '7d': 24 * 7,
-      '30d': 24 * 30
-    };
-
-    const since = new Date(now.getTime() - timeRangeHours[timeRange] * 60 * 60 * 1000);
-
+  static async getExecutionHistory(
+    instanceId: string, 
+    limit = 50
+  ): Promise<WorkflowExecution[]> {
     const { data, error } = await supabase
       .from('workflow_executions')
-      .select('status, execution_time_ms, started_at')
-      .eq('workflow_instance_id', instanceId)
-      .gte('started_at', since.toISOString())
-      .order('started_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching execution metrics:', error);
-      throw error;
-    }
-
-    const executions = data || [];
-    const successfulExecutions = executions.filter(e => e.status === 'completed');
-    const executionTimes = executions
-      .filter(e => e.execution_time_ms != null)
-      .map(e => e.execution_time_ms);
-
-    // Group executions by time buckets for trend analysis
-    const bucketSize = timeRangeHours[timeRange] > 24 ? 24 : 1; // hourly for short ranges, daily for longer
-    const buckets = new Map<string, { count: number; successCount: number }>();
-
-    executions.forEach(execution => {
-      const timestamp = new Date(execution.started_at);
-      const bucketKey = new Date(
-        timestamp.getFullYear(),
-        timestamp.getMonth(),
-        timestamp.getDate(),
-        bucketSize === 1 ? timestamp.getHours() : 0
-      ).toISOString();
-
-      const bucket = buckets.get(bucketKey) || { count: 0, successCount: 0 };
-      bucket.count++;
-      if (execution.status === 'completed') {
-        bucket.successCount++;
-      }
-      buckets.set(bucketKey, bucket);
-    });
-
-    const executionTrend = Array.from(buckets.entries()).map(([timestamp, { count, successCount }]) => ({
-      timestamp,
-      count,
-      successCount
-    }));
-
-    return {
-      totalExecutions: executions.length,
-      successRate: executions.length > 0 ? (successfulExecutions.length / executions.length) * 100 : 0,
-      averageExecutionTime: executionTimes.length > 0 
-        ? Math.round(executionTimes.reduce((a, b) => a + b, 0) / executionTimes.length)
-        : 0,
-      executionTrend
-    };
-  }
-
-  /**
-   * Get detailed execution logs
-   */
-  static async getExecutionLogs(executionId: string): Promise<Array<{
-    timestamp: string;
-    level: 'info' | 'warn' | 'error' | 'debug';
-    message: string;
-    nodeId?: string;
-    nodeName?: string;
-    data?: any;
-  }>> {
-    const { data, error } = await supabase
-      .from('workflow_execution_logs')
       .select('*')
-      .eq('execution_id', executionId)
-      .order('timestamp', { ascending: true });
+      .eq('workflow_instance_id', instanceId)
+      .order('started_at', { ascending: false })
+      .limit(limit);
 
     if (error) {
-      console.error('Error fetching execution logs:', error);
+      console.error('Error fetching execution history:', error);
       throw error;
     }
 
@@ -251,119 +132,40 @@ export class WorkflowMonitoringService {
   }
 
   /**
-   * Clean up old subscriptions
+   * Get execution statistics for a workflow instance
    */
-  static cleanup(): void {
-    for (const [, subscription] of this.subscriptions) {
-      subscription.unsubscribe();
+  static async getExecutionStats(instanceId: string): Promise<any> {
+    const { data, error } = await supabase
+      .rpc('get_workflow_execution_stats', { instance_id: instanceId });
+
+    if (error) {
+      console.error('Error fetching execution stats:', error);
+      // Fallback to manual calculation if RPC doesn't exist
+      const executions = await this.getExecutionHistory(instanceId, 1000);
+      return this.calculateStats(executions);
     }
-    this.subscriptions.clear();
+
+    return data;
   }
 
   /**
-   * Test workflow connection (N8N/Flowise health check)
+   * Calculate statistics from executions
    */
-  static async testWorkflowConnection(instanceId: string): Promise<{
-    status: 'healthy' | 'unhealthy' | 'unknown';
-    message: string;
-    responseTime?: number;
-  }> {
-    try {
-      const instance = await supabase
-        .from('workflow_instances')
-        .select('deployment_status, deployed_workflow_id, workflow_templates(template_type)')
-        .eq('id', instanceId)
-        .single();
+  private static calculateStats(executions: WorkflowExecution[]) {
+    const total = executions.length;
+    const successful = executions.filter(e => e.status === 'completed').length;
+    const failed = executions.filter(e => e.status === 'failed').length;
+    const running = executions.filter(e => e.status === 'running').length;
+    const cancelled = executions.filter(e => e.status === 'cancelled').length;
 
-      if (instance.error) {
-        throw instance.error;
-      }
-
-      const { deployment_status, deployed_workflow_id, workflow_templates } = instance.data;
-
-      if (deployment_status !== 'deployed' || !deployed_workflow_id) {
-        return {
-          status: 'unhealthy',
-          message: 'Workflow is not deployed'
-        };
-      }
-
-      const templateType = Array.isArray(workflow_templates) 
-        ? workflow_templates[0]?.template_type 
-        : (workflow_templates as any)?.template_type;
-      const startTime = Date.now();
-
-      // Test based on template type
-      if (templateType === 'n8n') {
-        return await this.testN8nConnection(deployed_workflow_id, startTime);
-      } else if (templateType === 'flowise') {
-        return await this.testFlowiseConnection(deployed_workflow_id, startTime);
-      } else {
-        return {
-          status: 'unknown',
-          message: 'Cannot test connection for this workflow type'
-        };
-      }
-    } catch (error) {
-      console.error('Error testing workflow connection:', error);
-      return {
-        status: 'unhealthy',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
-  /**
-   * Test N8N workflow connection
-   */
-  private static async testN8nConnection(_workflowId: string, startTime: number): Promise<{
-    status: 'healthy' | 'unhealthy';
-    message: string;
-    responseTime: number;
-  }> {
-    try {
-      // This would typically make an HTTP request to N8N API
-      // For now, we'll simulate the health check
-      const responseTime = Date.now() - startTime;
-      
-      return {
-        status: 'healthy',
-        message: 'N8N workflow is accessible',
-        responseTime
-      };
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        message: `N8N connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        responseTime: Date.now() - startTime
-      };
-    }
-  }
-
-  /**
-   * Test Flowise workflow connection
-   */
-  private static async testFlowiseConnection(_workflowId: string, startTime: number): Promise<{
-    status: 'healthy' | 'unhealthy';
-    message: string;
-    responseTime: number;
-  }> {
-    try {
-      // This would typically make an HTTP request to Flowise API
-      // For now, we'll simulate the health check
-      const responseTime = Date.now() - startTime;
-      
-      return {
-        status: 'healthy',
-        message: 'Flowise chatflow is accessible',
-        responseTime
-      };
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        message: `Flowise connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        responseTime: Date.now() - startTime
-      };
-    }
+    return {
+      total_executions: total,
+      successful_executions: successful,
+      failed_executions: failed,
+      running_executions: running,
+      cancelled_executions: cancelled,
+      success_rate: total > 0 ? successful / total : 0,
+      failure_rate: total > 0 ? failed / total : 0
+    };
   }
 }

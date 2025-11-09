@@ -10,5 +10,9 @@
     "yaml": true,
     "plaintext": true,
     "markdown": true
+  },
+  // Ensure Docker CLI is available in all integrated terminals (zsh on macOS)
+  "terminal.integrated.env.osx": {
+    "PATH": "/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:/opt/homebrew/bin:${env:PATH}"
   }
 }

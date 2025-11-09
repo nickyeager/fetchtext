@@ -1,0 +1,37 @@
+ACME CORPORATION
+123 Business Street
+Corporate City, CA 90210
+Phone: (555) 123-4567
+Email: billing@acme.com
+Tax ID: 12-3456789
+
+INVOICE
+
+Invoice #: INV-2024-001
+Date: January 15, 2024
+Due Date: February 14, 2024
+
+Bill To:
+TechStartup Inc.
+456 Innovation Ave
+Silicon Valley, CA 94301
+
+Description of Services:
+- Web Development Services (40 hours @ $125/hr): $5,000.00
+- Domain Registration and Setup: $89.95
+- SSL Certificate (1 year): $199.00
+- Monthly Hosting (3 months): $297.00
+- Technical Support (5 hours @ $95/hr): $475.00
+
+Subtotal: $6,060.95
+Sales Tax (8.75%): $530.33
+Total Amount Due: $6,591.28
+
+Payment Terms: Net 30
+Payment Methods: Check, Wire Transfer, Credit Card
+
+Thank you for your business!
+
+---
+This is a legitimate business invoice for professional services rendered.
+All amounts are in USD and subject to the terms and conditions outlined in our service agreement.

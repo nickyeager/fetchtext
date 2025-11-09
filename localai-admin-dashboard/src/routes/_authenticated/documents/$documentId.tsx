@@ -14,7 +14,7 @@
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DocumentDetailView } from '@/features/documents/components/DocumentDetailView';
-import { ProcessedDocumentsService } from '@/features/documents/services/processed-documents-service';
+import { UnifiedDocumentService, DocumentStatus } from '@/services/unified-document-service';
 
 // Route search params validation
 interface DocumentDetailSearch {
@@ -72,7 +72,6 @@ export const Route = createFileRoute('/_authenticated/documents/$documentId')({
 function DocumentDetailPage() {
   const navigate = useNavigate();
   const { documentId } = Route.useParams();
-  const { tab, debug } = Route.useSearch();
 
   /**
    * Handle navigation back to documents list
@@ -86,20 +85,26 @@ function DocumentDetailPage() {
    * @param format - Export format (json, txt, csv, html, docx)
    */
   const handleDownload = async (format: 'json' | 'txt' | 'csv' | 'html' | 'docx') => {
-    try {
-      const blob = await ProcessedDocumentsService.exportDocument(documentId, format);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `document_${documentId}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download failed:', error);
-      // Could show toast notification here
+    // Export functionality needs to be implemented in UnifiedDocumentService
+    // For now, we'll create a simple text export
+    const docRecord = await UnifiedDocumentService.getDocumentById(documentId);
+    if (!docRecord) throw new Error('Document not found');
+
+    let content = '';
+    if (format === 'json') {
+      content = JSON.stringify(docRecord, null, 2);
+    } else {
+      content = docRecord.content_text || 'No content available';
     }
+    const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement('a');
+    a.href = url;
+    a.download = `document_${documentId}.${format}`;
+    window.document.body.appendChild(a);
+    a.click();
+    window.document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   /**
@@ -107,20 +112,14 @@ function DocumentDetailPage() {
    * @param content - The edited HTML content
    */
   const handleSave = async (content: string) => {
-    try {
-      await ProcessedDocumentsService.updateDocument(documentId, {
-        processed_content: content,
-        metadata: {
-          ...((await ProcessedDocumentsService.getDocument(documentId))?.metadata || {}),
-          last_edited: new Date().toISOString(),
-          edited_by: 'user'
-        }
-      });
-      // Could show toast notification here
-    } catch (error) {
-      console.error('Save failed:', error);
-      // Could show error toast here
-    }
+    await UnifiedDocumentService.updateDocumentStatus(documentId, {
+      status: DocumentStatus.COMPLETED,
+      content_text: content,
+      metadata: {
+        last_edited_at: new Date().toISOString(),
+        edited_by: 'user'
+      }
+    });
   };
 
   return (
