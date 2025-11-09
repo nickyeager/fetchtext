@@ -11,9 +11,9 @@ import { Progress } from '@/components/ui/progress';
 import { 
   UseTemplateValidatorResult,
   getValidationSummary,
-  ValidationError,
-  ValidationWarning 
+  useTemplateValidator,
 } from '@/hooks/use-template-validator';
+import { ValidationError, ValidationWarning } from '@/lib/template-validator';
 import { Template } from '@/lib/template-validator';
 
 interface TemplateValidationPanelProps {
@@ -55,9 +55,9 @@ export function TemplateValidationPanel({
     );
   }
 
-  const handleAutoFix = () => {
+  const handleAutoFix = async () => {
     if (template && onAutoFix) {
-      const fixed = validator.autoFix(template);
+      const fixed = await validator.autoFix(template);
       onAutoFix(fixed);
     }
   };

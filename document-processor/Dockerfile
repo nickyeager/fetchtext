@@ -33,5 +33,6 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8090
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--reload"]
+# NOTE: Removed '--reload' for production stability. The reload watcher can hang under heavy filesystem volumes,
+# causing the health endpoint to stop responding while the process appears alive. Use a dev override if needed.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]

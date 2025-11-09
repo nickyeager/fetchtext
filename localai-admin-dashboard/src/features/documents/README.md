@@ -50,23 +50,21 @@ TanStack Router route handler that manages the document detail page.
 
 ### Services
 
-#### ProcessedDocumentsService (Enhanced)
-**Location**: `src/features/documents/services/processed-documents-service.ts`
+#### Document Services
 
-Enhanced with additional methods for document detail functionality:
+Document processing is now handled by the `UnifiedDocumentService` located at `/src/services/unified-document-service.ts`. This service provides centralized document lifecycle management across all upload paths.
 
 ##### Core Methods
-- `getProcessedDocumentById(id: string)` - Fetch document details
-- `exportDocument(id: string, format: 'json' | 'txt' | 'csv')` - Export document
-
-##### New Methods for Detail View
-- `getDocumentProcessingHistory(id: string)` - Processing step timeline
-- `getDocumentQualityMetrics(id: string)` - Quality analysis and recommendations
-- `searchDocuments(query: string, filters?: {})` - Advanced document search
+- `getDocumentById(id: string)` - Fetch document details
+- `getUserDocuments()` - Get all documents for user
+- `createDocumentRecord()` - Create new document record
+- `updateDocumentStatus()` - Update document processing status
+- `finalizeDocument()` - Complete document processing
+- `markDocumentFailed()` - Handle processing failures
 
 ## Data Models
 
-### ProcessedDocument Interface
+### DocumentRecord Interface
 ```typescript
 interface ProcessedDocument {
   id: string;

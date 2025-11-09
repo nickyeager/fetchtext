@@ -499,6 +499,9 @@ services:
       - monitoring
 
 networks:
+  default:
+    name: local-ai
+    external: true
   monitoring:
     driver: bridge
     external: false

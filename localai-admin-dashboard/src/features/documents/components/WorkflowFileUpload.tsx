@@ -21,13 +21,14 @@ export function WorkflowFileUpload({ file, isProcessing, onFileUpload }: Workflo
       <CardContent>
         <Input
           type="file"
-          accept=".pdf,.docx,.txt,.md,.pptx,.xlsx,.html,.csv"
+          accept=".pdf,.docx,.txt,.md,.pptx,.xlsx,.html,.csv,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
           onChange={onFileUpload}
           disabled={isProcessing}
           aria-label="Upload document"
+          data-testid="document-file-input"
         />
         {file && (
-          <div className="mt-2 text-sm text-gray-600">
+          <div className="mt-2 text-sm text-gray-600" data-testid="document-uploaded">
             Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)
           </div>
         )}

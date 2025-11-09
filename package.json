@@ -6,7 +6,7 @@
   "scripts": {
     "validate": "ts-node scripts/validate-implementation.ts",
     "prp:create": "ts-node scripts/prp-generator.ts create",
-    "prp:generate": "ts-node scripts/prp-generator.ts generate", 
+    "prp:generate": "ts-node scripts/prp-generator.ts generate",
     "prp:list": "ts-node scripts/prp-generator.ts list",
     "start": "python start_services.py --profile gpu-nvidia",
     "start:cpu": "python start_services.py --profile cpu",
@@ -29,5 +29,8 @@
     "react",
     "python",
     "fastapi"
-  ]
+  ],
+  "main": "test-document-realtime-simple.js",
+  "author": "",
+  "license": "ISC"
 }

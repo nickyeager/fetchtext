@@ -15,6 +15,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Create Supabase client with proper auth configuration
+// REALTIME DISABLED - Using polling/manual refresh instead
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storageKey: 'localai-supabase-auth',
@@ -23,12 +24,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     autoRefreshToken: true,
     flowType: 'pkce'
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    },
-    endpoint: supabaseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/realtime/v1/socket/websocket'
   },
   global: {
     headers: {

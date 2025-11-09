@@ -219,6 +219,9 @@ volumes:
   portainer_data:
 
 networks:
+  default:
+    name: local-ai
+    external: true
   monitoring:
     driver: bridge
 

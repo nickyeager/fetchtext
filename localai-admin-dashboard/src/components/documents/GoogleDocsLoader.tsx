@@ -256,7 +256,7 @@ export function GoogleDocsLoader({ onDocumentLoaded, onError, className }: Googl
                   Google Drive integration is not configured. Please set up your API credentials first.
                 </div>
                 <Button variant="outline" size="sm" asChild>
-                  <Link to="/settings/integrations">
+                  <Link to="/_authenticated/settings">
                     <Settings className="mr-2 h-4 w-4" />
                     Configure
                   </Link>

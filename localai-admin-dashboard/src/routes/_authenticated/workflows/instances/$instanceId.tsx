@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+/* eslint-disable no-console */
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createFileRoute, useParams, useNavigate } from '@tanstack/react-router';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +19,7 @@ import {
   Activity,
   FileText,
   RefreshCw,
-  ExternalLink,
-  Pencil
+  ExternalLink
 } from 'lucide-react';
 import { WorkflowInstance } from '@/types/workflows';
 import { WorkflowInstanceService } from '@/lib/workflow-instance-service';
@@ -39,46 +39,6 @@ export const Route = createFileRoute('/_authenticated/workflows/instances/$insta
       tab: (search.tab as InstanceSearch['tab']) || 'configuration',
     };
   },
-  loader: async ({ params }) => {
-    try {
-      const instance = await WorkflowInstanceService.getInstance(params.instanceId);
-      if (instance) {
-        // Add templateType from the relation if available
-        instance.templateType = instance.workflow_templates?.template_type || 'other';
-        
-        const workflowClient = new WorkflowClient();
-        let executionHistory: any[] = [];
-        
-        // Load execution history if deployed
-        if (instance.deployedWorkflowId) {
-          try {
-            executionHistory = await workflowClient.getExecutionHistory(instance);
-          } catch (error) {
-            console.error('Error loading execution history:', error);
-          }
-        }
-        
-        return {
-          instance,
-          executionHistory,
-          setInstance: (updatedInstance: WorkflowInstance) => {
-            // This will be handled by the component state
-            return updatedInstance;
-          },
-          handleExecuteInstance: async () => {
-            const result = await workflowClient.executeInstance(instance);
-            toast.success(`Execution started - ID: ${result.executionId}`);
-            return result;
-          },
-          executing: false,
-        };
-      }
-      throw new Error('Instance not found');
-    } catch (error) {
-      console.error('Error loading instance:', error);
-      throw error;
-    }
-  },
   component: WorkflowInstanceEditorPage,
 });
 
@@ -87,25 +47,21 @@ function WorkflowInstanceEditorPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
   
-  // Try to get data from loader first
-  let loaderData;
-  try {
-    loaderData = Route.useLoaderData();
-  } catch {
-    // Loader data not available, fall back to component state
-    loaderData = null;
-  }
-
-  const [instance, setInstance] = useState<WorkflowInstance | null>(loaderData?.instance || null);
-  const [loading, setLoading] = useState(!loaderData?.instance);
+  const [instance, setInstance] = useState<WorkflowInstance | null>(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
-  const [executionHistory, setExecutionHistory] = useState<any[]>(loaderData?.executionHistory || []);
+  type ExecutionSummary = {
+    id?: string | number;
+    status?: 'success' | 'error' | 'pending' | 'running' | string;
+    startedAt?: string | number | Date;
+  };
+  const [executionHistory, setExecutionHistory] = useState<ExecutionSummary[]>([]);
 
-  const workflowClient = new WorkflowClient();
+  const workflowClient = useMemo(() => new WorkflowClient(), []);
 
-  const loadInstance = async () => {
+  const loadInstance = useCallback(async () => {
     try {
       setLoading(true);
       const data = await WorkflowInstanceService.getInstance(instanceId);
@@ -118,7 +74,7 @@ function WorkflowInstanceEditorPage() {
         if (data.deployedWorkflowId) {
           try {
             const history = await workflowClient.getExecutionHistory(data);
-            setExecutionHistory(history);
+            setExecutionHistory(history as ExecutionSummary[]);
           } catch (error) {
             console.error('Error loading execution history:', error);
           }
@@ -131,14 +87,11 @@ function WorkflowInstanceEditorPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [instanceId, navigate, workflowClient]);
 
   useEffect(() => {
-    // Only load if we don't have loader data
-    if (!loaderData?.instance) {
-      loadInstance();
-    }
-  }, [instanceId, loaderData]);
+    loadInstance();
+  }, [loadInstance]);
 
   const handleSaveInstance = async () => {
     if (!instance) return;
@@ -172,9 +125,10 @@ function WorkflowInstanceEditorPage() {
       
       // Reload instance to get updated deployment status
       await loadInstance();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deploying instance:', error);
-      setDeploymentLogs(prev => [...prev, `Deployment failed: ${error?.message || 'Unknown error'}`]);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setDeploymentLogs(prev => [...prev, `Deployment failed: ${message}`]);
       toast.error('Failed to deploy instance');
     } finally {
       setSaving(false);
@@ -198,7 +152,7 @@ function WorkflowInstanceEditorPage() {
           console.error('Error loading execution history:', error);
         }
       }, 2000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error executing instance:', error);
       toast.error('Failed to execute workflow');
     } finally {
@@ -466,6 +420,8 @@ function WorkflowInstanceEditorPage() {
   );
 }
 
+export default WorkflowInstanceEditorPage;
+
 // Tab content components
 function ConfigurationContent({ instance, setInstance }: { 
   instance: WorkflowInstance; 
@@ -587,7 +543,7 @@ function EditorContent({ instance, setInstance }: {
 
 function ExecutionContent({ instance, executionHistory, handleExecuteInstance, executing }: {
   instance: WorkflowInstance;
-  executionHistory: any[];
+  executionHistory: { id?: string | number; status?: string; startedAt?: string | number | Date }[];
   handleExecuteInstance: () => void;
   executing: boolean;
 }) {
@@ -707,164 +663,6 @@ function LogsContent({ deploymentLogs }: {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-export function InstancePage({ instance }: { instance: any }) {
-  const tabs = [
-    { id: 'editor', label: 'Visual Editor', icon: <Pencil className="w-4 h-4" /> },
-  ] as const;
-
-  return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => navigate({ to: '/workflows/instances' })}
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold">{instance.name}</h1>
-              {getStatusBadge()}
-            </div>
-            <p className="text-muted-foreground">
-              Template: {instance.workflow_templates?.name || 'Unknown'}
-              {instance.workflow_templates?.template_type && (
-                <Badge variant="outline" className="ml-2">
-                  {instance.workflow_templates.template_type}
-                </Badge>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {instance.deploymentStatus === 'active' && (
-            <Button
-              onClick={handleExecuteInstance}
-              disabled={executing}
-              className="gap-2"
-            >
-              {executing ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              Execute
-            </Button>
-          )}
-          
-          {instance.deploymentStatus === 'draft' || instance.deploymentStatus === 'error' ? (
-            <Button
-              onClick={handleDeployInstance}
-              disabled={saving}
-              className="gap-2"
-            >
-              {saving ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <ExternalLink className="w-4 h-4" />
-              )}
-              Deploy
-            </Button>
-          ) : (
-            <Button
-              onClick={handleToggleActivation}
-              variant="outline"
-              className="gap-2"
-            >
-              {instance.isActive ? (
-                <>
-                  <Pause className="w-4 h-4" />
-                  Deactivate
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Activate
-                </>
-              )}
-            </Button>
-          )}
-
-          <Button
-            onClick={handleSaveInstance}
-            disabled={saving}
-            className="gap-2"
-          >
-            {saving ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            Save
-          </Button>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b">
-        <nav className="flex space-x-8">
-          {tabs.map((tabConfig) => {
-            const Icon = tabConfig.icon;
-            const isActive = tab === tabConfig.id;
-            
-            return (
-              <button
-                key={tabConfig.id}
-                onClick={() => navigateToTab(tabConfig.id)}
-                className={`flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  isActive
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tabConfig.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="min-h-[600px]">
-        {tab === 'configuration' && (
-          <ConfigurationContent 
-            instance={instance} 
-            setInstance={setInstance} 
-          />
-        )}
-        {tab === 'editor' && (
-          <EditorContent 
-            instance={instance} 
-            setInstance={setInstance} 
-          />
-        )}
-        {tab === 'execution' && (
-          <ExecutionContent 
-            instance={instance} 
-            executionHistory={executionHistory}
-            handleExecuteInstance={handleExecuteInstance}
-            executing={executing}
-          />
-        )}
-        {tab === 'monitor' && (
-          <MonitorContent instance={instance} />
-        )}
-        {tab === 'logs' && (
-          <LogsContent 
-            deploymentLogs={deploymentLogs} 
-          />
-        )}
-      </div>
     </div>
   );
 }

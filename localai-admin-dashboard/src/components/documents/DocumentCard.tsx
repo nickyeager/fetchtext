@@ -4,24 +4,33 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal, FileText, Download, RefreshCw, Eye, Trash2, File, FileSpreadsheet, FileCode, Image } from 'lucide-react';
 import { format } from 'date-fns';
+import { useState } from 'react';
+
+interface DocumentMeta {
+  pages?: number;
+  language?: string;
+  [key: string]: unknown;
+}
+
+interface DocumentSummary {
+  id: number;
+  filename?: string;
+  file_size?: number;
+  upload_date?: string;
+  status: 'pending' | 'analyzing' | 'completed' | 'failed';
+  document_type?: string;
+  file_type: string;
+  thumbnail_url?: string;
+  metadata?: DocumentMeta;
+}
 
 interface DocumentCardProps {
-  document: {
-    id: number;
-    filename: string;
-    file_size: number;
-    upload_date: string;
-    status: 'pending' | 'analyzing' | 'completed' | 'failed';
-    document_type?: string;
-    file_type: string;
-    thumbnail_url?: string;
-    metadata?: Record<string, any>;
-  };
-  onView: (id: number) => void;
-  onReprocess: (id: number) => void;
-  onDelete: (id: number) => void;
-  onDownload: (id: number) => void;
-  isLoading?: boolean;
+  readonly document: DocumentSummary;
+  readonly onView: (id: number) => void;
+  readonly onReprocess: (id: number) => void;
+  readonly onDelete: (id: number) => void;
+  readonly onDownload: (id: number) => void;
+  readonly isLoading?: boolean;
 }
 
 export function DocumentCard({ 
@@ -32,6 +41,8 @@ export function DocumentCard({
   onDownload,
   isLoading = false 
 }: DocumentCardProps) {
+  // Track thumbnail load errors to gracefully fallback to icon (avoids direct DOM mutation in tests)
+  const [thumbnailError, setThumbnailError] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': 
@@ -61,7 +72,8 @@ export function DocumentCard({
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    const value = (bytes / Math.pow(k, i)).toFixed(1); // Keep trailing .0 for test determinism
+    return `${value} ${sizes[i]}`;
   };
 
   const getFileTypeIcon = (fileType: string) => {
@@ -107,12 +119,7 @@ export function DocumentCard({
 
   const handleAction = (action: () => void, event: React.MouseEvent) => {
     event.stopPropagation();
-    if (!isLoading) {
-      console.log('DocumentCard action triggered for document:', document.id, document.filename || document.name);
-      action();
-    } else {
-      console.log('Action blocked - component is loading');
-    }
+  if (!isLoading) action();
   };
 
   return (
@@ -124,25 +131,13 @@ export function DocumentCard({
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
             {/* Document thumbnail or file type icon */}
-            <div className="flex-shrink-0 w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center border">
-              {document.thumbnail_url ? (
-                <img 
-                  src={document.thumbnail_url} 
+            <div className="flex-shrink-0 w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center border" data-testid="document-card-thumbnail">
+              {document.thumbnail_url && !thumbnailError ? (
+                <img
+                  src={document.thumbnail_url}
                   alt={`${document.filename} preview`}
                   className="w-10 h-10 object-cover rounded-md"
-                  onError={(e) => {
-                    // Fallback to icon if thumbnail fails to load
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent) {
-                      parent.innerHTML = '';
-                      parent.appendChild(getFileTypeIcon(document.file_type).type({
-                        ...getFileTypeIcon(document.file_type).props,
-                        className: 'w-6 h-6 text-gray-500'
-                      }));
-                    }
-                  }}
+                  onError={() => setThumbnailError(true)}
                 />
               ) : (
                 getFileTypeIcon(document.file_type)
@@ -159,11 +154,11 @@ export function DocumentCard({
               </h3>
               <div className="flex items-center space-x-2 mt-1">
                 <p className="text-xs text-gray-500">
-                  {formatFileSize(document.file_size)}
+                  {typeof document.file_size === 'number' ? formatFileSize(document.file_size) : '—'}
                 </p>
                 <span className="text-xs text-gray-300">•</span>
                 <p className="text-xs text-gray-500">
-                  {format(new Date(document.upload_date), 'MMM d, yyyy')}
+                  {document.upload_date ? format(new Date(document.upload_date), 'MMM d, yyyy') : 'Unknown date'}
                 </p>
               </div>
             </div>
@@ -178,6 +173,7 @@ export function DocumentCard({
                 className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
                 disabled={isLoading}
                 onClick={(e) => e.stopPropagation()}
+                data-testid="document-actions-trigger"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </Button>
@@ -263,6 +259,7 @@ export function DocumentCard({
               className="opacity-0 group-hover:opacity-100 transition-all duration-200 h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 hover:scale-110 border border-transparent hover:border-red-200"
               disabled={isLoading}
               title="Delete document"
+              data-testid="document-quick-delete"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -275,6 +272,7 @@ export function DocumentCard({
               className="opacity-0 group-hover:opacity-100 transition-all duration-200 h-7 w-7 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50 hover:scale-110 border border-transparent hover:border-blue-200"
               disabled={isLoading}
               title="View document details"
+              data-testid="document-quick-view"
             >
               <Eye className="w-3.5 h-3.5" />
             </Button>

@@ -4,7 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { UnifiedDocumentService, DocumentStatus, DocumentRecord } from './unified-document-service';
+import { UnifiedDocumentService, DocumentStatus } from './unified-document-service';
 
 export interface ProcessingTimeouts {
   ANALYZING_TIMEOUT: number;     // 5 minutes for AI analysis
@@ -26,8 +26,19 @@ export interface StuckDocument {
   stuck_duration_ms: number;
   last_update: string;
   retry_count: number;
-  metadata: any;
+  metadata: Record<string, unknown>;
 }
+const viteEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+// Use import.meta.env in the browser and fall back to process.env only when available (SSR/tests)
+const debugEnabled = Boolean(
+  viteEnv?.VITE_E2E_DEBUG || (typeof process !== 'undefined' && process?.env && (process.env as Record<string, string | undefined>).E2E_DEBUG)
+);
+// eslint-disable-next-line no-console
+const log = (...args: unknown[]) => { if (debugEnabled) console.log('[DocMonitor]', ...args); };
+// eslint-disable-next-line no-console
+const warn = (...args: unknown[]) => { if (debugEnabled) console.warn('[DocMonitor]', ...args); };
+// eslint-disable-next-line no-console
+const errorLog = (...args: unknown[]) => { if (debugEnabled) console.error('[DocMonitor]', ...args); };
 
 export class DocumentProcessingMonitor {
   private static instance: DocumentProcessingMonitor;
@@ -51,11 +62,11 @@ export class DocumentProcessingMonitor {
    */
   startMonitoring(): void {
     if (this.isMonitoring) {
-      console.warn('📊 Document processing monitor already running');
+      warn('📊 Document processing monitor already running');
       return;
     }
 
-    console.log('🚀 Starting document processing monitor...');
+    log('🚀 Starting document processing monitor...');
     this.isMonitoring = true;
     
     // Immediate check
@@ -76,7 +87,7 @@ export class DocumentProcessingMonitor {
       this.monitorInterval = null;
     }
     this.isMonitoring = false;
-    console.log('⏹️ Document processing monitor stopped');
+  log('⏹️ Document processing monitor stopped');
   }
 
   /**
@@ -84,21 +95,21 @@ export class DocumentProcessingMonitor {
    */
   private async checkStuckDocuments(): Promise<void> {
     try {
-      console.log('🔍 Checking for stuck documents...');
+  log('🔍 Checking for stuck documents...');
       
       const stuckDocuments = await this.findStuckDocuments();
       
       if (stuckDocuments.length > 0) {
-        console.log(`⚠️ Found ${stuckDocuments.length} stuck documents`);
+  log(`⚠️ Found ${stuckDocuments.length} stuck documents`);
         
         for (const doc of stuckDocuments) {
           await this.handleStuckDocument(doc);
         }
       } else {
-        console.log('✅ No stuck documents found');
+  log('✅ No stuck documents found');
       }
     } catch (error) {
-      console.error('❌ Error checking stuck documents:', error);
+  errorLog('❌ Error checking stuck documents:', error);
     }
   }
 
@@ -117,7 +128,7 @@ export class DocumentProcessingMonitor {
       .or(`processing_status.eq.analyzing.and.updated_at.lt.${analyzingCutoff.toISOString()},processing_status.eq.processing.and.updated_at.lt.${processingCutoff.toISOString()}`);
 
     if (error) {
-      console.error('Error finding stuck documents:', error);
+  errorLog('Error finding stuck documents:', error);
       return [];
     }
 
@@ -135,12 +146,12 @@ export class DocumentProcessingMonitor {
    * Handle a stuck document with retry logic
    */
   private async handleStuckDocument(stuckDoc: StuckDocument): Promise<void> {
-    console.log(`🔧 Handling stuck document ${stuckDoc.id} (${stuckDoc.status}, stuck for ${Math.round(stuckDoc.stuck_duration_ms / 1000)}s)`);
+  log(`🔧 Handling stuck document ${stuckDoc.id} (${stuckDoc.status}, stuck for ${Math.round(stuckDoc.stuck_duration_ms / 1000)}s)`);
 
     try {
       // Check retry limit
       if (stuckDoc.retry_count >= this.timeouts.MAX_RETRY_ATTEMPTS) {
-        console.log(`❌ Document ${stuckDoc.id} exceeded retry limit, marking as failed`);
+  log(`❌ Document ${stuckDoc.id} exceeded retry limit, marking as failed`);
         await UnifiedDocumentService.markDocumentFailed(
           stuckDoc.id,
           `Processing failed after ${this.timeouts.MAX_RETRY_ATTEMPTS} retry attempts. Document was stuck in ${stuckDoc.status} state.`
@@ -157,10 +168,10 @@ export class DocumentProcessingMonitor {
           await this.retryProcessing(stuckDoc);
           break;
         default:
-          console.warn(`Unknown stuck status: ${stuckDoc.status}`);
+          warn(`Unknown stuck status: ${stuckDoc.status}`);
       }
     } catch (error) {
-      console.error(`Failed to handle stuck document ${stuckDoc.id}:`, error);
+  errorLog(`Failed to handle stuck document ${stuckDoc.id}:`, error);
       
       // If retry handling fails, mark as failed
       await UnifiedDocumentService.markDocumentFailed(
@@ -174,13 +185,13 @@ export class DocumentProcessingMonitor {
    * Retry analysis for stuck analyzing documents
    */
   private async retryAnalysis(stuckDoc: StuckDocument): Promise<void> {
-    console.log(`🔄 Retrying analysis for document ${stuckDoc.id}`);
+  log(`🔄 Retrying analysis for document ${stuckDoc.id}`);
     
     try {
       // Force retry analysis with updated metadata
       await UnifiedDocumentService.forceRetryAnalysis(stuckDoc.id);
     } catch (error) {
-      console.error(`Analysis retry failed for ${stuckDoc.id}:`, error);
+  errorLog(`Analysis retry failed for ${stuckDoc.id}:`, error);
       throw error;
     }
   }
@@ -189,7 +200,7 @@ export class DocumentProcessingMonitor {
    * Retry processing for stuck processing documents
    */
   private async retryProcessing(stuckDoc: StuckDocument): Promise<void> {
-    console.log(`🔄 Retrying processing for document ${stuckDoc.id}`);
+  log(`🔄 Retrying processing for document ${stuckDoc.id}`);
     
     try {
       // Reset to analyzing status to restart the processing pipeline
@@ -203,7 +214,7 @@ export class DocumentProcessingMonitor {
         }
       });
     } catch (error) {
-      console.error(`Processing retry failed for ${stuckDoc.id}:`, error);
+  errorLog(`Processing retry failed for ${stuckDoc.id}:`, error);
       throw error;
     }
   }
@@ -238,7 +249,7 @@ export class DocumentProcessingMonitor {
    * Manually trigger stuck document check
    */
   async triggerManualCheck(): Promise<StuckDocument[]> {
-    console.log('🔍 Manual stuck document check triggered');
+  log('🔍 Manual stuck document check triggered');
     const stuckDocs = await this.findStuckDocuments();
     
     for (const doc of stuckDocs) {
@@ -252,15 +263,15 @@ export class DocumentProcessingMonitor {
    * Force retry a specific document
    */
   async forceRetryDocument(documentId: string): Promise<void> {
-    console.log(`🔧 Force retrying document ${documentId}`);
+  log(`🔧 Force retrying document ${documentId}`);
     
     const document = await UnifiedDocumentService.getDocumentById(documentId);
     if (!document) {
       throw new Error('Document not found');
     }
 
-    const metadata = document.metadata || {};
-    const retryCount = metadata.retry_count || 0;
+  const metadata = (document.metadata || {}) as Record<string, unknown>;
+  const retryCount = Number((metadata.retry_count as number | undefined) ?? 0);
 
     if (retryCount >= this.timeouts.MAX_RETRY_ATTEMPTS) {
       throw new Error(`Document has exceeded maximum retry attempts (${this.timeouts.MAX_RETRY_ATTEMPTS})`);

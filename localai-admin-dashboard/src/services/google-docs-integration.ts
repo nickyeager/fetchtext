@@ -17,8 +17,8 @@ export interface GoogleDocLoadResponse {
   success: boolean;
   message: string;
   google_doc_id: string;
-  document_data?: any;
-  file_data?: any;
+  document_data?: unknown;
+  file_data?: unknown;
   processed_at?: string;
   downloaded_at?: string;
   error?: string;
@@ -62,10 +62,7 @@ export class GoogleDocsIntegrationService {
       if (!settings.enabled) return null;
       
       return settings;
-    } catch (error) {
-      console.error('Failed to load Google Drive settings:', error);
-      return null;
-    }
+    } catch (_error) { return null; }
   }
 
   /**
@@ -161,15 +158,7 @@ export class GoogleDocsIntegrationService {
       const result: GoogleDocLoadResponse = await response.json();
       
       return result;
-    } catch (error) {
-      console.error('Error loading Google Doc:', error);
-      return {
-        success: false,
-        message: 'Failed to load Google Doc',
-        google_doc_id: request.document_id,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
+    } catch (_error) { return { success: false, message: 'Failed to load Google Doc', google_doc_id: request.document_id, error: 'Unknown error' }; }
   }
 
   /**
@@ -311,7 +300,7 @@ export class GoogleDocsIntegrationService {
   }): Promise<{ pipelineId: string; status: string }> {
     const requests: GoogleDocLoadRequest[] = options.documentIds.map(id => ({
       document_id: id,
-      export_format: options.exportFormat as any || 'text/plain',
+        export_format: (options.exportFormat as GoogleDocLoadRequest['export_format']) || 'text/plain',
       process_immediately: options.processWithAI !== false
     }));
 
@@ -322,7 +311,7 @@ export class GoogleDocsIntegrationService {
         pipelineId: `pipeline-${Date.now()}`,
         status: results.every(r => r.success) ? 'completed' : 'partial'
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         pipelineId: `pipeline-${Date.now()}`,
         status: 'failed'
@@ -347,17 +336,9 @@ export class GoogleDocsIntegrationService {
         status: healthResponse.ok ? 'healthy' : 'unhealthy',
         message: healthResponse.ok ? 'Google Docs workflow is operational' : 'N8N service unavailable'
       };
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        message: 'Unable to connect to N8N workflow service'
-      };
-    }
+    } catch (_error) { return { status: 'unhealthy', message: 'Unable to connect to N8N workflow service' }; }
   }
 }
 
 // Export singleton instance
 export const googleDocsIntegration = new GoogleDocsIntegrationService();
-
-// Export types for use in other components
-export type { GoogleDocLoadRequest, GoogleDocLoadResponse, GoogleDocMetadata };

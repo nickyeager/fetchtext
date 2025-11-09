@@ -78,11 +78,6 @@ export const sidebarData: SidebarData = {
           icon: IconUpload,
         },
         {
-          title: 'Smart Templates',
-          url: '/documents/templates',
-          icon: IconTemplate,
-        },
-        {
           title: 'Templates',
           url: '/templates',
           icon: IconTemplate,

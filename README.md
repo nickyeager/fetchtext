@@ -108,6 +108,19 @@ Before running the services, you need to set up your environment variables for S
    ENCRYPTION_KEY=  
    ```
 
+### Seeding a dashboard login
+
+If you need a known Supabase auth user for the dashboard, run:
+
+```bash
+python scripts/seed_supabase_user.py \
+  --email admin@fetchtext.local \
+  --password AdminPass2024! \
+  --service-role-key "$SERVICE_ROLE_KEY"
+```
+
+This script uses the Supabase admin API to insert the user (defaults to `http://localhost:8000`). Update the email/password flags as needed.
+
 > [!IMPORTANT]
 > Make sure to generate secure random values for all secrets. Never use the example values in production.
 

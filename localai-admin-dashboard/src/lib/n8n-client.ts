@@ -5,9 +5,14 @@ export class N8nClient {
   private baseUrl: string;
   private apiKey?: string;
 
-  constructor(baseUrl: string = 'http://localhost:5678/api/v1', apiKey?: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
-    this.apiKey = apiKey;
+  constructor(config: { baseUrl: string; apiKey?: string } | string = 'http://localhost:5678/api/v1', apiKey?: string) {
+    if (typeof config === 'object') {
+      this.baseUrl = config.baseUrl.replace(/\/$/, ''); // Remove trailing slash
+      this.apiKey = config.apiKey;
+    } else {
+      this.baseUrl = config.replace(/\/$/, ''); // Remove trailing slash
+      this.apiKey = apiKey;
+    }
   }
 
   /**

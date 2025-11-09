@@ -7,6 +7,8 @@
  * Users can create templates with any custom fields they need.
  */
 
+import { TemplateCategoryService } from '@/services/template-category-service';
+
 export interface SmartVariable {
   id: string;
   name: string;
@@ -61,15 +63,22 @@ export interface ValidationWarning {
 export class TemplateValidator {
   private readonly REQUIRED_FIELDS = ['name', 'category', 'smart_variables'];
   private readonly VALID_TYPES = ['text', 'number', 'date', 'currency', 'percentage', 'email', 'phone'];
-  private readonly VALID_CATEGORIES = [
-    'invoice', 'contract', 'receipt', 'report', 'correspondence', 
-    'legal', 'financial', 'technical', 'form', 'general'
-  ];
+  private validCategories: string[] | null = null;
+
+  /**
+   * Get valid categories from database
+   */
+  private async getValidCategories(): Promise<string[]> {
+    if (!this.validCategories) {
+      this.validCategories = await TemplateCategoryService.getCategoryNames();
+    }
+    return this.validCategories;
+  }
 
   /**
    * Validate a complete template
    */
-  validate(template: Partial<Template>): ValidationResult {
+  async validate(template: Partial<Template>): Promise<ValidationResult> {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
 
@@ -77,17 +86,14 @@ export class TemplateValidator {
     this.validateBasicStructure(template, errors);
     
     // Template metadata validation
-    this.validateMetadata(template, errors, warnings);
+    await this.validateMetadata(template, errors, warnings);
     
     // Smart variables validation
     if (template.smart_variables) {
       this.validateSmartVariables(template.smart_variables, errors, warnings);
     }
 
-    // Category-specific validation
-    if (template.category) {
-      this.validateCategorySpecific(template, errors, warnings);
-    }
+    // Category-specific validation removed - categories are just for organization
 
     // Calculate quality score
     const score = this.calculateQualityScore(template, errors, warnings);
@@ -139,11 +145,11 @@ export class TemplateValidator {
   /**
    * Validate template metadata
    */
-  private validateMetadata(
+  private async validateMetadata(
     template: Partial<Template>, 
     errors: ValidationError[], 
     warnings: ValidationWarning[]
-  ): void {
+  ): Promise<void> {
     // Name validation
     if (template.name) {
       if (template.name.length < 3) {
@@ -180,13 +186,13 @@ export class TemplateValidator {
 
     // Category validation
     if (template.category) {
-      if (!this.VALID_CATEGORIES.includes(template.category)) {
-        warnings.push({
+      const validCategories = await this.getValidCategories();
+      if (!validCategories.includes(template.category)) {
+        errors.push({
           field: 'category',
-          message: `Category '${template.category}' is not a standard category`,
-          severity: 'warning',
-          code: 'UNUSUAL_CATEGORY',
-          suggestion: `Consider using one of: ${this.VALID_CATEGORIES.join(', ')}`
+          message: `Invalid category '${template.category}'. Must be one of: ${validCategories.join(', ')}`,
+          severity: 'error',
+          code: 'INVALID_CATEGORY'
         });
       }
     }
@@ -526,7 +532,7 @@ export class TemplateValidator {
   /**
    * Auto-fix common template issues
    */
-  autoFix(template: Partial<Template>): Template {
+  async autoFix(template: Partial<Template>): Promise<Template> {
     const fixed = { ...template } as Template;
 
     // Fix missing required fields with defaults
@@ -535,7 +541,8 @@ export class TemplateValidator {
     }
 
     if (!fixed.category) {
-      fixed.category = 'general';
+      const validCategories = await this.getValidCategories();
+      fixed.category = validCategories[0] || 'general'; // Use first available category or fallback
     }
 
     if (!fixed.smart_variables) {

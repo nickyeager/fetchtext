@@ -19,7 +19,7 @@ class ProviderConfig:
     
     def __init__(self):
         self.config_file = Path("/app/config/provider_config.json")
-        self.default_provider = AIProvider.OLLAMA
+        self.default_provider = AIProvider.AZURE_OPENAI
         self._current_provider = None
         self._provider_settings = {}
         self._load_config()

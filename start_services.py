@@ -10,7 +10,6 @@ so they appear together in Docker Desktop.
 import os
 import subprocess
 import shutil
-import time
 import argparse
 import platform
 import sys
@@ -20,31 +19,24 @@ def run_command(cmd, cwd=None):
     print("Running:", " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
 
-def clone_supabase_repo():
-    """Clone the Supabase repository using sparse checkout if not already present."""
-    if not os.path.exists("supabase"):
-        print("Cloning the Supabase repository...")
-        run_command([
-            "git", "clone", "--filter=blob:none", "--no-checkout",
-            "https://github.com/supabase/supabase.git"
-        ])
-        os.chdir("supabase")
-        run_command(["git", "sparse-checkout", "init", "--cone"])
-        run_command(["git", "sparse-checkout", "set", "docker"])
-        run_command(["git", "checkout", "master"])
-        os.chdir("..")
-    else:
-        print("Supabase repository already exists, updating...")
-        os.chdir("supabase")
-        run_command(["git", "pull"])
-        os.chdir("..")
-
-def prepare_supabase_env():
-    """Copy .env to .env in supabase/docker."""
+def verify_supabase_assets():
+    """Ensure the required Supabase assets live inside the repository."""
+    required_paths = [
+        os.path.join("supabase", "docker", "volumes", "api", "kong-working.yml"),
+        os.path.join("supabase", "docker", "volumes", "storage"),
+    ]
+    missing = [path for path in required_paths if not os.path.exists(path)]
+    if missing:
+        print("Missing Supabase assets:")
+        for path in missing:
+            print(f"  - {path}")
+        print("Please restore the Supabase docker assets before starting the stack.")
+        sys.exit(1)
     env_path = os.path.join("supabase", "docker", ".env")
-    env_example_path = os.path.join(".env")
-    print("Copying .env in root to .env in supabase/docker...")
-    shutil.copyfile(env_example_path, env_path)
+    root_env = os.path.join(".env")
+    if os.path.exists(root_env):
+        print("Syncing root .env to supabase/docker/.env...")
+        shutil.copyfile(root_env, env_path)
 
 def stop_existing_containers(profile=None):
     print("Stopping and removing existing containers for the unified project 'localai'...")
@@ -54,18 +46,9 @@ def stop_existing_containers(profile=None):
     cmd.extend(["-f", "docker-compose.yml", "down"])
     run_command(cmd)
 
-def start_supabase(environment=None):
-    """Start the Supabase services (using its compose file)."""
-    print("Starting Supabase services...")
-    cmd = ["docker", "compose", "-p", "localai", "-f", "supabase/docker/docker-compose.yml"]
-    if environment and environment == "public":
-        cmd.extend(["-f", "docker-compose.override.public.supabase.yml"])
-    cmd.extend(["up", "-d"])
-    run_command(cmd)
-
 def start_local_ai(profile=None, environment=None):
-    """Start the local AI services (using its compose file)."""
-    print("Starting local AI services...")
+    """Start the unified Local AI + Supabase services."""
+    print("Starting Local AI stack...")
     cmd = ["docker", "compose", "-p", "localai"]
     if profile and profile != "none":
         cmd.extend(["--profile", profile])
@@ -225,23 +208,15 @@ def main():
                       help='Environment to use for Docker Compose (default: private)')
     args = parser.parse_args()
 
-    clone_supabase_repo()
-    prepare_supabase_env()
+    verify_supabase_assets()
     
     # Generate SearXNG secret key and check docker-compose.yml
     generate_searxng_secret_key()
     check_and_fix_docker_compose_for_searxng()
     
     stop_existing_containers(args.profile)
-    
-    # Start Supabase first
-    start_supabase(args.environment)
-    
-    # Give Supabase some time to initialize
-    print("Waiting for Supabase to initialize...")
-    time.sleep(10)
-    
-    # Then start the local AI services
+
+    # Start the unified stack
     start_local_ai(args.profile, args.environment)
 
 if __name__ == "__main__":

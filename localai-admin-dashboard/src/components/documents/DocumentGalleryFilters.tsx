@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,23 +15,16 @@ import {
   SortDesc,
   FileText,
   Clock,
-  User,
-  HardDrive,
-  Brain,
-  Zap,
-  Database
+   Zap
 } from 'lucide-react';
 // Simple debounce implementation
-function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
+const debounceString = (func: (value: string) => void, wait: number) => {
+  let timeout: ReturnType<typeof setTimeout>;
+  return (value: string) => {
     clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
+    timeout = setTimeout(() => func(value), wait);
   };
-}
+};
 import { format } from 'date-fns';
 import type { DocumentFilters, SortParams } from '@/hooks/use-document-gallery';
 
@@ -64,12 +57,11 @@ export function DocumentGalleryFilters({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Debounced search to avoid excessive API calls
-  const debouncedSearchChange = useCallback(
-    debounce((value: string) => {
+  const debouncedSearchChange = useMemo(() =>
+    debounceString((value: string) => {
       onFiltersChange({ ...filters, search: value || undefined });
-    }, 300),
-    [filters, onFiltersChange]
-  );
+    }, 300)
+  , [filters, onFiltersChange]);
 
   useEffect(() => {
     debouncedSearchChange(searchValue);
@@ -123,8 +115,6 @@ export function DocumentGalleryFilters({
     if (filters.file_type?.length) count += filters.file_type.length;
     if (filters.document_type?.length) count += filters.document_type.length;
     if (filters.date_from || filters.date_to) count++;
-    if (filters.vector_indexed) count++;
-    if (filters.processing_method) count++;
     return count;
   };
 
@@ -176,7 +166,7 @@ export function DocumentGalleryFilters({
   const sortOptions = [
     { field: 'upload_date', label: 'Upload Date', icon: <CalendarIcon className="w-4 h-4" /> },
     { field: 'filename', label: 'Name', icon: <FileText className="w-4 h-4" /> },
-    { field: 'file_size', label: 'Size', icon: <HardDrive className="w-4 h-4" /> },
+    { field: 'file_size', label: 'Size', icon: <FileText className="w-4 h-4" /> },
     { field: 'status', label: 'Status', icon: <Clock className="w-4 h-4" /> },
   ] as const;
 
@@ -189,7 +179,7 @@ export function DocumentGalleryFilters({
           <div className="relative flex">
             <div className="relative flex-1">
               {isSemanticSearch ? (
-                <Brain className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-500 w-4 h-4" />
+                <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-500 w-4 h-4" />
               ) : (
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               )}
@@ -226,7 +216,7 @@ export function DocumentGalleryFilters({
             >
               {isSemanticSearch ? (
                 <>
-                  <Brain className="w-4 h-4 mr-1" />
+                  <FileText className="w-4 h-4 mr-1" />
                   AI
                 </>
               ) : (
@@ -419,67 +409,7 @@ export function DocumentGalleryFilters({
           </Popover>
         )}
 
-        {/* Processing Insights Filter */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
-              <Database className="w-4 h-4 mr-2" />
-              Processing
-              {(filters.vector_indexed || filters.processing_method) ? (
-                <Badge variant="secondary" className="ml-2 px-1 py-0 text-xs">
-                  {(filters.vector_indexed ? 1 : 0) + (filters.processing_method ? 1 : 0)}
-                </Badge>
-              ) : null}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64" align="start">
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm">Filter by Processing Status</h4>
-              
-              {/* Vector Indexing Status */}
-              <div className="flex items-center space-x-3">
-                <Checkbox
-                  id="vector-indexed"
-                  checked={filters.vector_indexed === true}
-                  onCheckedChange={(checked) => onFiltersChange({
-                    ...filters,
-                    vector_indexed: checked ? true : undefined
-                  })}
-                />
-                <label htmlFor="vector-indexed" className="text-sm cursor-pointer flex-1 flex items-center space-x-2">
-                  <Brain className="w-4 h-4 text-purple-500" />
-                  <span>Vector Indexed</span>
-                  <span className="text-xs text-gray-500">(Searchable)</span>
-                </label>
-              </div>
-
-              <div className="border-t pt-2">
-                <label className="text-xs text-gray-600 mb-2 block">Processing Method</label>
-                <div className="space-y-2">
-                  {['real_docling', 'enhanced', 'mock', 'basic'].map((method) => (
-                    <div key={method} className="flex items-center space-x-3">
-                      <Checkbox
-                        id={`method-${method}`}
-                        checked={filters.processing_method === method}
-                        onCheckedChange={(checked) => onFiltersChange({
-                          ...filters,
-                          processing_method: checked ? method : undefined
-                        })}
-                      />
-                      <label htmlFor={`method-${method}`} className="text-sm cursor-pointer flex-1">
-                        {method === 'real_docling' ? 'Enhanced Docling' :
-                         method === 'enhanced' ? 'Enhanced Processing' :
-                         method === 'mock' ? 'Basic Processing' :
-                         method === 'basic' ? 'Basic Processing' :
-                         method.charAt(0).toUpperCase() + method.slice(1)}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+        {/* Processing Insights Filter - temporarily disabled */}
 
         {/* Date Range Filter */}
         <Popover open={showDatePicker !== null} onOpenChange={(open) => !open && setShowDatePicker(null)}>
@@ -644,33 +574,7 @@ export function DocumentGalleryFilters({
             </Badge>
           )}
 
-          {filters.vector_indexed && (
-            <Badge variant="secondary" className="px-2 py-1 flex items-center space-x-1">
-              <Brain className="w-3 h-3" />
-              <span>Vector Indexed</span>
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-600" 
-                onClick={() => onFiltersChange({
-                  ...filters,
-                  vector_indexed: undefined
-                })}
-              />
-            </Badge>
-          )}
-
-          {filters.processing_method && (
-            <Badge variant="secondary" className="px-2 py-1 flex items-center space-x-1">
-              <Database className="w-3 h-3" />
-              <span>Method: {filters.processing_method}</span>
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-600" 
-                onClick={() => onFiltersChange({
-                  ...filters,
-                  processing_method: undefined
-                })}
-              />
-            </Badge>
-          )}
+          {null}
         </div>
       )}
     </div>

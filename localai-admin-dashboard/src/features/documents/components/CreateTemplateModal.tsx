@@ -12,9 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { masterTemplateService } from '@/services/master-template-service';
+import { templateService } from '@/services/template-service';
 import { NewTemplate } from "../types";
-import { TemplatePayload } from '@/types/unified-template';
+//
 
 interface CreateTemplateModalProps {
   open: boolean;
@@ -34,30 +34,33 @@ export function CreateTemplateModal({
 
   const mutation = useMutation({
     mutationFn: (newTemplate: NewTemplate) => {
-      const templatePayload: TemplatePayload = {
+      // Adapt to SmartTemplate requirements
+      return templateService.createTemplate({
         name: newTemplate.name,
         description: newTemplate.description,
         category: newTemplate.category,
-        type: 'standard', // Default to standard template
-        content: newTemplate.template_content,
+        template_content: newTemplate.template_content || '',
+        template_type: 'markdown',
         tags: [],
-        is_public: false
-      };
-      return masterTemplateService.createTemplate(templatePayload);
+        is_public: false,
+        smart_variables: [],
+        extraction_rules: [],
+        generation_settings: {},
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["document-templates"] });
       // The modal closing is now handled by the useEffect below
     },
-    onError: (error) => {
-      console.error("Failed to create template:", error);
+    onError: (_error) => {
       // Here you could show a toast notification to the user
     },
   });
 
   // Effect to handle successful submission
+  const { isSuccess, reset } = mutation;
   useEffect(() => {
-    if (mutation.isSuccess) {
+    if (isSuccess) {
       onOpenChange(false);
       // Reset form
       setName("");
@@ -65,9 +68,9 @@ export function CreateTemplateModal({
       setCategory("");
       setTemplateContent("");
       // Reset the mutation state to avoid re-triggering the effect
-      mutation.reset();
+      reset();
     }
-  }, [mutation.isSuccess, onOpenChange, mutation]);
+  }, [isSuccess, onOpenChange, reset]);
 
   const handleSubmit = () => {
     const templateData: NewTemplate = {

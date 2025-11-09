@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS documents (
   file_size INTEGER,
   content_text TEXT,
   metadata JSONB DEFAULT '{}',
+  template_id INTEGER REFERENCES smart_templates(id),
   processing_status TEXT NOT NULL DEFAULT 'uploaded' 
     CHECK (processing_status IN ('uploaded', 'analyzing', 'processing', 'completed', 'failed')),
   uploaded_by UUID REFERENCES auth.users(id),
@@ -24,6 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_processing_status ON documents(processi
 CREATE INDEX IF NOT EXISTS idx_documents_file_type ON documents(file_type);
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_documents_metadata ON documents USING GIN(metadata);
+CREATE INDEX IF NOT EXISTS idx_documents_template_id ON documents(template_id);
 
 -- Create update timestamp function if it doesn't exist
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -73,9 +75,16 @@ CREATE POLICY "documents_delete_policy" ON documents
         uploaded_by = auth.uid()
     );
 
+-- Service role can manage all documents for backend workflows
+DROP POLICY IF EXISTS "documents_service_role_policy" ON documents;
+CREATE POLICY "documents_service_role_policy" ON documents
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- Grant necessary permissions
 GRANT ALL ON documents TO authenticated;
+GRANT ALL ON documents TO service_role;
 GRANT USAGE ON SEQUENCE documents_id_seq TO authenticated;
+GRANT USAGE ON SEQUENCE documents_id_seq TO service_role;
 
 -- Insert sample documents for testing (only if table is empty)
 INSERT INTO documents (name, file_path, file_type, file_size, content_text, metadata, processing_status, uploaded_by)

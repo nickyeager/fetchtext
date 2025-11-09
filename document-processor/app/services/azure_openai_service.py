@@ -58,17 +58,22 @@ class AzureOpenAIService:
         url = f"{self.endpoint.rstrip('/')}/openai/deployments/{self.deployment_name}/chat/completions?api-version={self.api_version}"
         
         # Build the request payload
+        max_tokens_value = kwargs.get("max_tokens", 2000)
+        logger.info(f"Azure OpenAI - max_tokens before conversion: {max_tokens_value}, type: {type(max_tokens_value)}")
+        
         payload = {
             "messages": [
                 {"role": "system", "content": "You are a helpful AI assistant."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": kwargs.get("temperature", 0.7),
-            "max_tokens": kwargs.get("max_tokens", 2000),
+            "max_tokens": int(max_tokens_value),  # Ensure integer
             "top_p": kwargs.get("top_p", 0.95),
             "frequency_penalty": kwargs.get("frequency_penalty", 0),
             "presence_penalty": kwargs.get("presence_penalty", 0),
         }
+        
+        logger.info(f"Azure OpenAI - payload max_tokens: {payload['max_tokens']}, type: {type(payload['max_tokens'])}")
         
         try:
             async with httpx.AsyncClient() as client:
@@ -84,8 +89,16 @@ class AzureOpenAIService:
                 return data["choices"][0]["message"]["content"]
                 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Azure OpenAI API error: {e.response.status_code} - {e.response.text}")
-            raise Exception(f"Azure OpenAI API error: {e.response.status_code}")
+            error_text = e.response.text
+            logger.error(f"Azure OpenAI API error: {e.response.status_code} - {error_text}")
+            # Try to extract error message from response
+            try:
+                error_data = e.response.json()
+                error_message = error_data.get('error', {}).get('message', error_text)
+                logger.error(f"Azure OpenAI error details: {error_message}")
+            except:
+                pass
+            raise Exception(f"Azure OpenAI API error: {e.response.status_code} - {error_text[:200]}")
         except Exception as e:
             logger.error(f"Error calling Azure OpenAI: {str(e)}")
             raise

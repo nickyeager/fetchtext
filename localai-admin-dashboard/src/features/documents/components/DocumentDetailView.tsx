@@ -1,13 +1,6 @@
 /**
- * Enhanced Document Detail View with WYSIWYG Editor
- * Shows original document content and generated/processed content side by side
- * 
- * Displays document details and handles all processing states:
- * - Uploaded: Shows AI analysis and processing options
- * - Analyzing: Shows progress while evaluating document
- * - Processing: Shows progress while extracting content
- * - Completed: Shows full extraction results with editing capabilities
- * - Failed: Shows error information
+ * Simplified Document Detail View
+ * Shows document content with processing capabilities
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -24,20 +17,13 @@ import {
   Edit3,
   SplitSquareHorizontal,
   Maximize2,
-  Settings,
   Sparkles,
-  Zap,
   AlertTriangle,
   Loader2,
   CheckCircle,
-  BarChart3,
-  Clock,
-  Layers,
-  Target,
-  Database,
-  TrendingUp,
-  ExternalLink,
-  Edit
+  Edit,
+  Zap,
+  Settings
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,15 +31,20 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { ProcessedDocumentsService, ProcessedDocument } from '../services/processed-documents-service';
 import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { useDocumentManager } from '@/hooks/use-document-manager';
 import { WysiwygEditor } from './WysiwygEditor';
 import { MarkdownViewer } from './MarkdownViewer';
-import { masterTemplateService } from '@/services/master-template-service';
+import { templateService } from '@/services/template-service';
 import { UnifiedDocumentService } from '@/services/unified-document-service';
+import type { DocumentRecord } from '@/services/unified-document-service';
+import { DocumentStatus } from '@/services/unified-document-service';
+import type { DocumentEvaluation as SharedDocumentEvaluation } from '@/types/extraction';
+import TemplateSelector from '@/components/documents/TemplateSelector';
+import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplateDialog';
+import { ExtractedFieldsEditor } from './ExtractedFieldsEditor';
+import { CreateTemplateFromFields } from './CreateTemplateFromFields';
 
 interface DocumentDetailViewProps {
   documentId: string;
@@ -62,32 +53,9 @@ interface DocumentDetailViewProps {
   onSave?: (content: string) => Promise<void>;
 }
 
-interface DocumentEvaluation {
-  type_evaluation: {
-    primary_type: string;
-    confidence: number;
-    detection_method: string;
-  };
-  template_suggestions: Array<{
-    template_id: number;
-    template_name: string;
-    match_score: number;
-    category: string;
-    field_count: number;
-  }>;
-  processing_recommendations: {
-    workflow: string;
-    suggested_action: string;
-    alternative_actions: string[];
-    confidence_level: string;
-  };
-}
+type DocumentEvaluation = SharedDocumentEvaluation;
 
-interface ExtractedFieldValue {
-  value?: unknown;
-  confidence?: number;
-  sourceText?: string;
-}
+// Removed unused ExtractedFieldValue interface
 
 interface DocumentContent {
   original: {
@@ -116,132 +84,163 @@ export function DocumentDetailView({
   const [editedContent, setEditedContent] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [evaluation, setEvaluation] = useState<DocumentEvaluation | null>(null);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [showTemplateChanger, setShowTemplateChanger] = useState(false);
+  const [showGeneratedTemplateDialog, setShowGeneratedTemplateDialog] = useState(false);
+  const [generatedTemplate, setGeneratedTemplate] = useState<any>(null);
+  const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false);
+  const [fieldsForTemplate, setFieldsForTemplate] = useState<any[]>([]);
 
   const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
-
-  // Debug check on mount
-  useEffect(() => {
-    if (documentId) {
-      ProcessedDocumentsService.debugCheckDocument(documentId).then(result => {
-        console.log('📄 Document debug check for ID', documentId, ':', result);
-      });
-      
-      // Also list recent documents to help debug
-      ProcessedDocumentsService.getProcessedDocuments().then(docs => {
-        console.log('📄 Recent documents:', docs.slice(0, 5).map(d => ({ 
-          id: d.id, 
-          name: d.name, 
-          status: d.processing_status || d.status,
-          created: d.created_at 
-        })));
-      }).catch(err => {
-        console.error('📄 Error listing documents:', err);
-      });
-    }
-  }, [documentId]);
+  
+  // State for formatted template output (moved to top to avoid hooks order issues)
+  const [formattedOutput, setFormattedOutput] = React.useState<string | null>(null);
 
   // Fetch document data with real-time updates
-  const { 
-    data: document, 
-    isLoading, 
-    error, 
-    refetch 
-  } = useQuery({
+  const {
+    data: document,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<DocumentRecord | null>({
     queryKey: ['processedDocument', documentId],
-    queryFn: () => ProcessedDocumentsService.getProcessedDocumentById(documentId),
-    refetchInterval: (data: ProcessedDocument | null | undefined) => {
-      // Poll while document is being processed
-      if (data?.processing_status === 'analyzing' || data?.processing_status === 'processing' ||
-          data?.status === 'analyzing' || data?.status === 'processing') {
+    // Explicit return type helps TS infer the query's data shape
+    queryFn: async (): Promise<DocumentRecord | null> =>
+      UnifiedDocumentService.getDocumentById(documentId),
+    refetchInterval: (query) => {
+      const data = query.state.data as DocumentRecord | null | undefined;
+      // CRITICAL FIX: Keep polling if data is undefined (document not loaded yet)
+      if (data === undefined || data === null) {
+        console.log('⏳ Document not loaded yet, continuing to poll...');
+        return 2000; // Keep polling when no data
+      }
+
+      // Debug current status
+      console.log('🔄 Polling check:', {
+        documentId: data.id,
+        processing_status: data.processing_status,
+        status: data.status,
+        currentStatus: data.processing_status || data.status,
+        effectiveStatus: data.processing_status || data.status,
+        metadata: data.metadata
+      });
+
+      // Poll while document is being processed - check the actual status field being used
+      const currentStatus = data.processing_status || data.status;
+      const isProcessing = currentStatus === 'analyzing' ||
+                          currentStatus === 'processing' ||
+                          currentStatus === 'uploading' ||
+                          currentStatus === 'pending';
+
+      if (isProcessing) {
+        console.log('🔄 Continue polling - document status:', currentStatus);
         return 2000; // Poll every 2 seconds
       }
+
+      console.log('✅ Stop polling - document completed:', currentStatus || 'unknown');
       return false; // Stop polling
     },
+  refetchIntervalInBackground: true, // Continue polling even when window is not focused
+    staleTime: 0, // Always consider data stale to force refetch
+    gcTime: 0, // Don't cache at all - always fresh data (TanStack Query v5)
     enabled: !!documentId,
+    // Add retry logic for resilience
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    // Force fresh data on every fetch
+    meta: {
+      skipCache: true
+    },
   });
 
-  // Load evaluation data from document metadata if available
+  // Force immediate refetch when component mounts or document changes
   useEffect(() => {
-    const status = document?.processing_status || document?.status;
-    console.log('🔍 DocumentDetailView: Document status check:', {
-      documentId,
-      status,
-      hasEvaluation: !!evaluation,
-      hasMetadata: !!document?.metadata,
-      metadataKeys: document?.metadata ? Object.keys(document.metadata) : []
-    });
-    
-    if ((status === 'analyzing' || status === 'processing') && !evaluation && document?.metadata) {
-      const metadata = document.metadata as Record<string, unknown>;
-      console.log('📊 DocumentDetailView: Checking metadata for evaluation reconstruction:', metadata);
-      
-      // Check if we have either template suggestions OR ai classification data (more flexible)
-      if (metadata.template_suggestions || metadata.ai_classification || metadata.document_type) {
-        // Reconstruct evaluation from metadata
-        setEvaluation({
-          document_info: {
-            filename: document.name,
-            file_size: document.file_size,
-            mime_type: document.file_type,
-            format_supported: true,
-          },
-          type_evaluation: {
-            primary_type: (metadata.ai_classification as any)?.primary_category || metadata.document_type || 'document',
-            confidence: (metadata.ai_classification as any)?.confidence_score || metadata.type_confidence || 0.8,
-            detection_method: (metadata.ai_classification as any)?.detection_method || 'automatic',
-          },
-          template_suggestions: (metadata.template_suggestions as any[]) || [],
-          processing_recommendations: metadata.processing_recommendations || {
-            workflow: (metadata.template_suggestions as any[])?.length > 0 ? 'existing_template' : 'generate_template',
-            suggested_action: (metadata.template_suggestions as any[])?.length > 0 
-              ? `Use the "${(metadata.template_suggestions as any[])[0].template_name}" template for best results`
-              : 'Generate a new AI-powered template for this document type',
-            alternative_actions: ['Generate a new template', 'Browse all templates'],
-            confidence_level: ((metadata.ai_classification as any)?.confidence_score || 0) > 0.8 ? 'high' : 'medium',
-          },
-        });
-        console.log('✅ DocumentDetailView: Evaluation reconstructed from metadata');
-      } else {
-        console.log('⚠️ DocumentDetailView: No sufficient metadata for evaluation reconstruction');
-      }
+    if (documentId) {
+      console.log('🔄 Component mounted/updated, forcing immediate refetch for document:', documentId);
+      refetch();
     }
-  }, [document?.processing_status, document?.status, document?.metadata, evaluation]);
+  }, [documentId, refetch]);
+
+  // Derive evaluation data from document metadata
+  const evaluation = useMemo<DocumentEvaluation | null>(() => {
+    if (!document?.metadata) return null;
+    
+    const metadata = document.metadata as Record<string, unknown>;
+    
+    // Only show evaluation for documents that have AI analysis results
+    if (!metadata.template_suggestions && !metadata.ai_classification && !metadata.document_type) {
+      return null;
+    }
+    
+    const processingRecommendations = (metadata as any).processing_recommendations || {
+      workflow: ((metadata as any).template_suggestions?.length || 0) > 0 ? 'existing_template' : 'generate_template',
+      suggested_action: ((metadata as any).template_suggestions?.length || 0) > 0
+        ? `Use the "${(metadata as any).template_suggestions?.[0]?.template_name || 'Recommended'}" template for best results`
+        : 'Generate a new AI-powered template for this document type',
+      alternative_actions: ['Generate a new template', 'Browse all templates'],
+      confidence_level: ((metadata as any)?.ai_classification?.confidence_score || 0) > 0.8 ? 'high' : 'medium',
+    };
+
+    return {
+      document_info: {
+        filename: document.name,
+        file_size: document.file_size,
+        mime_type: document.file_type,
+        format_supported: true,
+      },
+      type_evaluation: {
+        primary_type: (metadata.ai_classification as any)?.primary_category || metadata.document_type || 'document',
+        confidence: (metadata.ai_classification as any)?.confidence_score || metadata.type_confidence || 0.8,
+        detection_method: (metadata.ai_classification as any)?.detection_method || 'automatic',
+      },
+      template_suggestions: (metadata.template_suggestions as any[]) || [],
+      processing_recommendations: processingRecommendations,
+    };
+  }, [document]);
 
   // Convert document data to content format
   const documentContent: DocumentContent = useMemo(() => {
     if (!document) return { original: { text: '' }, processed: { text: '' } };
 
     // Try different sources for original and processed text
-    const originalText = document.metadata?.original_content || 
-                        document.metadata?.original_text || 
-                        document.content_text || '';
+    const originalText = String(
+      (document.metadata as any)?.original_content ??
+      (document.metadata as any)?.original_text ??
+      document.content_text ??
+      ''
+    );
     
     // For processed text, try to generate formatted template output if we have extracted data
-    let processedText = document.metadata?.processed_content || 
-                       document.metadata?.extracted_content ||
-                       document.metadata?.processed_text ||
-                       document.content_text || '';
+    let processedText = String(
+      (document.metadata as any)?.processed_content ??
+      (document.metadata as any)?.extracted_content ??
+      (document.metadata as any)?.processed_text ??
+      document.content_text ??
+      ''
+    );
     
     // Get extracted data from various sources
-    const extractedData = document.extracted_fields || 
-                         document.metadata?.extracted_fields ||
-                         document.metadata?.extraction_result?.extracted_values || 
-                         {};
+    let extractedData: Record<string, unknown> = {};
+    if (document.extracted_fields && typeof document.extracted_fields === 'object') {
+      extractedData = document.extracted_fields as Record<string, unknown>;
+    } else if ((document.metadata as any)?.extracted_fields && typeof (document.metadata as any).extracted_fields === 'object') {
+      extractedData = (document.metadata as any).extracted_fields as Record<string, unknown>;
+    } else if ((document.metadata as any)?.extraction_result?.extracted_values && typeof (document.metadata as any).extraction_result.extracted_values === 'object') {
+      extractedData = (document.metadata as any).extraction_result.extracted_values as Record<string, unknown>;
+    }
     
     return {
       original: {
         text: originalText,
-        html: document.metadata?.original_html,
+        html: (document.metadata as any)?.original_html,
         metadata: document.metadata || {}
       },
       processed: {
         text: processedText,
-        html: document.metadata?.processed_html || document.metadata?.extracted_html,
+        html: (document.metadata as any)?.processed_html || (document.metadata as any)?.extracted_html,
         extracted_data: extractedData,
-        template_applied: document.template_name || document.template_id?.toString()
+        template_applied: (document.metadata as any)?.template_name || (document.metadata as any)?.template_id?.toString()
       }
     };
   }, [document]);
@@ -251,100 +250,70 @@ export function DocumentDetailView({
     if (documentContent.processed.text && !editedContent) {
       setEditedContent(documentContent.processed.html || documentContent.processed.text);
     }
-  }, [documentContent, editedContent]);
-
-  // Navigate to correct template edit page based on template type
-  const navigateToTemplateEdit = async (templateId: number, editMode = true) => {
-    try {
-      // Get all templates to find the correct one and determine its type
-      const templates = await masterTemplateService.getTemplates();
-      const template = templates.find(t => t.id === templateId || t.id?.toString() === templateId?.toString());
+  }, [documentContent.processed.text, documentContent.processed.html, editedContent]);
+  
+  // Generate formatted output when document changes  
+  useEffect(() => {
+    const generateOutput = async () => {
+  const extractedData = documentContent.processed.extracted_data;
+  const templateId = (document?.metadata as any)?.template_id as number | undefined;
       
-      if (!template) {
-        console.error('Template not found:', templateId);
-        return;
-      }
-
-      // Navigate based on template type
-      if (template.type === 'smart') {
-        navigate({ 
-          to: '/templates/smart/$templateId/edit', 
-          params: { templateId: templateId.toString() }
-        });
-      } else if (template.type === 'workflow') {
-        // Navigate to workflow template edit when we have that route
-        navigate({ 
-          to: '/templates/$templateId', 
-          params: { templateId: templateId.toString() },
-          search: editMode ? { mode: 'edit' } : undefined
-        });
-      } else {
-        // Standard template
-        navigate({ 
-          to: '/templates/$templateId', 
-          params: { templateId: templateId.toString() },
-          search: editMode ? { mode: 'edit' } : undefined
-        });
-      }
-    } catch (error) {
-      console.error('Error navigating to template edit:', error);
-      // Fallback to standard template route
-      navigate({ 
-        to: '/templates/$templateId', 
-        params: { templateId: templateId.toString() },
-        search: editMode ? { mode: 'edit' } : undefined
-      });
-    }
-  };
-
-  // Generate formatted template output from extracted data
-  const generateFormattedOutput = async () => {
-    const extractedData = documentContent.processed.extracted_data;
-    const templateId = document?.template_id;
-    
-    if (!extractedData || !templateId || Object.keys(extractedData).length === 0) {
-      return documentContent.processed.text;
-    }
-
-    try {
-      // Get the template used for processing
-      const templates = await masterTemplateService.getTemplates();
-      const templateItem = templates.find(t => t.id === templateId || t.id?.toString() === templateId?.toString());
-      
-      if (!templateItem) {
+      if (!extractedData || (templateId === undefined || templateId === null) || Object.keys(extractedData).length === 0) {
         return documentContent.processed.text;
       }
 
-      // Get the full template with content
-      const template = await masterTemplateService.getTemplate(templateItem.id, templateItem.type);
+      try {
+        // Get the template used for processing (all templates are now smart templates)
+        const template = await templateService.getTemplate(templateId);
+        
+        if (!template) {
+          return documentContent.processed.text;
+        }
 
-      // Replace template variables with extracted values
-      let formattedContent = template.template_content || (template as any).content || '';
-      
-      Object.entries(extractedData).forEach(([key, value]) => {
-        const placeholder = `{{${key}}}`;
-        const displayValue = typeof value === 'object' && value !== null && 'value' in value 
-          ? String((value as any).value || '') 
-          : String(value || '');
-        formattedContent = formattedContent.replace(new RegExp(placeholder, 'g'), displayValue);
+        // Replace template variables with extracted values
+        let formattedContent = template.template_content || '';
+        
+        Object.entries(extractedData).forEach(([key, value]) => {
+          const placeholder = `{{${key}}}`;
+          const displayValue = typeof value === 'object' && value !== null && 'value' in value 
+            ? String((value as any).value || '') 
+            : String(value || '');
+          formattedContent = formattedContent.replace(new RegExp(placeholder, 'g'), displayValue);
+        });
+
+        return formattedContent;
+      } catch (error) {
+        console.error('Error generating formatted output:', error);
+        return documentContent.processed.text;
+      }
+    };
+
+    if ((document?.metadata as any)?.template_id && documentContent.processed.extracted_data) {
+      generateOutput().then(setFormattedOutput);
+    }
+  }, [(document?.metadata as any)?.template_id, documentContent.processed.extracted_data, document?.name, documentContent.processed.text]);
+  
+
+  // Navigate to correct template edit page based on template type
+  const navigateToTemplateEdit = async (templateId: number, _editMode = true) => {
+    try {
+      // Since all templates are now smart templates, navigate directly to the smart template edit route
+      navigate({ 
+        to: '/templates/$templateId/edit', 
+        params: { templateId: templateId.toString() }
       });
-
-      return formattedContent;
     } catch (error) {
-      console.error('Error generating formatted output:', error);
-      return documentContent.processed.text;
+      console.error('Error navigating to template edit:', error);
+      // Fallback to view route
+      navigate({ 
+        to: '/templates/$templateId', 
+        params: { templateId: templateId.toString() }
+      });
     }
   };
 
-  // State for formatted template output
-  const [formattedOutput, setFormattedOutput] = React.useState<string | null>(null);
 
-  // Generate formatted output when document changes
-  useEffect(() => {
-    if (document?.template_id && documentContent.processed.extracted_data) {
-      generateFormattedOutput().then(setFormattedOutput);
-    }
-  }, [document?.template_id, documentContent.processed.extracted_data]);
+
 
   // Helper function to get file for processing
   const getDocumentFile = async (): Promise<File> => {
@@ -379,7 +348,7 @@ export function DocumentDetailView({
     try {
       // Update document status to processing
       await documentManager.updateDocumentStatus(documentId, {
-        status: 'processing',
+        status: DocumentStatus.PROCESSING,
         metadata: {
           processing_method: action === 'use_template' ? 'template_guided' : 'ai_enhanced',
           template_id: templateId,
@@ -393,11 +362,20 @@ export function DocumentDetailView({
       if (action === 'use_template' && templateId) {
         result = await documentProcessor.processWithExistingTemplate(file, templateId);
       } else {
+        // Uses unified decide-template endpoint internally (with legacy fallback)
         result = await documentProcessor.generateTemplate(
           file,
           `${evaluation.type_evaluation.primary_type} Template`,
           evaluation.type_evaluation.primary_type
         );
+        
+        // Show generated template dialog for review
+        if (result && result.template) {
+          setGeneratedTemplate(result);
+          setShowGeneratedTemplateDialog(true);
+          setIsProcessing(false);
+          return; // Don't finalize yet, wait for user decision
+        }
       }
 
       // Finalize document with processing results
@@ -449,7 +427,7 @@ export function DocumentDetailView({
     try {
       // Reset document status to analyzing for re-evaluation
       await documentManager.updateDocumentStatus(documentId, {
-        status: 'analyzing',
+        status: DocumentStatus.ANALYZING,
         metadata: {
           ...document.metadata,
           rerun_extraction: true as never,
@@ -461,11 +439,10 @@ export function DocumentDetailView({
 
       // Re-evaluate document type
       const evaluationResult = await documentProcessor.evaluateDocumentType(file);
-      setEvaluation(evaluationResult);
 
       // Update document with new analysis results
       await documentManager.updateDocumentStatus(documentId, {
-        status: 'analyzing',
+        status: DocumentStatus.ANALYZING,
         metadata: {
           ...document.metadata,
           document_type: evaluationResult.type_evaluation.primary_type,
@@ -525,6 +502,107 @@ export function DocumentDetailView({
     }
   };
 
+  const handleForceComplete = async () => {
+    if (!document) return;
+    
+    setIsProcessing(true);
+    setProcessingError(null);
+    
+    try {
+      console.log('⚡ Force completing stuck document:', documentId);
+      await UnifiedDocumentService.forceCompleteDocument(documentId);
+      
+      // Refresh the document data
+      refetch();
+    } catch (error) {
+      console.error('❌ Force complete failed:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to force complete');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handler for saving generated template
+  const handleSaveGeneratedTemplate = async (_templateData: unknown) => {
+    if (!document) return;
+    
+    try {
+      // Save template through the dialog's mutation
+      // After saving, the dialog will navigate to the template editor
+    } catch (error) {
+      console.error('Failed to save generated template:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to save template');
+    }
+  };
+
+  // Handler for using generated template without saving
+  const handleUseGeneratedTemplate = async (templateData: any) => {
+    if (!document || !generatedTemplate) return;
+    
+    setIsProcessing(true);
+    setProcessingError(null);
+    setShowGeneratedTemplateDialog(false);
+    
+    try {
+      // Finalize document with the generated template result
+      await documentManager.finalizeDocument(documentId, {
+        content_text: generatedTemplate?.content || '',
+        extracted_fields: generatedTemplate?.extractedFields || generatedTemplate?.extracted_fields || {},
+        processing_method: 'ai_enhanced',
+        quality_metrics: generatedTemplate?.quality_metrics,
+        metadata: {
+          original_content: generatedTemplate?.content || '',
+          processed_content: generatedTemplate?.content || '',
+          extracted_content: generatedTemplate?.content || '',
+          extraction_result: {
+            extracted_values: generatedTemplate?.extractedFields || generatedTemplate?.extracted_fields || {},
+            confidence_scores: generatedTemplate?.confidence_scores || {}
+          },
+          template_used: {
+            id: 'generated',
+            name: templateData.template.name,
+            type: 'ai_generated',
+            generated_at: new Date().toISOString()
+          }
+        }
+      });
+
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
+      await refetch();
+    } catch (error) {
+      console.error('Failed to finalize document with generated template:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to process document');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAutoComplete = async () => {
+    if (!document) return;
+    
+    setIsProcessing(true);
+    setProcessingError(null);
+    
+    try {
+      console.log('🔄 Auto-completing stuck document:', documentId);
+      const wasCompleted = await UnifiedDocumentService.autoCompleteIfProcessed(documentId);
+      
+      if (wasCompleted) {
+        console.log('✅ Document auto-completed successfully');
+        refetch();
+      } else {
+        console.log('⚠️ Document was not auto-completed (may not meet criteria)');
+        setProcessingError('Document does not meet auto-completion criteria');
+      }
+    } catch (error) {
+      console.error('❌ Auto-complete failed:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to auto-complete');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-800';
@@ -538,12 +616,26 @@ export function DocumentDetailView({
 
   const getStatusIcon = (status?: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle className="w-4 h-4" />;
+      case 'completed': return <CheckCircle className="w-4 h-4" data-testid="check-circle-icon" />;
       case 'processing': return <Loader2 className="w-4 h-4 animate-spin" />;
       case 'analyzing': return <Sparkles className="w-4 h-4" />;
       case 'pending': return <Sparkles className="w-4 h-4" />;
       case 'failed': return <AlertTriangle className="w-4 h-4" />;
       default: return <FileText className="w-4 h-4" />;
+    }
+  };
+
+  const calculateProcessingProgress = (doc: any) => {
+    if (!doc) return 0;
+    
+    const status = doc.processing_status || doc.status;
+    
+    switch (status) {
+      case 'analyzing': return 25;
+      case 'processing': return 75;
+      case 'completed': return 100;
+      case 'failed': return 0;
+      default: return 10;
     }
   };
 
@@ -566,6 +658,64 @@ export function DocumentDetailView({
       // Could add toast notification here
     } catch (err) {
       // Could add user notification here
+    }
+  };
+
+  const handleSaveExtractedFields = async (fields: Record<string, any>) => {
+    if (!document) return;
+
+    try {
+      // Update document metadata with new field values by marking as completed
+      const existingExtraction: any = (document.metadata as any)?.extraction_result || {};
+      await UnifiedDocumentService.updateDocumentStatus(documentId, {
+        status: DocumentStatus.COMPLETED,
+        metadata: {
+          ...(document.metadata as any),
+          extracted_fields: fields,
+          extraction_result: {
+            ...existingExtraction,
+            extracted_values: fields,
+          },
+        },
+      });
+
+      // Invalidate queries to refresh the document data
+      queryClient.invalidateQueries({ queryKey: ['processedDocument', documentId] });
+      
+      console.log('✅ Extracted fields updated successfully');
+    } catch (error) {
+      console.error('❌ Failed to update extracted fields:', error);
+      throw error;
+    }
+  };
+
+  const handleCreateTemplateFromFields = async (templateData: {
+    name: string;
+    description: string;
+    category: string;
+    smart_variables: any[];
+    is_public: boolean;
+  }) => {
+    try {
+      // Use the unified template service to create a new template
+      const newTemplate = await templateService.createTemplate({
+        name: templateData.name,
+        description: templateData.description,
+        category: templateData.category,
+        smart_variables: templateData.smart_variables,
+        is_public: templateData.is_public,
+        tags: [],
+      } as any);
+
+      console.log('✅ Template created successfully:', newTemplate);
+      setShowCreateTemplateDialog(false);
+      
+      // Invalidate template queries to refresh template lists
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      
+    } catch (error) {
+      console.error('❌ Failed to create template:', error);
+      throw error;
     }
   };
 
@@ -619,8 +769,56 @@ export function DocumentDetailView({
   }
 
   // Handle different processing states - show original enhanced components for non-completed states
-  const currentStatus = document.processing_status || document.status || 'completed';
-  if (currentStatus !== 'completed') {
+  // Only processing_status exists in database schema (no separate 'status' field)
+  const processingStatus = document?.processing_status;
+  
+  // Use processing_status as the single source of truth
+  // IMPORTANT: If document is completed, currentStatus should be 'completed' regardless of processingStatus
+  const currentStatus = processingStatus === 'completed' ? 'completed' : (processingStatus || 'completed');
+  
+  // Debug logging for document status
+  console.log('📊 DocumentDetailView: Document data received', {
+    documentId,
+    processingStatus,
+    currentStatus,
+    hasDocument: !!document,
+    documentName: document?.name,
+    contentText: document?.content_text ? 'Present' : 'Missing',
+    extractedFields: document?.extracted_fields ? 'Present' : 'Missing',
+    metadata: document?.metadata,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Smart detection of actually completed documents that are stuck in "processing" status
+  const hasProcessedContent = !!(
+    document?.content_text ||
+    document?.extracted_fields ||
+    document?.metadata?.extracted_fields ||
+    document?.metadata?.extraction_result ||
+    document?.metadata?.ai_classification
+  );
+  
+  // Override status if we detect completed processing or backend says completed
+  const effectiveStatus = (currentStatus !== 'completed' && hasProcessedContent) 
+    ? 'completed' 
+    : currentStatus;
+  
+  // Debug logging for stuck documents
+  console.log('🔍 Document status check:', {
+    documentId,
+    processing_status: document?.processing_status,
+    status: document?.status,
+    currentStatus,
+    effectiveStatus,
+    hasContent: !!document?.content_text,
+    hasExtractedFields: !!(document?.extracted_fields || document?.metadata?.extracted_fields),
+    statusOverridden: effectiveStatus !== currentStatus,
+    metadata: document?.metadata
+  });
+  
+  console.log('Document', document);
+  
+  if (effectiveStatus !== 'completed') {
     return (
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
         {/* Header */}
@@ -638,12 +836,22 @@ export function DocumentDetailView({
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{document.name}</h1>
               <div className="flex flex-wrap items-center gap-2 mt-1">
-                <Badge className={getStatusColor(currentStatus)}>
+                <Badge 
+                  className={getStatusColor(currentStatus)}
+                  data-testid="status-badge"
+                  data-status={currentStatus}
+                >
                   {getStatusIcon(currentStatus)}
                   <span className="ml-1">{currentStatus || 'pending'}</span>
                 </Badge>
-                {document.processing_method && (
-                  <Badge variant="outline">{document.processing_method}</Badge>
+                {document.metadata?.processing_method && (
+                  <Badge variant="outline">{document.metadata.processing_method}</Badge>
+                )}
+                {(document.metadata?.template_name) && (
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    {document.metadata?.template_name}
+                  </Badge>
                 )}
               </div>
             </div>
@@ -681,20 +889,105 @@ export function DocumentDetailView({
 
         {/* Status-specific content */}
         {currentStatus === 'processing' && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="w-6 h-6 text-purple-500 animate-pulse" />
-                  <div>
-                    <h3 className="text-lg font-medium">Analyzing Document with AI</h3>
-                    <p className="text-sm text-gray-600">Detecting document type and suggesting processing options...</p>
+          <>
+            {/* Check if document needs template selection */}
+            {UnifiedDocumentService.documentNeedsTemplateSelection(document) && (
+              <TemplateSelector
+                documentId={documentId}
+                suggestions={UnifiedDocumentService.getDocumentTemplateSuggestions(document)}
+                onTemplateApplied={(_templateId, _templateName) => {
+                  // Force refetch after template is applied
+                  refetch();
+                }}
+              />
+            )}
+            
+            {/* Show processing status if template is already selected or no suggestions */}
+            {!UnifiedDocumentService.documentNeedsTemplateSelection(document) && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="w-6 h-6 text-purple-500 animate-pulse" />
+                      <div>
+                        <h3 className="text-lg font-medium">Processing Document with Template</h3>
+                        <p className="text-sm text-gray-600">Extracting information using the selected template...</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Progress value={calculateProcessingProgress(document)} className="h-3" />
+                      <div className="text-xs text-center text-gray-500">
+                        {calculateProcessingProgress(document)}% complete
+                        {calculateProcessingProgress(document) >= 95 && (
+                          <span className="block text-amber-600 mt-1">
+                            Finalizing extraction...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Show immediate complete button if at 98% */}
+                    {calculateProcessingProgress(document) >= 98 && (
+                      <div className="mt-4 flex justify-center">
+                        <Button
+                          onClick={handleAutoComplete}
+                          variant="default"
+                          size="sm"
+                          disabled={isProcessing}
+                          className="text-xs bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className={`w-3 h-3 mr-1 ${isProcessing ? 'animate-spin' : ''}`} />
+                          Complete Processing
+                        </Button>
+                      </div>
+                    )}
+                    
+                    {/* Show force complete button if document is stuck */}
+                    {UnifiedDocumentService.isDocumentStuckInProcessing(document) && (
+                      <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                        <p className="text-xs text-amber-800 dark:text-amber-200 mb-2">
+                          <AlertTriangle className="w-3 h-3 inline mr-1" />
+                          Document appears to be stuck in processing
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          <Button
+                            onClick={handleAutoComplete}
+                            variant="default"
+                            size="sm"
+                            disabled={isProcessing}
+                            className="text-xs bg-blue-600 hover:bg-blue-700"
+                          >
+                            <CheckCircle className={`w-3 h-3 mr-1 ${isProcessing ? 'animate-spin' : ''}`} />
+                            Fix Stuck Document
+                          </Button>
+                          <Button
+                            onClick={handleForceComplete}
+                            variant="outline"
+                            size="sm"
+                            disabled={isProcessing}
+                            className="text-xs"
+                          >
+                            <CheckCircle className={`w-3 h-3 mr-1 ${isProcessing ? 'animate-spin' : ''}`} />
+                            Force Complete
+                          </Button>
+                          <Button
+                            onClick={handleForceRetry}
+                            variant="outline"
+                            size="sm"
+                            disabled={isProcessing}
+                            className="text-xs"
+                          >
+                            <RefreshCw className={`w-3 h-3 mr-1 ${isProcessing ? 'animate-spin' : ''}`} />
+                            Retry Analysis
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-                <Progress value={33} className="h-2" />
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
 
         {currentStatus === 'analyzing' && !evaluation && (
@@ -842,11 +1135,16 @@ export function DocumentDetailView({
                     </p>
                   </div>
                 </div>
-                <Progress value={66} className="h-2" />
+                <div className="space-y-2">
+                  <Progress value={calculateProcessingProgress(document)} className="h-3" />
+                  <div className="text-xs text-center text-gray-500">
+                    {calculateProcessingProgress(document)}% complete
+                  </div>
+                </div>
                 <p className="text-xs text-gray-500 text-center">
                   This typically takes 60-90 seconds depending on document complexity
                 </p>
-                {document.metadata?.rerun_extraction && (
+                {Boolean(document.metadata?.rerun_extraction) && (
                   <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
                     <p className="text-xs text-blue-800 dark:text-blue-200">
                       <Sparkles className="w-3 h-3 inline mr-1" />
@@ -1000,16 +1298,27 @@ export function DocumentDetailView({
                   Template: {documentContent.processed.template_applied}
                 </Badge>
               )}
-              {document.template_id && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateToTemplateEdit(document.template_id)}
-                  className="text-xs"
-                >
-                  <Edit className="w-4 h-4 mr-1" />
-                  Edit Template
-                </Button>
+              {(document.metadata as any)?.template_id && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigateToTemplateEdit((document.metadata as any).template_id)}
+                    className="text-xs"
+                  >
+                    <Edit className="w-4 h-4 mr-1" />
+                    Edit Template
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTemplateChanger(!showTemplateChanger)}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    Change Template
+                  </Button>
+                </>
               )}
               <Button
                 variant="outline"
@@ -1048,11 +1357,13 @@ export function DocumentDetailView({
           )}
         </CardContent>
       </Card>
+      
     </div>
   );
 
   const renderTabsView = () => (
-    <Tabs defaultValue="original" className="w-full">
+    <>
+      <Tabs defaultValue="original" className="w-full">
       <TabsList className="grid w-full grid-cols-2 h-auto">
         <TabsTrigger value="original" className="text-xs sm:text-sm px-2 py-2">
           <span className="hidden sm:inline">Original Document</span>
@@ -1100,16 +1411,27 @@ export function DocumentDetailView({
                 {editMode && <Badge className="ml-2">Editing</Badge>}
               </CardTitle>
               <div className="flex items-center space-x-2">
-                {document.template_id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigateToTemplateEdit(document.template_id, false)}
-                    className="text-xs"
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    Edit Template
-                  </Button>
+                {(document.metadata as any)?.template_id && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigateToTemplateEdit((document.metadata as any).template_id, false)}
+                      className="text-xs"
+                    >
+                      <Edit className="w-4 h-4 mr-1" />
+                      Edit Template
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowTemplateChanger(!showTemplateChanger)}
+                      className="text-xs"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Change Template
+                    </Button>
+                  </>
                 )}
                 <Button
                   variant="outline"
@@ -1149,7 +1471,9 @@ export function DocumentDetailView({
           </CardContent>
         </Card>
       </TabsContent>
-    </Tabs>
+      </Tabs>
+      
+    </>
   );
 
   return (
@@ -1169,17 +1493,27 @@ export function DocumentDetailView({
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-semibold truncate">{document.name}</h1>
             <div className="flex flex-wrap items-center gap-2 mt-1">
-              <Badge className={getStatusColor(document.processing_status || 'completed')}>
-                {getStatusIcon(document.processing_status || 'completed')}
-                <span className="ml-1">{document.processing_status || 'completed'}</span>
-              </Badge>
-              {document.processing_method && (
-                <Badge variant="outline">{document.processing_method}</Badge>
+                <Badge 
+                  className={getStatusColor(document.processing_status || document.metadata?.processing_status || 'completed')}
+                  data-testid="status-badge"
+                  data-status={document.processing_status || document.metadata?.processing_status || 'completed'}
+                >
+                  {getStatusIcon(document.processing_status || document.metadata?.processing_status || 'completed')}
+                  <span className="ml-1">{document.processing_status || document.metadata?.processing_status || 'completed'}</span>
+                </Badge>
+              {document.metadata?.processing_method && (
+                <Badge variant="outline">{document.metadata.processing_method}</Badge>
+              )}
+              {(document.metadata?.template_name) && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  {document.metadata?.template_name}
+                </Badge>
               )}
               <span className="text-sm text-muted-foreground">
                 {new Date(document.created_at).toLocaleDateString()}
               </span>
-              {document.metadata?.rerun_extraction && (
+              {Boolean(document.metadata?.rerun_extraction) && (
                 <Badge variant="secondary" className="text-xs">
                   Re-processed
                 </Badge>
@@ -1252,183 +1586,32 @@ export function DocumentDetailView({
         {viewMode === 'side-by-side' ? renderSideBySideView() : renderTabsView()}
       </div>
 
-      {/* Processing Statistics and Insights */}
+      {/* Consolidated Template Change Functionality */}
+      {showTemplateChanger && document.metadata?.template_suggestions && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Change Template</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TemplateSelector
+              documentId={documentId}
+              suggestions={UnifiedDocumentService.getDocumentTemplateSuggestions(document)}
+              currentTemplateId={document.metadata?.template_id}
+              currentTemplateName={document.metadata?.template_name}
+              onTemplateApplied={(_templateId, _templateName) => {
+                setShowTemplateChanger(false);
+                refetch();
+              }}
+              showChangeOption={true}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Extracted Fields */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <BarChart3 className="w-5 h-5 mr-2" />
-            Processing Statistics & Insights
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {/* Processing Time */}
-            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Processing Time</p>
-                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-                    {document.processing_time ? `${(document.processing_time).toFixed(2)}s` : '~0.2s'}
-                  </p>
-                </div>
-                <Clock className="w-8 h-8 text-blue-500" />
-              </div>
-            </div>
-
-            {/* Document Size */}
-            <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-800 dark:text-green-200">File Size</p>
-                  <p className="text-2xl font-bold text-green-900 dark:text-green-100">
-                    {document.size ? `${(document.size / 1024).toFixed(1)}KB` : 'N/A'}
-                  </p>
-                </div>
-                <Database className="w-8 h-8 text-green-500" />
-              </div>
-            </div>
-
-            {/* Content Chunks */}
-            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-purple-800 dark:text-purple-200">Content Chunks</p>
-                  <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                    {document.chunk_count || document.chunks?.length || 'N/A'}
-                  </p>
-                </div>
-                <Layers className="w-8 h-8 text-purple-500" />
-              </div>
-            </div>
-
-            {/* Processing Method */}
-            <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-orange-800 dark:text-orange-200">Method Used</p>
-                  <p className="text-lg font-bold text-orange-900 dark:text-orange-100">
-                    {document.processing_method === 'real_docling' ? 'Enhanced' : 
-                     document.processing_method === 'mock' ? 'Basic' : 
-                     'Standard'}
-                  </p>
-                </div>
-                <Target className="w-8 h-8 text-orange-500" />
-              </div>
-            </div>
-          </div>
-
-          {/* Detailed Processing Insights */}
-          {(document.chunking_stats || document.processing_details) && (
-            <div className="space-y-4">
-              <h4 className="text-lg font-semibold flex items-center">
-                <TrendingUp className="w-5 h-5 mr-2" />
-                Processing Details
-              </h4>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Chunking Statistics */}
-                {document.chunking_stats && (
-                  <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                    <h5 className="font-medium mb-3">Chunking Analysis</h5>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Average words per chunk:</span>
-                        <span className="font-mono">{document.chunking_stats.avg_words_per_chunk?.toFixed(0) || 'N/A'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Chunk size range:</span>
-                        <span className="font-mono">
-                          {document.chunking_stats.min_words_per_chunk || 0}-{document.chunking_stats.max_words_per_chunk || 0} words
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total words processed:</span>
-                        <span className="font-mono">{document.chunking_stats.total_words?.toLocaleString() || 'N/A'}</span>
-                      </div>
-                      {document.chunking_stats.chunking_methods && (
-                        <div className="pt-2">
-                          <span className="text-xs text-gray-600 dark:text-gray-400">Chunking methods used:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {Object.entries(document.chunking_stats.chunking_methods).map(([method, count]) => (
-                              <Badge key={method} variant="outline" className="text-xs">
-                                {method}: {count}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Vector Indexing Status */}
-                <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                  <h5 className="font-medium mb-3">Vector Indexing</h5>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Status:</span>
-                      <Badge variant={document.vector_indexed ? "default" : "secondary"}>
-                        {document.vector_indexed ? 'Indexed' : 'Not Indexed'}
-                      </Badge>
-                    </div>
-                    {document.embedding_model && (
-                      <div className="flex justify-between">
-                        <span>Embedding model:</span>
-                        <span className="font-mono text-xs">{document.embedding_model}</span>
-                      </div>
-                    )}
-                    {document.vector_indexing_result && (
-                      <div className="flex justify-between">
-                        <span>Indexed chunks:</span>
-                        <span className="font-mono">{document.vector_indexing_result.indexed_chunks || 0}</span>
-                      </div>
-                    )}
-                    <div className="pt-2">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">
-                        {document.vector_indexed 
-                          ? 'Document is searchable via semantic search' 
-                          : 'Enable vector indexing for semantic search capabilities'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Enhanced Extracted Fields Display */}
-      <Card className="mt-6">
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <CardTitle className="text-lg">Extracted Fields</CardTitle>
-            <div className="flex gap-2">
-              {document.template_id && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigateToTemplateEdit(document.template_id)}
-                  className="self-start sm:self-auto"
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Edit Template & Fields</span>
-                  <span className="sm:hidden">Edit Template</span>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleRerunExtraction()}
-                disabled={isProcessing}
-                className="self-start sm:self-auto"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Rerun Smart Extraction</span>
-                <span className="sm:hidden">Rerun Extraction</span>
-              </Button>
-            </div>
-          </div>
+          <CardTitle>Extracted Fields</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -1437,121 +1620,128 @@ export function DocumentDetailView({
                 <CheckCircle className="w-5 h-5" />
                 <span className="font-medium">
                   Document processed successfully
-                  {document.metadata?.rerun_extraction && (
+                  {Boolean(document.metadata?.rerun_extraction) && (
                     <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                       Updated with Smart Extraction
                     </span>
                   )}
                 </span>
               </div>
-              {document.metadata?.rerun_timestamp && (
+              {typeof (document.metadata as Record<string, unknown>)?.rerun_timestamp === 'string' && (
                 <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-                  Last updated: {new Date(document.metadata.rerun_timestamp).toLocaleString()}
+                  {(() => {
+                    const ts = (document.metadata as Record<string, unknown>).rerun_timestamp as string;
+                    return `Last updated: ${new Date(ts).toLocaleString()}`;
+                  })()}
                 </p>
+              )}
+              {/* Display current template information */}
+              {(() => {
+                const meta = document.metadata as Record<string, unknown>;
+                const tName = meta.template_name as string | undefined;
+                const tId = meta.template_id as number | undefined;
+                return Boolean(tName || tId);
+              })() && (
+                <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    <span className="font-medium">Template Used:</span>{' '}
+                    {(() => {
+                      const meta = document.metadata as Record<string, unknown>;
+                      const tName = meta.template_name as string | undefined;
+                      const tId = meta.template_id as number | undefined;
+                      return tName || `Template ID: ${tId}`;
+                    })()}
+                    {(() => {
+                      const meta = document.metadata as Record<string, unknown>;
+                      const tId = meta.template_id as number | undefined;
+                      return tId ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-2 h-6 px-2 text-xs text-green-700 hover:text-green-800 dark:text-green-300 dark:hover:text-green-200"
+                        onClick={() => navigateToTemplateEdit(tId)}
+                      >
+                        <Edit className="w-3 h-3 mr-1" />
+                        Edit Template
+                      </Button>
+                      ) : null;
+                    })()}
+                  </p>
+                </div>
               )}
             </div>
             
-            {/* Extracted Fields Display */}
-            <div>
-              <h4 className="font-medium mb-3">Extracted Fields</h4>
-              {(() => {
-                // Handle different possible structures for extracted fields
-                let extractedFields = null;
-                let confidenceScores = null;
-                
-                // Try direct extracted_fields first
-                if (document.extracted_fields && typeof document.extracted_fields === 'object') {
-                  extractedFields = document.extracted_fields;
+            {/* Extracted Fields Editor */}
+            {(() => {
+              // Handle different possible structures for extracted fields
+              let extractedFields = {};
+              let confidenceScores = {};
+              
+              // Try direct extracted_fields first
+              if (document.extracted_fields && typeof document.extracted_fields === 'object') {
+                extractedFields = document.extracted_fields;
+              }
+              // Try metadata.extracted_fields
+              else if (document.metadata?.extracted_fields && typeof document.metadata.extracted_fields === 'object') {
+                extractedFields = document.metadata.extracted_fields;
+              }
+              // Try metadata.extraction_result.extracted_values (NEW - this is the missing piece)
+              else if ((document.metadata as Record<string, unknown>)?.extraction_result &&
+                       typeof (document.metadata as Record<string, unknown>).extraction_result === 'object') {
+                const erUnknown = (document.metadata as Record<string, unknown>).extraction_result as unknown;
+                if (erUnknown && typeof erUnknown === 'object') {
+                  const er = erUnknown as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
+                  if (er.extracted_values && typeof er.extracted_values === 'object') {
+                    extractedFields = er.extracted_values;
+                  }
+                  if (er.confidence_scores && typeof er.confidence_scores === 'object') {
+                    confidenceScores = er.confidence_scores as Record<string, number>;
+                  }
                 }
-                // Try metadata.extracted_fields
-                else if (document.metadata?.extracted_fields && typeof document.metadata.extracted_fields === 'object') {
-                  extractedFields = document.metadata.extracted_fields;
-                }
-                // Try metadata.extraction_result.extracted_values (NEW - this is the missing piece)
-                else if (document.metadata?.extraction_result?.extracted_values && typeof document.metadata.extraction_result.extracted_values === 'object') {
-                  extractedFields = document.metadata.extraction_result.extracted_values;
-                  confidenceScores = document.metadata.extraction_result.confidence_scores || {};
-                }
-                // Try metadata.fields
-                else if (document.metadata?.fields && typeof document.metadata.fields === 'object') {
-                  extractedFields = document.metadata.fields;
-                }
-                
-                if (!extractedFields || Object.keys(extractedFields).length === 0) {
-                  return (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
-                      <p className="text-sm text-gray-500">No extracted fields available</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        This document may not have been processed with field extraction enabled
-                      </p>
-                    </div>
-                  );
-                }
-                
-                return (
-                  <div className="space-y-3">
-                    {Object.entries(extractedFields).map(([key, fieldData]) => {
-                      // Handle different field data structures
-                      let displayValue = '';
-                      let confidence = 0;
-                      let sourceText = '';
-                      
-                      if (typeof fieldData === 'object' && fieldData !== null) {
-                        // Handle ExtractedField structure with confidence, value, etc.
-                        const field = fieldData as ExtractedFieldValue;
-                        if ('value' in field) {
-                          displayValue = String(field.value || '');
-                          confidence = field.confidence || 0;
-                          sourceText = field.sourceText || '';
-                        } else {
-                          // Handle direct object values
-                          displayValue = JSON.stringify(fieldData);
-                        }
-                      } else {
-                        // Handle primitive values (from extraction_result.extracted_values)
-                        displayValue = String(fieldData || '');
-                        // Use confidence from separate confidence_scores object if available
-                        if (confidenceScores && confidenceScores[key] !== undefined) {
-                          confidence = confidenceScores[key];
-                        }
-                      }
-                      
-                      const confidenceColor = confidence >= 0.8 ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400' :
-                                             confidence >= 0.6 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-400' :
-                                             confidence > 0 ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400' : '';
-                      
-                      return (
-                        <div key={key} className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                          <div className="flex items-start justify-between mb-2">
-                            <span className="text-sm font-medium capitalize text-gray-900 dark:text-gray-100">
-                              {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </span>
-                            {confidence > 0 && (
-                              <span className={`text-xs px-2 py-1 rounded-full ${confidenceColor}`}>
-                                {Math.round(confidence * 100)}% confidence
-                              </span>
-                            )}
-                          </div>
-                          <div className="mb-2">
-                            <span className="text-sm text-gray-600 dark:text-gray-300">
-                              {displayValue || <em className="text-gray-400">No value</em>}
-                            </span>
-                          </div>
-                          {sourceText && (
-                            <div className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 p-2 rounded italic">
-                              Source: "{sourceText}"
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
+              }
+              // Try metadata.fields
+              else if (document.metadata?.fields && typeof document.metadata.fields === 'object') {
+                extractedFields = document.metadata.fields;
+              }
+              
+              return (
+                <ExtractedFieldsEditor
+                  documentId={documentId}
+                  extractedFields={extractedFields}
+                  confidenceScores={confidenceScores}
+                  onSave={handleSaveExtractedFields}
+                  onCreateTemplate={async (fields) => {
+                    setFieldsForTemplate(fields);
+                    setShowCreateTemplateDialog(true);
+                  }}
+                  readOnly={false}
+                  showCreateTemplate={true}
+                />
+              );
+            })()}
           </div>
         </CardContent>
       </Card>
+
+      {/* Generated Template Dialog */}
+      <GeneratedTemplateDialog
+        open={showGeneratedTemplateDialog}
+        onOpenChange={setShowGeneratedTemplateDialog}
+        generatedTemplate={generatedTemplate}
+        onSaveTemplate={handleSaveGeneratedTemplate}
+        onUseTemplate={handleUseGeneratedTemplate}
+        isLoading={isProcessing}
+      />
+      
+      {/* Create Template From Fields Dialog */}
+      <CreateTemplateFromFields
+        isOpen={showCreateTemplateDialog}
+        onClose={() => setShowCreateTemplateDialog(false)}
+        fields={fieldsForTemplate}
+        documentType={evaluation?.type_evaluation?.primary_type}
+  documentName={document?.name}
+        onCreateTemplate={handleCreateTemplateFromFields}
+      />
     </div>
   );
 }

@@ -1,0 +1,47 @@
+EMPLOYEE INFORMATION FORM
+
+Employee ID: EMP-2024-0789
+Date Completed: April 12, 2024
+
+PERSONAL INFORMATION
+First Name: Sarah
+Last Name: Thompson
+Middle Initial: J
+Date of Birth: 05/15/1990
+Social Security Number: XXX-XX-1234
+Phone Number: (555) 234-5678
+Email Address: sarah.thompson@email.com
+
+ADDRESS
+Street Address: 123 Maple Street
+Apartment/Unit: Apt 2B
+City: Seattle
+State: Washington
+ZIP Code: 98101
+Country: United States
+
+EMPLOYMENT DETAILS
+Position: Senior Software Developer
+Department: Engineering
+Start Date: May 1, 2024
+Employment Type: Full-time
+Salary: $95,000 annually
+Manager: Alex Rodriguez
+Office Location: Seattle HQ
+
+EMERGENCY CONTACT
+Name: Michael Thompson
+Relationship: Spouse
+Phone: (555) 234-5679
+Email: mike.thompson@email.com
+Address: Same as employee
+
+BENEFITS ENROLLMENT
+Health Insurance: Yes - Premium Plan
+Dental Insurance: Yes
+Vision Insurance: No
+401(k) Contribution: 6%
+Life Insurance: $200,000
+
+Employee Signature: _________________ Date: _______
+HR Representative: __________________ Date: _______

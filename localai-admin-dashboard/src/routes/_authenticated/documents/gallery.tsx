@@ -3,12 +3,6 @@ import { DocumentGallery } from '@/components/documents/DocumentGallery';
 
 export const Route = createFileRoute('/_authenticated/documents/gallery')({
   component: DocumentGalleryPage,
-  meta: () => [
-    {
-      title: 'Document Gallery - FetchText',
-      description: 'Browse and manage your uploaded documents with search, filtering, and quick actions.',
-    },
-  ],
 });
 
 function DocumentGalleryPage() {

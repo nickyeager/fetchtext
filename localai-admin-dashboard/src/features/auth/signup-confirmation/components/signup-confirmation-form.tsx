@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ export function SignupConfirmationForm({ onConfirmationComplete }: SignupConfirm
   const [confirmationStatus, setConfirmationStatus] = useState<'pending' | 'confirmed' | 'expired' | 'error'>('pending');
   const [lastSentTime, setLastSentTime] = useState<number | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const redirectTimeoutRef = useRef<number | null>(null);
 
   const navigate = useNavigate();
   
@@ -42,7 +43,17 @@ export function SignupConfirmationForm({ onConfirmationComplete }: SignupConfirm
     }
   }, [token, tokenHash]);
 
-  const handleTokenConfirmation = async () => {
+  // Cleanup any pending redirect timeout on unmount to avoid open handles in tests
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current !== null) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleTokenConfirmation = useCallback(async () => {
     setIsLoading(true);
     
     try {
@@ -74,8 +85,10 @@ export function SignupConfirmationForm({ onConfirmationComplete }: SignupConfirm
       onConfirmationComplete?.();
       
       // Navigate to dashboard after successful confirmation
-      setTimeout(() => {
+      redirectTimeoutRef.current = window.setTimeout(() => {
         navigate({ to: '/dashboard' });
+        // clear stored id once executed
+        redirectTimeoutRef.current = null;
       }, 2000);
 
     } catch (_error) {
@@ -84,7 +97,7 @@ export function SignupConfirmationForm({ onConfirmationComplete }: SignupConfirm
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate, token, tokenHash, onConfirmationComplete]);
 
   const handleResendConfirmation = async (e: React.FormEvent) => {
     e.preventDefault();

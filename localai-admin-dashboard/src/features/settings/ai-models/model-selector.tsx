@@ -32,8 +32,8 @@ export default function ModelSelector({
 
   return (
     <div className="space-y-2">
-      <Select value={selectedModel} onValueChange={onModelChange}>
-        <SelectTrigger>
+      <Select value={selectedModel} onValueChange={onModelChange} data-testid="model-select">
+        <SelectTrigger data-testid="model-select-trigger" aria-label="Model Selector">
           <SelectValue placeholder="Select a model">
             {selectedModel && (
               <div className="flex items-center space-x-2">
@@ -50,9 +50,9 @@ export default function ModelSelector({
             )}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent>
+  <SelectContent data-testid="model-select-content">
           {models.map((model) => (
-            <SelectItem key={model.name} value={model.name}>
+            <SelectItem key={model.name} value={model.name} data-testid={`model-option-${model.name}`}>
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center space-x-2">
                   <Bot className="h-4 w-4" />

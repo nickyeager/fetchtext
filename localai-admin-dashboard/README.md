@@ -141,10 +141,17 @@ For detailed testing information, see [TESTING.md](./TESTING.md).
 Create a `.env.local` file with the following variables:
 
 ```env
-VITE_SUPABASE_URL=http://localhost:54321
+VITE_SUPABASE_URL=http://localhost:8000
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_N8N_URL=http://localhost:5678
 VITE_OLLAMA_URL=http://localhost:11434
+```
+
+Note: Vite embeds env at build time. If you change `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY`, rebuild the dashboard image and restart the container:
+
+```bash
+docker compose build --no-cache localai-admin-dashboard
+docker compose up -d localai-admin-dashboard
 ```
 
 ## Project Structure
@@ -183,6 +190,46 @@ This project implements a comprehensive testing strategy:
 - ✅ Error handling and graceful degradation
 
 See [E2E_TESTING_SUMMARY.md](./E2E_TESTING_SUMMARY.md) for detailed testing documentation.
+
+### Verify embedded Supabase URL (optional)
+
+You can confirm the production bundle points to the host gateway URL with a quick check:
+
+```bash
+curl -s http://localhost:5174/ | grep -o "/assets/[^"]\+\.js" | head -n1 | xargs -I{} sh -c 'curl -s http://localhost:5174{} | grep -m1 -o "http://localhost:8000" || echo MISSING'
+```
+
+### Authenticated E2E (Supabase Session Bootstrap)
+
+Playwright tests can reuse a pre-authenticated Supabase session generated during `globalSetup`.
+
+Environment variables required for auth bootstrap (set in `.env` or CI secrets):
+
+```env
+TEST_USER_EMAIL=test.user@example.com
+TEST_USER_PASSWORD=change_me_local
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+```
+
+You can place these in `.env.e2e` (copy from `.env.e2e.example`) and run:
+
+```bash
+pnpm test:e2e:auth
+```
+
+How it works:
+- `tests/auth/global-setup.ts` performs a password grant against Supabase auth API.
+- It writes `playwright/.auth/user.json` with the expected `sb-<projectRef>-auth-token` localStorage entries.
+- `playwright.config.ts` points `use.storageState` at that file so subsequent tests start authenticated.
+
+If env vars are absent, the auth file is skipped and auth-dependent specs should be treated as pending (avoid adding fragile assumptions). For strict CI, ensure these variables are set so the authenticated upload and document workflow tests execute fully.
+
+Security notes:
+- Use a dedicated low-privilege test user.
+- Never commit real credentials.
+- Rotate the test user password periodically.
+
 
 ## Development
 

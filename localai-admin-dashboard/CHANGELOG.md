@@ -1,3 +1,31 @@
+## [Unreleased]
+
+### Fixed
+- **DocumentDetailView Hook Dependencies** - Fixed stale closure issue in `useEffect` that was causing incorrect template formatting during document processing
+  - Moved `generateFormattedOutput` logic inline to prevent accessing stale data from closures
+  - Added proper dependencies to useEffect hooks to prevent unnecessary re-renders
+  - Fixed imprecise dependencies causing performance issues
+- **DocumentDetailView Performance** - Optimized component rendering and state updates
+  - Improved dependency arrays from broad object dependencies to specific properties
+  - Removed unused function declarations that were recreated on every render
+  - Verified polling mechanism works correctly at 1-second intervals during document processing
+
+### Changed  
+- **DocumentDetailView** - Improved hook implementation for better performance and reliability
+  - Refactored template formatting to use inline async functions in useEffect
+  - Updated content initialization to use specific property dependencies
+
+### Added
+- **Tests** - Comprehensive test coverage for DocumentDetailView component
+  - Hook dependency tests to verify stale closure fixes work correctly
+  - Integration tests with real-world document data structures
+  - Polling behavior verification for document processing states
+
+### Removed
+- **DocumentDetailViewEnhanced.tsx** - Removed unused component that was not imported or referenced anywhere
+
+---
+
 ## v1.4.0 (2025-05-25)
 
 ### Feat

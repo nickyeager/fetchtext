@@ -12,8 +12,8 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-// Mock N8N email client
-vi.mock('@/lib/n8n-email-client', () => ({
+// Mock email client (path must match component import)
+vi.mock('@/lib/email-client', () => ({
   sendWelcomeEmail: vi.fn(),
 }));
 
@@ -31,7 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 import { supabase } from '@/lib/supabase';
-import { sendWelcomeEmail } from '@/lib/n8n-email-client';
+import { sendWelcomeEmail } from '@/lib/email-client';
 import { toast } from 'sonner';
 
 const mockVerifyOtp = supabase.auth.verifyOtp as ReturnType<typeof vi.fn>;
@@ -41,15 +41,23 @@ const mockToastSuccess = toast.success as ReturnType<typeof vi.fn>;
 const mockToastError = toast.error as ReturnType<typeof vi.fn>;
 
 describe('SignupConfirmationForm', () => {
+  type ParamMap = Record<string, string>;
+  class MockParams {
+    private store: ParamMap;
+    constructor(map?: ParamMap) { this.store = map || {}; }
+    get(key: string) { return this.store[key] || ''; }
+  }
+
+  let currentParams: ParamMap = {};
+  function setParams(map: ParamMap) { currentParams = map; }
+  // @ts-expect-error override for test environment
+  globalThis.URLSearchParams = class extends MockParams {
+    constructor() { super(currentParams); }
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Mock URL params without token by default
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' || key === 'token_hash' ? '' : '';
-      }
-    });
+    setParams({});
 
     // Setup default successful responses
     mockVerifyOtp.mockResolvedValue({
@@ -127,12 +135,8 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should handle confirmation with valid token', async () => {
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'valid-token-123' : '';
-      }
-    });
+  // Inject token
+  setParams({ token: 'valid-token-123' });
 
     render(<SignupConfirmationForm />);
 
@@ -157,12 +161,7 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should handle confirmation with valid token_hash', async () => {
-    // Mock URL with token_hash
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token_hash' ? 'valid-hash-123' : '';
-      }
-    });
+  setParams({ token_hash: 'valid-hash-123' });
 
     render(<SignupConfirmationForm />);
 
@@ -177,12 +176,7 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should handle expired confirmation token', async () => {
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'expired-token' : '';
-      }
-    });
+  setParams({ token: 'expired-token' });
 
     mockVerifyOtp.mockResolvedValue({
       data: null,
@@ -222,12 +216,7 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should handle welcome email failure gracefully', async () => {
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'valid-token-123' : '';
-      }
-    });
+  setParams({ token: 'valid-token-123' });
 
     mockSendWelcomeEmail.mockResolvedValue({
       success: false,
@@ -247,12 +236,7 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should show loading state during confirmation', async () => {
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'valid-token-123' : '';
-      }
-    });
+  setParams({ token: 'valid-token-123' });
 
     // Mock delayed response
     mockVerifyOtp.mockImplementation(
@@ -274,12 +258,7 @@ describe('SignupConfirmationForm', () => {
   it('should call onConfirmationComplete callback when provided', async () => {
     const mockOnConfirmationComplete = vi.fn();
     
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'valid-token-123' : '';
-      }
-    });
+  setParams({ token: 'valid-token-123' });
 
     render(<SignupConfirmationForm onConfirmationComplete={mockOnConfirmationComplete} />);
 
@@ -289,12 +268,7 @@ describe('SignupConfirmationForm', () => {
   });
 
   it('should show dashboard button after successful confirmation', async () => {
-    // Mock URL with token
-    vi.stubGlobal('URLSearchParams', class {
-      get(key: string) {
-        return key === 'token' ? 'valid-token-123' : '';
-      }
-    });
+  setParams({ token: 'valid-token-123' });
 
     render(<SignupConfirmationForm />);
 

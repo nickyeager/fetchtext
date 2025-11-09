@@ -58,31 +58,22 @@ export function RealtimeExecutionMonitor({
 
     const setupSubscription = async () => {
       setConnectionStatus('testing');
-      
-      try {
-        // Test connection first
-        const healthCheck = await WorkflowMonitoringService.testWorkflowConnection(instanceId);
-        
-        if (healthCheck.status === 'healthy') {
-          setConnectionStatus('connected');
-          
-          // Subscribe to execution updates
-          unsubscribe = WorkflowMonitoringService.subscribeToExecutions(instanceId, (execution) => {
-            if (execution.status === 'running') {
-              setCurrentExecution(execution);
-            } else {
-              setCurrentExecution(null);
-              setExecutionHistory(prev => [execution, ...prev.slice(0, 9)]); // Keep last 10
-            }
-          });
-        } else {
+      // We don't have a websocket-backed subscription yet; mark as connected for polling UI
+      setConnectionStatus('connected');
+      // Provide a simple polling-based updater until realtime is implemented
+      const interval = setInterval(async () => {
+        try {
+          const current = await WorkflowMonitoringService.getCurrentExecution(instanceId);
+          setCurrentExecution(current);
+          const history = await WorkflowMonitoringService.getExecutionHistory(instanceId, 10);
+          setExecutionHistory(history);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('Polling monitor update failed:', e);
           setConnectionStatus('disconnected');
         }
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to setup monitoring:', error);
-        setConnectionStatus('disconnected');
-      }
+      }, 5000);
+      unsubscribe = () => clearInterval(interval);
     };
 
     setupSubscription();
@@ -103,7 +94,7 @@ export function RealtimeExecutionMonitor({
         setCurrentExecution(current);
 
         // Load metrics
-        const metricsData = await WorkflowMonitoringService.getExecutionMetrics(instanceId, '24h');
+  const metricsData = await WorkflowMonitoringService.getExecutionStats(instanceId);
         setMetrics(metricsData);
       } catch (error) {
         // eslint-disable-next-line no-console
@@ -119,8 +110,26 @@ export function RealtimeExecutionMonitor({
     if (currentExecution?.id) {
       const loadLogs = async () => {
         try {
-          const logsData = await WorkflowMonitoringService.getExecutionLogs(currentExecution.id);
-          setLogs(logsData);
+          // No dedicated logs endpoint; approximate with node execution list
+          const nodeExecs = await WorkflowMonitoringService.getNodeExecutions(currentExecution.id);
+          type NodeExec = { status?: string; started_at?: string; node_id?: string; node_name?: string };
+          const mappedLogs = (nodeExecs as NodeExec[] | null || []).map((n: NodeExec) => {
+            const status = typeof n?.status === 'string' ? n.status : 'info';
+            let level: 'info' | 'warn' | 'error' | 'debug' = 'info';
+            if (status === 'failed') level = 'error';
+            else if (status === 'running') level = 'debug';
+            let nodeLabel = 'unknown';
+            if (typeof n?.node_id === 'string') nodeLabel = n.node_id;
+            else if (typeof n?.node_name === 'string') nodeLabel = n.node_name;
+            return {
+              timestamp: typeof n?.started_at === 'string' ? n.started_at : new Date().toISOString(),
+              level,
+              message: `Node ${nodeLabel} ${status}`,
+              nodeId: typeof n?.node_id === 'string' ? n.node_id : undefined,
+              nodeName: typeof n?.node_name === 'string' ? n.node_name : undefined,
+            };
+          });
+          setLogs(mappedLogs);
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error('Failed to load logs:', error);
@@ -142,8 +151,8 @@ export function RealtimeExecutionMonitor({
 
     setIsStarting(true);
     try {
-      const executionId = await WorkflowMonitoringService.startExecution(instanceId, 'manual');
-      onExecutionStart?.(executionId);
+  const execution = await WorkflowMonitoringService.startExecution(instanceId, { trigger: 'manual' });
+  onExecutionStart?.(execution.id);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to start execution:', error);
@@ -157,7 +166,7 @@ export function RealtimeExecutionMonitor({
 
     setIsStopping(true);
     try {
-      await WorkflowMonitoringService.stopExecution(currentExecution.id);
+  await WorkflowMonitoringService.cancelExecution(currentExecution.id);
       onExecutionStop?.(currentExecution.id);
       setCurrentExecution(null);
     } catch (error) {

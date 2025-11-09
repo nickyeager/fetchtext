@@ -14,7 +14,6 @@ import { Route as rootRoute } from './routes/__root'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
-import { Route as AuthenticatedTemplatesImport } from './routes/_authenticated/templates'
 import { Route as AuthenticatedDocumentsImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardImport } from './routes/_authenticated/dashboard'
 import { Route as errors503Import } from './routes/(errors)/503'
@@ -33,6 +32,7 @@ import { Route as ClerkAuthenticatedRouteImport } from './routes/clerk/_authenti
 import { Route as ClerkauthRouteImport } from './routes/clerk/(auth)/route'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedUsersIndexImport } from './routes/_authenticated/users/index'
+import { Route as AuthenticatedTemplatesIndexImport } from './routes/_authenticated/templates/index'
 import { Route as AuthenticatedTasksIndexImport } from './routes/_authenticated/tasks/index'
 import { Route as AuthenticatedSettingsIndexImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedHelpCenterIndexImport } from './routes/_authenticated/help-center/index'
@@ -49,22 +49,18 @@ import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authen
 import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedDocumentsUploadImport } from './routes/_authenticated/documents/upload'
-import { Route as AuthenticatedDocumentsTemplatesImport } from './routes/_authenticated/documents/templates'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
 import { Route as AuthenticatedDocumentsGalleryImport } from './routes/_authenticated/documents/gallery'
 import { Route as AuthenticatedDocumentsDocumentIdImport } from './routes/_authenticated/documents/$documentId'
 import { Route as AuthenticatedWorkflowsInstancesIndexImport } from './routes/_authenticated/workflows/instances/index'
 import { Route as AuthenticatedDocumentsTemplatesIndexImport } from './routes/_authenticated/documents/templates/index'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdImport } from './routes/_authenticated/workflows/instances/$instanceId'
-import { Route as AuthenticatedTemplatesSmartTemplateIdImport } from './routes/_authenticated/templates/smart/$templateId'
 import { Route as AuthenticatedTemplatesTemplateIdEditImport } from './routes/_authenticated/templates/$templateId/edit'
-import { Route as AuthenticatedDocumentsTemplatesTemplateIdImport } from './routes/_authenticated/documents/templates/$templateId'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdMonitorImport } from './routes/_authenticated/workflows/instances/$instanceId.monitor'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdLogsImport } from './routes/_authenticated/workflows/instances/$instanceId.logs'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdExecutionImport } from './routes/_authenticated/workflows/instances/$instanceId.execution'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from './routes/_authenticated/workflows/instances/$instanceId.editor'
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
-import { Route as AuthenticatedTemplatesSmartTemplateIdEditImport } from './routes/_authenticated/templates/smart/$templateId/edit'
 
 // Create/Update Routes
 
@@ -83,12 +79,6 @@ const IndexRoute = IndexImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRoute,
-} as any)
-
-const AuthenticatedTemplatesRoute = AuthenticatedTemplatesImport.update({
-  id: '/templates',
-  path: '/templates',
-  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
 const AuthenticatedDocumentsRoute = AuthenticatedDocumentsImport.update({
@@ -199,6 +189,13 @@ const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexImport.update({
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
+const AuthenticatedTemplatesIndexRoute =
+  AuthenticatedTemplatesIndexImport.update({
+    id: '/templates/',
+    path: '/templates/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+
 const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexImport.update({
   id: '/tasks/',
   path: '/tasks/',
@@ -260,9 +257,9 @@ const ClerkauthSignInRoute = ClerkauthSignInImport.update({
 
 const AuthenticatedTemplatesTemplateIdRoute =
   AuthenticatedTemplatesTemplateIdImport.update({
-    id: '/$templateId',
-    path: '/$templateId',
-    getParentRoute: () => AuthenticatedTemplatesRoute,
+    id: '/templates/$templateId',
+    path: '/templates/$templateId',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
 const AuthenticatedSettingsNotificationsRoute =
@@ -307,13 +304,6 @@ const AuthenticatedDocumentsUploadRoute =
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
-const AuthenticatedDocumentsTemplatesRoute =
-  AuthenticatedDocumentsTemplatesImport.update({
-    id: '/templates',
-    path: '/templates',
-    getParentRoute: () => AuthenticatedDocumentsRoute,
-  } as any)
-
 const AuthenticatedDocumentsProcessDocumentRoute =
   AuthenticatedDocumentsProcessDocumentImport.update({
     id: '/process-document',
@@ -344,9 +334,9 @@ const AuthenticatedWorkflowsInstancesIndexRoute =
 
 const AuthenticatedDocumentsTemplatesIndexRoute =
   AuthenticatedDocumentsTemplatesIndexImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => AuthenticatedDocumentsTemplatesRoute,
+    id: '/templates/',
+    path: '/templates/',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
 const AuthenticatedWorkflowsInstancesInstanceIdRoute =
@@ -356,25 +346,11 @@ const AuthenticatedWorkflowsInstancesInstanceIdRoute =
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
-const AuthenticatedTemplatesSmartTemplateIdRoute =
-  AuthenticatedTemplatesSmartTemplateIdImport.update({
-    id: '/smart/$templateId',
-    path: '/smart/$templateId',
-    getParentRoute: () => AuthenticatedTemplatesRoute,
-  } as any)
-
 const AuthenticatedTemplatesTemplateIdEditRoute =
   AuthenticatedTemplatesTemplateIdEditImport.update({
     id: '/edit',
     path: '/edit',
     getParentRoute: () => AuthenticatedTemplatesTemplateIdRoute,
-  } as any)
-
-const AuthenticatedDocumentsTemplatesTemplateIdRoute =
-  AuthenticatedDocumentsTemplatesTemplateIdImport.update({
-    id: '/$templateId',
-    path: '/$templateId',
-    getParentRoute: () => AuthenticatedDocumentsTemplatesRoute,
   } as any)
 
 const AuthenticatedWorkflowsInstancesInstanceIdMonitorRoute =
@@ -410,13 +386,6 @@ const AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute =
     id: '/configuration',
     path: '/configuration',
     getParentRoute: () => AuthenticatedWorkflowsInstancesInstanceIdRoute,
-  } as any)
-
-const AuthenticatedTemplatesSmartTemplateIdEditRoute =
-  AuthenticatedTemplatesSmartTemplateIdEditImport.update({
-    id: '/edit',
-    path: '/edit',
-    getParentRoute: () => AuthenticatedTemplatesSmartTemplateIdRoute,
   } as any)
 
 // Populate the FileRoutesByPath interface
@@ -563,13 +532,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsImport
       parentRoute: typeof AuthenticatedRouteImport
     }
-    '/_authenticated/templates': {
-      id: '/_authenticated/templates'
-      path: '/templates'
-      fullPath: '/templates'
-      preLoaderRoute: typeof AuthenticatedTemplatesImport
-      parentRoute: typeof AuthenticatedRouteImport
-    }
     '/_authenticated/documents/$documentId': {
       id: '/_authenticated/documents/$documentId'
       path: '/$documentId'
@@ -589,13 +551,6 @@ declare module '@tanstack/react-router' {
       path: '/process-document'
       fullPath: '/documents/process-document'
       preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
-      parentRoute: typeof AuthenticatedDocumentsImport
-    }
-    '/_authenticated/documents/templates': {
-      id: '/_authenticated/documents/templates'
-      path: '/templates'
-      fullPath: '/documents/templates'
-      preLoaderRoute: typeof AuthenticatedDocumentsTemplatesImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/documents/upload': {
@@ -642,10 +597,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/templates/$templateId': {
       id: '/_authenticated/templates/$templateId'
-      path: '/$templateId'
+      path: '/templates/$templateId'
       fullPath: '/templates/$templateId'
       preLoaderRoute: typeof AuthenticatedTemplatesTemplateIdImport
-      parentRoute: typeof AuthenticatedTemplatesImport
+      parentRoute: typeof AuthenticatedRouteImport
     }
     '/clerk/(auth)/sign-in': {
       id: '/clerk/(auth)/sign-in'
@@ -710,6 +665,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTasksIndexImport
       parentRoute: typeof AuthenticatedRouteImport
     }
+    '/_authenticated/templates/': {
+      id: '/_authenticated/templates/'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof AuthenticatedTemplatesIndexImport
+      parentRoute: typeof AuthenticatedRouteImport
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
@@ -717,26 +679,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsersIndexImport
       parentRoute: typeof AuthenticatedRouteImport
     }
-    '/_authenticated/documents/templates/$templateId': {
-      id: '/_authenticated/documents/templates/$templateId'
-      path: '/$templateId'
-      fullPath: '/documents/templates/$templateId'
-      preLoaderRoute: typeof AuthenticatedDocumentsTemplatesTemplateIdImport
-      parentRoute: typeof AuthenticatedDocumentsTemplatesImport
-    }
     '/_authenticated/templates/$templateId/edit': {
       id: '/_authenticated/templates/$templateId/edit'
       path: '/edit'
       fullPath: '/templates/$templateId/edit'
       preLoaderRoute: typeof AuthenticatedTemplatesTemplateIdEditImport
       parentRoute: typeof AuthenticatedTemplatesTemplateIdImport
-    }
-    '/_authenticated/templates/smart/$templateId': {
-      id: '/_authenticated/templates/smart/$templateId'
-      path: '/smart/$templateId'
-      fullPath: '/templates/smart/$templateId'
-      preLoaderRoute: typeof AuthenticatedTemplatesSmartTemplateIdImport
-      parentRoute: typeof AuthenticatedTemplatesImport
     }
     '/_authenticated/workflows/instances/$instanceId': {
       id: '/_authenticated/workflows/instances/$instanceId'
@@ -747,10 +695,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/documents/templates/': {
       id: '/_authenticated/documents/templates/'
-      path: '/'
-      fullPath: '/documents/templates/'
+      path: '/templates'
+      fullPath: '/documents/templates'
       preLoaderRoute: typeof AuthenticatedDocumentsTemplatesIndexImport
-      parentRoute: typeof AuthenticatedDocumentsTemplatesImport
+      parentRoute: typeof AuthenticatedDocumentsImport
     }
     '/_authenticated/workflows/instances/': {
       id: '/_authenticated/workflows/instances/'
@@ -758,13 +706,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/workflows/instances'
       preLoaderRoute: typeof AuthenticatedWorkflowsInstancesIndexImport
       parentRoute: typeof AuthenticatedRouteImport
-    }
-    '/_authenticated/templates/smart/$templateId/edit': {
-      id: '/_authenticated/templates/smart/$templateId/edit'
-      path: '/edit'
-      fullPath: '/templates/smart/$templateId/edit'
-      preLoaderRoute: typeof AuthenticatedTemplatesSmartTemplateIdEditImport
-      parentRoute: typeof AuthenticatedTemplatesSmartTemplateIdImport
     }
     '/_authenticated/workflows/instances/$instanceId/configuration': {
       id: '/_authenticated/workflows/instances/$instanceId/configuration'
@@ -831,31 +772,13 @@ const AuthenticatedSettingsRouteRouteWithChildren =
     AuthenticatedSettingsRouteRouteChildren,
   )
 
-interface AuthenticatedDocumentsTemplatesRouteChildren {
-  AuthenticatedDocumentsTemplatesTemplateIdRoute: typeof AuthenticatedDocumentsTemplatesTemplateIdRoute
-  AuthenticatedDocumentsTemplatesIndexRoute: typeof AuthenticatedDocumentsTemplatesIndexRoute
-}
-
-const AuthenticatedDocumentsTemplatesRouteChildren: AuthenticatedDocumentsTemplatesRouteChildren =
-  {
-    AuthenticatedDocumentsTemplatesTemplateIdRoute:
-      AuthenticatedDocumentsTemplatesTemplateIdRoute,
-    AuthenticatedDocumentsTemplatesIndexRoute:
-      AuthenticatedDocumentsTemplatesIndexRoute,
-  }
-
-const AuthenticatedDocumentsTemplatesRouteWithChildren =
-  AuthenticatedDocumentsTemplatesRoute._addFileChildren(
-    AuthenticatedDocumentsTemplatesRouteChildren,
-  )
-
 interface AuthenticatedDocumentsRouteChildren {
   AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
   AuthenticatedDocumentsGalleryRoute: typeof AuthenticatedDocumentsGalleryRoute
   AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
-  AuthenticatedDocumentsTemplatesRoute: typeof AuthenticatedDocumentsTemplatesRouteWithChildren
   AuthenticatedDocumentsUploadRoute: typeof AuthenticatedDocumentsUploadRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
+  AuthenticatedDocumentsTemplatesIndexRoute: typeof AuthenticatedDocumentsTemplatesIndexRoute
 }
 
 const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
@@ -865,10 +788,10 @@ const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
     AuthenticatedDocumentsGalleryRoute: AuthenticatedDocumentsGalleryRoute,
     AuthenticatedDocumentsProcessDocumentRoute:
       AuthenticatedDocumentsProcessDocumentRoute,
-    AuthenticatedDocumentsTemplatesRoute:
-      AuthenticatedDocumentsTemplatesRouteWithChildren,
     AuthenticatedDocumentsUploadRoute: AuthenticatedDocumentsUploadRoute,
     AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
+    AuthenticatedDocumentsTemplatesIndexRoute:
+      AuthenticatedDocumentsTemplatesIndexRoute,
   }
 
 const AuthenticatedDocumentsRouteWithChildren =
@@ -889,39 +812,6 @@ const AuthenticatedTemplatesTemplateIdRouteChildren: AuthenticatedTemplatesTempl
 const AuthenticatedTemplatesTemplateIdRouteWithChildren =
   AuthenticatedTemplatesTemplateIdRoute._addFileChildren(
     AuthenticatedTemplatesTemplateIdRouteChildren,
-  )
-
-interface AuthenticatedTemplatesSmartTemplateIdRouteChildren {
-  AuthenticatedTemplatesSmartTemplateIdEditRoute: typeof AuthenticatedTemplatesSmartTemplateIdEditRoute
-}
-
-const AuthenticatedTemplatesSmartTemplateIdRouteChildren: AuthenticatedTemplatesSmartTemplateIdRouteChildren =
-  {
-    AuthenticatedTemplatesSmartTemplateIdEditRoute:
-      AuthenticatedTemplatesSmartTemplateIdEditRoute,
-  }
-
-const AuthenticatedTemplatesSmartTemplateIdRouteWithChildren =
-  AuthenticatedTemplatesSmartTemplateIdRoute._addFileChildren(
-    AuthenticatedTemplatesSmartTemplateIdRouteChildren,
-  )
-
-interface AuthenticatedTemplatesRouteChildren {
-  AuthenticatedTemplatesTemplateIdRoute: typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
-  AuthenticatedTemplatesSmartTemplateIdRoute: typeof AuthenticatedTemplatesSmartTemplateIdRouteWithChildren
-}
-
-const AuthenticatedTemplatesRouteChildren: AuthenticatedTemplatesRouteChildren =
-  {
-    AuthenticatedTemplatesTemplateIdRoute:
-      AuthenticatedTemplatesTemplateIdRouteWithChildren,
-    AuthenticatedTemplatesSmartTemplateIdRoute:
-      AuthenticatedTemplatesSmartTemplateIdRouteWithChildren,
-  }
-
-const AuthenticatedTemplatesRouteWithChildren =
-  AuthenticatedTemplatesRoute._addFileChildren(
-    AuthenticatedTemplatesRouteChildren,
   )
 
 interface AuthenticatedWorkflowsInstancesInstanceIdRouteChildren {
@@ -955,11 +845,12 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRouteWithChildren
-  AuthenticatedTemplatesRoute: typeof AuthenticatedTemplatesRouteWithChildren
+  AuthenticatedTemplatesTemplateIdRoute: typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   AuthenticatedAppsIndexRoute: typeof AuthenticatedAppsIndexRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
   AuthenticatedHelpCenterIndexRoute: typeof AuthenticatedHelpCenterIndexRoute
   AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
+  AuthenticatedTemplatesIndexRoute: typeof AuthenticatedTemplatesIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWorkflowsInstancesInstanceIdRoute: typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   AuthenticatedWorkflowsInstancesIndexRoute: typeof AuthenticatedWorkflowsInstancesIndexRoute
@@ -969,11 +860,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDocumentsRoute: AuthenticatedDocumentsRouteWithChildren,
-  AuthenticatedTemplatesRoute: AuthenticatedTemplatesRouteWithChildren,
+  AuthenticatedTemplatesTemplateIdRoute:
+    AuthenticatedTemplatesTemplateIdRouteWithChildren,
   AuthenticatedAppsIndexRoute: AuthenticatedAppsIndexRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
   AuthenticatedHelpCenterIndexRoute: AuthenticatedHelpCenterIndexRoute,
   AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
+  AuthenticatedTemplatesIndexRoute: AuthenticatedTemplatesIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWorkflowsInstancesInstanceIdRoute:
     AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren,
@@ -1047,11 +940,9 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRouteWithChildren
-  '/templates': typeof AuthenticatedTemplatesRouteWithChildren
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
-  '/documents/templates': typeof AuthenticatedDocumentsTemplatesRouteWithChildren
   '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
@@ -1068,14 +959,12 @@ export interface FileRoutesByFullPath {
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
+  '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
-  '/documents/templates/$templateId': typeof AuthenticatedDocumentsTemplatesTemplateIdRoute
   '/templates/$templateId/edit': typeof AuthenticatedTemplatesTemplateIdEditRoute
-  '/templates/smart/$templateId': typeof AuthenticatedTemplatesSmartTemplateIdRouteWithChildren
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
-  '/documents/templates/': typeof AuthenticatedDocumentsTemplatesIndexRoute
+  '/documents/templates': typeof AuthenticatedDocumentsTemplatesIndexRoute
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
-  '/templates/smart/$templateId/edit': typeof AuthenticatedTemplatesSmartTemplateIdEditRoute
   '/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
   '/workflows/instances/$instanceId/editor': typeof AuthenticatedWorkflowsInstancesInstanceIdEditorRoute
   '/workflows/instances/$instanceId/execution': typeof AuthenticatedWorkflowsInstancesInstanceIdExecutionRoute
@@ -1100,7 +989,6 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/templates': typeof AuthenticatedTemplatesRouteWithChildren
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
@@ -1120,14 +1008,12 @@ export interface FileRoutesByTo {
   '/help-center': typeof AuthenticatedHelpCenterIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/tasks': typeof AuthenticatedTasksIndexRoute
+  '/templates': typeof AuthenticatedTemplatesIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
-  '/documents/templates/$templateId': typeof AuthenticatedDocumentsTemplatesTemplateIdRoute
   '/templates/$templateId/edit': typeof AuthenticatedTemplatesTemplateIdEditRoute
-  '/templates/smart/$templateId': typeof AuthenticatedTemplatesSmartTemplateIdRouteWithChildren
   '/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   '/documents/templates': typeof AuthenticatedDocumentsTemplatesIndexRoute
   '/workflows/instances': typeof AuthenticatedWorkflowsInstancesIndexRoute
-  '/templates/smart/$templateId/edit': typeof AuthenticatedTemplatesSmartTemplateIdEditRoute
   '/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
   '/workflows/instances/$instanceId/editor': typeof AuthenticatedWorkflowsInstancesInstanceIdEditorRoute
   '/workflows/instances/$instanceId/execution': typeof AuthenticatedWorkflowsInstancesInstanceIdExecutionRoute
@@ -1157,11 +1043,9 @@ export interface FileRoutesById {
   '/(errors)/503': typeof errors503Route
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
-  '/_authenticated/templates': typeof AuthenticatedTemplatesRouteWithChildren
   '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/_authenticated/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
-  '/_authenticated/documents/templates': typeof AuthenticatedDocumentsTemplatesRouteWithChildren
   '/_authenticated/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
@@ -1178,14 +1062,12 @@ export interface FileRoutesById {
   '/_authenticated/help-center/': typeof AuthenticatedHelpCenterIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
+  '/_authenticated/templates/': typeof AuthenticatedTemplatesIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
-  '/_authenticated/documents/templates/$templateId': typeof AuthenticatedDocumentsTemplatesTemplateIdRoute
   '/_authenticated/templates/$templateId/edit': typeof AuthenticatedTemplatesTemplateIdEditRoute
-  '/_authenticated/templates/smart/$templateId': typeof AuthenticatedTemplatesSmartTemplateIdRouteWithChildren
   '/_authenticated/workflows/instances/$instanceId': typeof AuthenticatedWorkflowsInstancesInstanceIdRouteWithChildren
   '/_authenticated/documents/templates/': typeof AuthenticatedDocumentsTemplatesIndexRoute
   '/_authenticated/workflows/instances/': typeof AuthenticatedWorkflowsInstancesIndexRoute
-  '/_authenticated/templates/smart/$templateId/edit': typeof AuthenticatedTemplatesSmartTemplateIdEditRoute
   '/_authenticated/workflows/instances/$instanceId/configuration': typeof AuthenticatedWorkflowsInstancesInstanceIdConfigurationRoute
   '/_authenticated/workflows/instances/$instanceId/editor': typeof AuthenticatedWorkflowsInstancesInstanceIdEditorRoute
   '/_authenticated/workflows/instances/$instanceId/execution': typeof AuthenticatedWorkflowsInstancesInstanceIdExecutionRoute
@@ -1215,11 +1097,9 @@ export interface FileRouteTypes {
     | '/503'
     | '/dashboard'
     | '/documents'
-    | '/templates'
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
-    | '/documents/templates'
     | '/documents/upload'
     | '/settings/account'
     | '/settings/ai-models'
@@ -1236,14 +1116,12 @@ export interface FileRouteTypes {
     | '/help-center'
     | '/settings/'
     | '/tasks'
+    | '/templates'
     | '/users'
-    | '/documents/templates/$templateId'
     | '/templates/$templateId/edit'
-    | '/templates/smart/$templateId'
     | '/workflows/instances/$instanceId'
-    | '/documents/templates/'
+    | '/documents/templates'
     | '/workflows/instances'
-    | '/templates/smart/$templateId/edit'
     | '/workflows/instances/$instanceId/configuration'
     | '/workflows/instances/$instanceId/editor'
     | '/workflows/instances/$instanceId/execution'
@@ -1267,7 +1145,6 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/dashboard'
-    | '/templates'
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
@@ -1287,14 +1164,12 @@ export interface FileRouteTypes {
     | '/help-center'
     | '/settings'
     | '/tasks'
+    | '/templates'
     | '/users'
-    | '/documents/templates/$templateId'
     | '/templates/$templateId/edit'
-    | '/templates/smart/$templateId'
     | '/workflows/instances/$instanceId'
     | '/documents/templates'
     | '/workflows/instances'
-    | '/templates/smart/$templateId/edit'
     | '/workflows/instances/$instanceId/configuration'
     | '/workflows/instances/$instanceId/editor'
     | '/workflows/instances/$instanceId/execution'
@@ -1322,11 +1197,9 @@ export interface FileRouteTypes {
     | '/(errors)/503'
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
-    | '/_authenticated/templates'
     | '/_authenticated/documents/$documentId'
     | '/_authenticated/documents/gallery'
     | '/_authenticated/documents/process-document'
-    | '/_authenticated/documents/templates'
     | '/_authenticated/documents/upload'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/ai-models'
@@ -1343,14 +1216,12 @@ export interface FileRouteTypes {
     | '/_authenticated/help-center/'
     | '/_authenticated/settings/'
     | '/_authenticated/tasks/'
+    | '/_authenticated/templates/'
     | '/_authenticated/users/'
-    | '/_authenticated/documents/templates/$templateId'
     | '/_authenticated/templates/$templateId/edit'
-    | '/_authenticated/templates/smart/$templateId'
     | '/_authenticated/workflows/instances/$instanceId'
     | '/_authenticated/documents/templates/'
     | '/_authenticated/workflows/instances/'
-    | '/_authenticated/templates/smart/$templateId/edit'
     | '/_authenticated/workflows/instances/$instanceId/configuration'
     | '/_authenticated/workflows/instances/$instanceId/editor'
     | '/_authenticated/workflows/instances/$instanceId/execution'
@@ -1431,11 +1302,12 @@ export const routeTree = rootRoute
         "/_authenticated/settings",
         "/_authenticated/dashboard",
         "/_authenticated/documents",
-        "/_authenticated/templates",
+        "/_authenticated/templates/$templateId",
         "/_authenticated/apps/",
         "/_authenticated/chats/",
         "/_authenticated/help-center/",
         "/_authenticated/tasks/",
+        "/_authenticated/templates/",
         "/_authenticated/users/",
         "/_authenticated/workflows/instances/$instanceId",
         "/_authenticated/workflows/instances/"
@@ -1522,17 +1394,9 @@ export const routeTree = rootRoute
         "/_authenticated/documents/$documentId",
         "/_authenticated/documents/gallery",
         "/_authenticated/documents/process-document",
-        "/_authenticated/documents/templates",
         "/_authenticated/documents/upload",
-        "/_authenticated/documents/"
-      ]
-    },
-    "/_authenticated/templates": {
-      "filePath": "_authenticated/templates.tsx",
-      "parent": "/_authenticated",
-      "children": [
-        "/_authenticated/templates/$templateId",
-        "/_authenticated/templates/smart/$templateId"
+        "/_authenticated/documents/",
+        "/_authenticated/documents/templates/"
       ]
     },
     "/_authenticated/documents/$documentId": {
@@ -1546,14 +1410,6 @@ export const routeTree = rootRoute
     "/_authenticated/documents/process-document": {
       "filePath": "_authenticated/documents/process-document.tsx",
       "parent": "/_authenticated/documents"
-    },
-    "/_authenticated/documents/templates": {
-      "filePath": "_authenticated/documents/templates.tsx",
-      "parent": "/_authenticated/documents",
-      "children": [
-        "/_authenticated/documents/templates/$templateId",
-        "/_authenticated/documents/templates/"
-      ]
     },
     "/_authenticated/documents/upload": {
       "filePath": "_authenticated/documents/upload.tsx",
@@ -1581,7 +1437,7 @@ export const routeTree = rootRoute
     },
     "/_authenticated/templates/$templateId": {
       "filePath": "_authenticated/templates/$templateId.tsx",
-      "parent": "/_authenticated/templates",
+      "parent": "/_authenticated",
       "children": [
         "/_authenticated/templates/$templateId/edit"
       ]
@@ -1622,24 +1478,17 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/tasks/index.tsx",
       "parent": "/_authenticated"
     },
+    "/_authenticated/templates/": {
+      "filePath": "_authenticated/templates/index.tsx",
+      "parent": "/_authenticated"
+    },
     "/_authenticated/users/": {
       "filePath": "_authenticated/users/index.tsx",
       "parent": "/_authenticated"
     },
-    "/_authenticated/documents/templates/$templateId": {
-      "filePath": "_authenticated/documents/templates/$templateId.tsx",
-      "parent": "/_authenticated/documents/templates"
-    },
     "/_authenticated/templates/$templateId/edit": {
       "filePath": "_authenticated/templates/$templateId/edit.tsx",
       "parent": "/_authenticated/templates/$templateId"
-    },
-    "/_authenticated/templates/smart/$templateId": {
-      "filePath": "_authenticated/templates/smart/$templateId.tsx",
-      "parent": "/_authenticated/templates",
-      "children": [
-        "/_authenticated/templates/smart/$templateId/edit"
-      ]
     },
     "/_authenticated/workflows/instances/$instanceId": {
       "filePath": "_authenticated/workflows/instances/$instanceId.tsx",
@@ -1654,15 +1503,11 @@ export const routeTree = rootRoute
     },
     "/_authenticated/documents/templates/": {
       "filePath": "_authenticated/documents/templates/index.tsx",
-      "parent": "/_authenticated/documents/templates"
+      "parent": "/_authenticated/documents"
     },
     "/_authenticated/workflows/instances/": {
       "filePath": "_authenticated/workflows/instances/index.tsx",
       "parent": "/_authenticated"
-    },
-    "/_authenticated/templates/smart/$templateId/edit": {
-      "filePath": "_authenticated/templates/smart/$templateId/edit.tsx",
-      "parent": "/_authenticated/templates/smart/$templateId"
     },
     "/_authenticated/workflows/instances/$instanceId/configuration": {
       "filePath": "_authenticated/workflows/instances/$instanceId.configuration.tsx",

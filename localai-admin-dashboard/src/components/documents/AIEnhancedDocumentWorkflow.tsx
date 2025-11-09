@@ -207,7 +207,7 @@ export function AIEnhancedDocumentWorkflow({
               <input
                 id="file-upload"
                 type="file"
-                accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.html,.txt,.md,.csv"
+                accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.html,.txt,.md,.csv,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff"
                 onChange={handleFileSelect}
                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
               />

@@ -37,7 +37,7 @@ class DoclingService:
     def __init__(self):
         self.temp_dir = Path(tempfile.gettempdir()) / "docling_temp"
         self.temp_dir.mkdir(exist_ok=True)
-        self.supported_formats = ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.txt', '.md']
+        self.supported_formats = ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff']
         
         # Initialize Docling converter if available
         if DOCLING_AVAILABLE:
@@ -50,7 +50,7 @@ class DoclingService:
                 self.converter = None
                 self.use_real_docling = False
         else:
-            logger.warning("Docling not available, using mock implementation")
+            logger.warning("Docling not available - document processing will fail")
             self.converter = None
             self.use_real_docling = False
         
@@ -62,7 +62,7 @@ class DoclingService:
         """Get service status including Docling availability"""
         return {
             "service": "docling",
-            "status": "healthy" if self.use_real_docling else "mock",
+            "status": "healthy" if self.use_real_docling else "docling_unavailable",
             "docling_available": DOCLING_AVAILABLE,
             "docling_version": DOCLING_VERSION,
             "use_real_docling": self.use_real_docling,
@@ -80,6 +80,8 @@ class DoclingService:
             '.doc': DocumentType.DOCX,
             '.pptx': DocumentType.PPTX,
             '.ppt': DocumentType.PPTX,
+            '.xlsx': DocumentType.XLSX,
+            '.xls': DocumentType.XLSX,
             '.html': DocumentType.HTML,
             '.htm': DocumentType.HTML,
             '.md': DocumentType.MD,
@@ -87,6 +89,11 @@ class DoclingService:
             '.png': DocumentType.IMAGE,
             '.jpg': DocumentType.IMAGE,
             '.jpeg': DocumentType.IMAGE,
+            '.gif': DocumentType.IMAGE,
+            '.webp': DocumentType.IMAGE,
+            '.bmp': DocumentType.IMAGE,
+            '.tiff': DocumentType.IMAGE,
+            '.tif': DocumentType.IMAGE,
         }
         
         return type_mapping.get(suffix, DocumentType.UNKNOWN)
@@ -119,9 +126,21 @@ class DoclingService:
             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             '.doc': 'application/msword',
             '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            '.ppt': 'application/vnd.ms-powerpoint',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel',
             '.html': 'text/html',
+            '.htm': 'text/html',
             '.txt': 'text/plain',
             '.md': 'text/markdown',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.bmp': 'image/bmp',
+            '.tiff': 'image/tiff',
+            '.tif': 'image/tiff',
         }
         
         return mime_mapping.get(suffix, 'application/octet-stream')
@@ -174,12 +193,7 @@ class DoclingService:
                     extract_structure
                 )
             else:
-                logger.info(f"Using mock implementation for processing: {file_path.name} (use_real_docling={self.use_real_docling}, converter={self.converter})")
-                content = await self._mock_extract_content(
-                    file_path, 
-                    extract_text, 
-                    extract_structure
-                )
+                raise RuntimeError(f"Docling is not available - cannot process document: {file_path.name}. Real docling: {self.use_real_docling}, Converter: {bool(self.converter)}")
             
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds()
@@ -194,7 +208,7 @@ class DoclingService:
                 "processing_time": processing_time,
                 "created_at": start_time.isoformat(),
                 "completed_at": end_time.isoformat(),
-                "processing_method": "real_docling" if self.use_real_docling else "mock"
+                "processing_method": "real_docling"
             }
             
         except Exception as e:
@@ -205,45 +219,9 @@ class DoclingService:
                 "error_message": str(e),
                 "created_at": start_time.isoformat(),
                 "completed_at": datetime.utcnow().isoformat(),
-                "processing_method": "real_docling" if self.use_real_docling else "mock"
+                "processing_method": "real_docling"
             }
     
-    async def _mock_extract_content(
-        self, 
-        file_path: Path, 
-        extract_text: bool,
-        extract_structure: bool
-    ) -> Dict[str, Any]:
-        """Mock content extraction (replace with actual Docling implementation)"""
-        
-        content = {}
-        
-        if extract_text:
-            # For text files, read content directly
-            if file_path.suffix.lower() in ['.txt', '.md']:
-                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                    text_content = await f.read()
-                content["text"] = text_content
-                content["markdown"] = text_content if file_path.suffix.lower() == '.md' else f"```\n{text_content}\n```"
-            else:
-                # Mock extracted text for other formats
-                text = f"[Mock extracted text from {file_path.name}]\n\nThis is placeholder text that demonstrates the document processing workflow. In the actual implementation, Docling would extract the real content from {file_path.suffix} files."
-                content["text"] = text
-                content["markdown"] = f"# {file_path.stem}\n\n{text}"
-        
-        if extract_structure:
-            # Don't add fake table data - only real structure if detected
-            logger.info("MOCK EXTRACT: Adding empty tables array instead of fake data")
-            content["tables"] = []  # Empty array instead of fake tables
-            
-            content["layout_info"] = {
-                "pages": 1,
-                "layout_detected": False,  # Changed to False since no real structure detected
-                "reading_order": [],
-                "note": "No structure data available for this file type"
-            }
-        
-        return content
     
     async def _real_extract_content(
         self, 
@@ -310,44 +288,8 @@ class DoclingService:
             
         except Exception as e:
             logger.error(f"Error in real Docling extraction: {e}")
-            # Fall back to simple extraction without fake structure data
-            logger.info("Falling back to simple extraction without mock structure data")
-            return await self._simple_extract_content(file_path, extract_text, extract_structure)
+            raise RuntimeError(f"Document processing failed: {str(e)}")
 
-    async def _simple_extract_content(
-        self, 
-        file_path: Path, 
-        extract_text: bool,
-        extract_structure: bool
-    ) -> Dict[str, Any]:
-        """Simple content extraction without fake structure data"""
-        
-        logger.info("Using _simple_extract_content method (should have no fake tables)")
-        content = {}
-        
-        if extract_text:
-            # For text files, read content directly
-            if file_path.suffix.lower() in ['.txt', '.md']:
-                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                    text_content = await f.read()
-                content["text"] = text_content
-                content["markdown"] = text_content if file_path.suffix.lower() == '.md' else f"```\n{text_content}\n```"
-            else:
-                # For other unsupported formats, provide a simple message
-                content["text"] = f"[Content extracted from {file_path.name}]\n\nThis file format is not fully supported by Docling. Only basic text extraction is available."
-                content["markdown"] = f"# {file_path.stem}\n\n{content['text']}"
-        
-        if extract_structure:
-            # Only provide minimal structure info without fake data
-            content["tables"] = []  # Empty array instead of fake tables
-            content["layout_info"] = {
-                "pages": 1,
-                "layout_detected": False,
-                "reading_order": [],
-                "note": "Structure extraction not available for this file format"
-            }
-        
-        return content
 
     async def _enhanced_text_extract_content(
         self,
