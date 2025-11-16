@@ -6,10 +6,10 @@ param image string
 param minReplicas int
 @minValue(1)
 param maxReplicas int
-@minValue(0.25)
-param cpu double
-@minValue(0.5)
-param memory double
+@description('vCPU for container app (e.g., 0.25, 0.5, 1). Provide as string; converted with json().')
+param cpu string
+@description('Memory in Gi (e.g., 1, 1.5, 2). Provide as string.')
+param memory string
 param registryServer string
 param userAssignedIdentityId string
 param tags object = {}
@@ -50,7 +50,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           name: name
           image: image
           resources: {
-            cpu: cpu
+            cpu: json(cpu)
             memory: '${memory}Gi'
           }
           env: [
