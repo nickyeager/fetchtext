@@ -15,22 +15,17 @@ resource staticApp 'Microsoft.Web/staticSites@2023-01-01' = {
     name: sku
     tier: sku
   }
-  properties: {
-    allowConfigFileUpdates: false
-  }
   tags: tags
+  properties: {
+    allowConfigFileUpdates: true
+  }
 }
 
 // Optionally assign custom domains (manual DNS validation still required).
 @batchSize(1)
 resource customDomainResources 'Microsoft.Web/staticSites/customDomains@2023-01-01' = [for domainName in customDomains: {
-  name: '${name}/${domainName}'
-  properties: {
-    domainName: domainName
-  }
-  dependsOn: [
-    staticApp
-  ]
+  parent: staticApp
+  name: domainName
 }]
 
 output id string = staticApp.id

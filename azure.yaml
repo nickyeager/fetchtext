@@ -45,10 +45,11 @@ services:
         docker:
             path: ./Dockerfile
             context: .
-            image: ftplatformdev.azurecr.io/document-processor
+            registry: ${AZURE_CONTAINER_REGISTRY_ENDPOINT}
+            image: document-processor
             tag: latest
 
 infra:
     provider: bicep
     path: infra
-    parameters: infra/parameters/${AZURE_ENV_NAME}.json
+    parametersFile: infra/parameters/${AZURE_ENV_NAME}.json

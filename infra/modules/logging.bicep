@@ -1,6 +1,5 @@
 param name string
 param location string
-@minLength(1)
 param tags object = {}
 
 resource workspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
