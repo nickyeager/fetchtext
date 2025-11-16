@@ -7,23 +7,48 @@ metadata:
 services:
   dashboard:
     project: ./localai-admin-dashboard
-    language: javascript
+    language: custom
     host: staticwebapp
+    dist: dist
     config:
       appLocation: .
       outputLocation: dist
-      nodeVersion: 20
-      buildCommand: pnpm install && pnpm build
+    hooks:
+      prepackage:
+        posix:
+          shell: sh
+          run: |
+            set -euo pipefail
+            if command -v corepack >/dev/null 2>&1; then
+              corepack enable || true
+              corepack prepare pnpm@9 --activate || true
+            fi
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            pnpm install
+            pnpm build
+        windows:
+          shell: pwsh
+          run: |
+            Set-StrictMode -Version Latest
+            if (Get-Command corepack -ErrorAction SilentlyContinue) {
+              corepack enable | Out-Null
+              corepack prepare pnpm@9 --activate | Out-Null
+            }
+            $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'
+            pnpm install
+            pnpm build
 
   document-processor:
     project: ./document-processor
-    language: python
+    language: docker
     host: containerapp
     docker:
-      path: ./document-processor/Dockerfile
+      path: ./Dockerfile
       context: .
+      image: ftplatformdev.azurecr.io/document-processor
+      tag: latest
 
 infra:
   provider: bicep
-  path: infra/main.bicep
+  path: infra
   parameters: infra/parameters/${AZURE_ENV_NAME}.json

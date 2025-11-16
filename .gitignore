@@ -114,3 +114,10 @@ docker-compose.override.local.yml
 localai_monitor_*.json
 health_check_*.json
 service_status_*.log
+.azure
+
+
+# Ignore legacy/archived dashboard build artifacts
+localai-admin-dashboard/dist.old.*/
+localai-admin-dashboard/dist.old.1762746652/
+
