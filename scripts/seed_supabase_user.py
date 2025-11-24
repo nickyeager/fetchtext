@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Seed a Supabase auth user for the local dashboard.
+Seed a Supabase auth user (managed or local) for the dashboard.
 
 Usage (from repo root):
-  python scripts/seed_supabase_user.py \
-      --email admin@fetchtext.local \
-      --password ***REMOVED-TEST-PASSWORD***
+    python scripts/seed_supabase_user.py \
+            --email admin@fetchtext.local \
+            --password ***REMOVED-TEST-PASSWORD*** \
+            --supabase-url "$(az keyvault secret show --vault-name ft-dev-kv --name supabase-url --query value -o tsv)" \
+            --service-role-key "$(az keyvault secret show --vault-name ft-dev-kv --name supabase-service-role --query value -o tsv)"
 """
 import argparse
 import os
@@ -38,15 +40,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed a Supabase auth user.")
     parser.add_argument("--email", required=False, default=os.getenv("SEED_USER_EMAIL", "admin@fetchtext.local"))
     parser.add_argument("--password", required=False, default=os.getenv("SEED_USER_PASSWORD", "***REMOVED-TEST-PASSWORD***"))
-    parser.add_argument("--supabase-url", required=False, default=os.getenv("SUPABASE_INTERNAL_URL", os.getenv("SUPABASE_URL", "http://localhost:8000")))
-    parser.add_argument("--service-role-key", required=False, default=os.getenv("SERVICE_ROLE_KEY"))
+    parser.add_argument("--supabase-url", required=False, default=os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_INTERNAL_URL"))
+    parser.add_argument("--service-role-key", required=False, default=os.getenv("SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if not args.supabase_url:
+        print("SUPABASE_URL is required (set env var or pass via --supabase-url).", file=sys.stderr)
+        sys.exit(1)
     if not args.service_role_key:
-        print("SERVICE_ROLE_KEY is required (set env var or pass via --service-role-key).", file=sys.stderr)
+        print("SERVICE_ROLE_KEY/SUPABASE_SERVICE_ROLE_KEY is required (set env var or pass via --service-role-key).", file=sys.stderr)
         sys.exit(1)
     try:
         result = create_user(args.supabase_url.rstrip("/"), args.service_role_key, args.email, args.password)

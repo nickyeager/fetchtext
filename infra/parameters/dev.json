@@ -7,6 +7,18 @@
     },
     "deploymentPrincipalObjectId": {
       "value": "9f26cb07-8dab-41df-b472-84d7d8f7bd56"
+    },
+    "supabaseUrl": {
+      "value": "*** set via azd env: SUPABASE_URL ***"
+    },
+    "supabaseAnonKey": {
+      "value": "*** set via azd env: SUPABASE_ANON_KEY ***"
+    },
+    "supabaseServiceRoleKey": {
+      "value": "*** set via azd env: SUPABASE_SERVICE_ROLE_KEY ***"
+    },
+    "supabaseDbConnection": {
+      "value": "*** set via azd env: SUPABASE_DB_CONNECTION ***"
     }
   }
 }

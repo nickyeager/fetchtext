@@ -154,6 +154,17 @@ docker compose build --no-cache localai-admin-dashboard
 docker compose up -d localai-admin-dashboard
 ```
 
+### Azure Deployment Environment Variables
+
+When deploying with `azd`, set the Supabase values in your Azure environment so the Static Web App build picks them up:
+
+```bash
+azd env set SUPABASE_URL https://<project-ref>.supabase.co
+azd env set SUPABASE_ANON_KEY <anon-key-from-supabase>
+```
+
+`azure.yaml` forwards these variables into the `pnpm build` step (`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`) and into the Bicep parameters that hydrate Key Vault. Update the values whenever you rotate Supabase credentials.
+
 ## Project Structure
 
 ```

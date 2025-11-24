@@ -14,6 +14,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // Enable source maps for debugging
+  build: {
+    sourcemap: true,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

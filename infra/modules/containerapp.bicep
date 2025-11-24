@@ -13,6 +13,8 @@ param memory string
 param registryServer string
 param userAssignedIdentityId string
 param tags object = {}
+param keyVaultUri string
+param supabaseSecretNames object
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -23,6 +25,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       '${userAssignedIdentityId}': {}
     }
   }
+  tags: tags
   properties: {
     managedEnvironmentId: environmentId
     configuration: {
@@ -42,6 +45,28 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           identity: userAssignedIdentityId
         }
       ]
+      secrets: [
+        {
+          name: supabaseSecretNames.url
+          identity: userAssignedIdentityId
+          keyVaultUrl: format('{0}secrets/{1}', keyVaultUri, supabaseSecretNames.url)
+        }
+        {
+          name: supabaseSecretNames.anon
+          identity: userAssignedIdentityId
+          keyVaultUrl: format('{0}secrets/{1}', keyVaultUri, supabaseSecretNames.anon)
+        }
+        {
+          name: supabaseSecretNames.serviceRole
+          identity: userAssignedIdentityId
+          keyVaultUrl: format('{0}secrets/{1}', keyVaultUri, supabaseSecretNames.serviceRole)
+        }
+        {
+          name: supabaseSecretNames.dbConnection
+          identity: userAssignedIdentityId
+          keyVaultUrl: format('{0}secrets/{1}', keyVaultUri, supabaseSecretNames.dbConnection)
+        }
+      ]
     }
     template: {
       revisionSuffix: 'v1'
@@ -56,7 +81,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             {
               name: 'SUPABASE_URL'
-              value: ''
+              secretRef: supabaseSecretNames.url
+            }
+            {
+              name: 'SUPABASE_ANON_KEY'
+              secretRef: supabaseSecretNames.anon
+            }
+            {
+              name: 'ANON_KEY'
+              secretRef: supabaseSecretNames.anon
+            }
+            {
+              name: 'SERVICE_ROLE_KEY'
+              secretRef: supabaseSecretNames.serviceRole
+            }
+            {
+              name: 'SUPABASE_SERVICE_ROLE_KEY'
+              secretRef: supabaseSecretNames.serviceRole
             }
           ]
         }
@@ -64,11 +105,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       scale: {
         minReplicas: minReplicas
         maxReplicas: maxReplicas
-        rules: []
       }
     }
   }
-  tags: tags
 }
 
 output id string = containerApp.id

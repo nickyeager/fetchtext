@@ -10,6 +10,11 @@ services:
         language: custom
         host: staticwebapp
         dist: dist
+        env:
+            SUPABASE_URL: ${SUPABASE_URL}
+            SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+            VITE_SUPABASE_URL: ${SUPABASE_URL}
+            VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
         config:
             appLocation: .
             outputLocation: dist
@@ -53,3 +58,8 @@ infra:
     provider: bicep
     path: infra
     parametersFile: infra/parameters/${AZURE_ENV_NAME}.json
+    parameters:
+        supabaseUrl: ${SUPABASE_URL}
+        supabaseAnonKey: ${SUPABASE_ANON_KEY}
+        supabaseServiceRoleKey: ${SUPABASE_SERVICE_ROLE_KEY}
+        supabaseDbConnection: ${SUPABASE_DB_CONNECTION}

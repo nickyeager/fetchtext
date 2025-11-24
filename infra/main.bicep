@@ -51,6 +51,29 @@ param deploymentPrincipalObjectId string
 @description('Optional Static Web App custom domain names.')
 param staticWebAppCustomDomains array = []
 
+@secure()
+@description('Managed Supabase URL (https://<ref>.supabase.co).')
+param supabaseUrl string
+
+@secure()
+@description('Managed Supabase anon key for browser + public API usage.')
+param supabaseAnonKey string
+
+@secure()
+@description('Managed Supabase service role key for privileged API calls.')
+param supabaseServiceRoleKey string
+
+@secure()
+@description('Managed Supabase Postgres connection string (Supavisor).')
+param supabaseDbConnection string
+
+var supabaseSecretNames = {
+  url: 'supabase-url'
+  anon: 'supabase-anon-key'
+  serviceRole: 'supabase-service-role'
+  dbConnection: 'supabase-db-connection'
+}
+
 
 // === Modules ===
 
@@ -109,7 +132,6 @@ resource acrPullAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   }
   dependsOn: [
     containerRegistry
-    managedIdentity
   ]
 }
 
@@ -145,9 +167,54 @@ module keyVault 'modules/keyvault.bicep' = {
     ]
     tags: tags
   }
+}
+
+resource keyVaultResource 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource supabaseUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultResource
+  name: supabaseSecretNames.url
   dependsOn: [
-    managedIdentity
+    keyVault
   ]
+  properties: {
+    value: supabaseUrl
+  }
+}
+
+resource supabaseAnonSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultResource
+  name: supabaseSecretNames.anon
+  dependsOn: [
+    keyVault
+  ]
+  properties: {
+    value: supabaseAnonKey
+  }
+}
+
+resource supabaseServiceSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultResource
+  name: supabaseSecretNames.serviceRole
+  dependsOn: [
+    keyVault
+  ]
+  properties: {
+    value: supabaseServiceRoleKey
+  }
+}
+
+resource supabaseDbSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVaultResource
+  name: supabaseSecretNames.dbConnection
+  dependsOn: [
+    keyVault
+  ]
+  properties: {
+    value: supabaseDbConnection
+  }
 }
 
 module containerApp 'modules/containerapp.bicep' = {
@@ -166,6 +233,8 @@ module containerApp 'modules/containerapp.bicep' = {
     tags: union(tags, {
       'azd-service-name': 'document-processor'
     })
+    keyVaultUri: keyVault.outputs.vaultUri
+    supabaseSecretNames: supabaseSecretNames
   }
 }
 
@@ -188,3 +257,9 @@ output staticWebAppHostname string = staticWebApp.outputs.hostname
 output containerRegistryLoginServer string = containerRegistry.outputs.loginServer
 // Explicit env var for azure.yaml registry interpolation
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
+output supabaseSecretUris object = {
+  url: format('{0}secrets/{1}', keyVault.outputs.vaultUri, supabaseSecretNames.url)
+  anon: format('{0}secrets/{1}', keyVault.outputs.vaultUri, supabaseSecretNames.anon)
+  serviceRole: format('{0}secrets/{1}', keyVault.outputs.vaultUri, supabaseSecretNames.serviceRole)
+  dbConnection: format('{0}secrets/{1}', keyVault.outputs.vaultUri, supabaseSecretNames.dbConnection)
+}
