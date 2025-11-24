@@ -77,7 +77,7 @@ docker run -d \
   --name supabase-db-new \
   --network localai_default \
   -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=Awaah3c7cxR1ZPaA1V9L \
+  -e POSTGRES_PASSWORD=R7m2yPkq9Dz41Tx8VbLc \
   -e POSTGRES_DB=postgres \
   -v supabase_postgres_data_new:/var/lib/postgresql/data \
   -v ./backups/supabase_migration:/backup \
@@ -185,7 +185,7 @@ docker start supabase-auth supabase-rest supabase-storage realtime-dev.supabase-
 docker run -d --name supabase-db-recovery \
   --network localai_default \
   -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=Awaah3c7cxR1ZPaA1V9L \
+  -e POSTGRES_PASSWORD=R7m2yPkq9Dz41Tx8VbLc \
   -e POSTGRES_DB=postgres \
   -v supabase_postgres_data_recovery:/var/lib/postgresql/data \
   supabase/postgres:15.6.1.117

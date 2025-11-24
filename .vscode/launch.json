@@ -21,9 +21,34 @@
             "webRoot": "${workspaceFolder}/localai-admin-dashboard",
             "sourceMaps": true,
             "sourceMapPathOverrides": {
-                "vite://*": "${webRoot}/*",
+                "webpack:///*": "${webRoot}/*",
+                "webpack:///./~/*": "${webRoot}/node_modules/*",
+                "webpack:///./*": "${webRoot}/*",
+                "webpack://*": "${webRoot}/*",
+                "/./*": "${webRoot}/*",
                 "/src/*": "${webRoot}/src/*",
-                "/*": "${webRoot}/*"
+                "/*": "${webRoot}/*",
+                "@/*": "${webRoot}/src/*"
+            },
+            "skipFiles": [
+                "${workspaceFolder}/localai-admin-dashboard/node_modules/**/*.js",
+                "<node_internals>/**/*.js"
+            ]
+        },
+        {
+            // Attach to existing Chrome/Edge instance (for better debugging)
+            "type": "chrome",
+            "request": "attach",
+            "name": "Attach: Chrome",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}/localai-admin-dashboard",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "webpack:///*": "${webRoot}/*",
+                "/./*": "${webRoot}/*",
+                "/src/*": "${webRoot}/src/*",
+                "/*": "${webRoot}/*",
+                "@/*": "${webRoot}/src/*"
             }
         }
     ],
