@@ -1,0 +1,218 @@
+name: Deploy to Azure VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_backup:
+        description: 'Skip database backup before deployment'
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - "docker-compose.yml"
+      - "docker-compose.*.yml"
+      - "document-processor/**"
+      - "localai-admin-dashboard/**"
+      - "supabase/**"
+      - ".env.example"
+      - ".github/workflows/deploy-vm.yml"
+
+env:
+  DEPLOY_PATH: /srv/supabase
+  HEALTH_CHECK_TIMEOUT: 300
+
+jobs:
+  deploy-to-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/vm_deploy_key
+          chmod 600 ~/.ssh/vm_deploy_key
+          ssh-keyscan -H ${{ secrets.VM_PUBLIC_IP }} >> ~/.ssh/known_hosts
+
+      - name: Check VM connectivity
+        run: |
+          ssh -i ~/.ssh/vm_deploy_key -o ConnectTimeout=10 \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} \
+            "echo 'VM connection successful'"
+
+      - name: Backup database (optional)
+        if: ${{ !inputs.skip_backup }}
+        run: |
+          echo "Creating database backup before deployment..."
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          set -e
+          cd ${{ env.DEPLOY_PATH }}
+
+          # Create backup directory if it doesn't exist
+          mkdir -p backups
+
+          # Run backup if script exists
+          if [ -f scripts/backup/run-supabase-backup.sh ]; then
+            sudo bash scripts/backup/run-supabase-backup.sh || echo "Backup failed but continuing deployment"
+          else
+            echo "Backup script not found, skipping backup"
+          fi
+          ENDSSH
+
+      - name: Deploy to VM
+        run: |
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          set -e
+          cd ${{ env.DEPLOY_PATH }}
+
+          echo "📥 Pulling latest code..."
+          git fetch origin
+          git reset --hard origin/main
+
+          echo "🔍 Checking for changes..."
+          COMPOSE_FILES=$(ls docker-compose*.yml 2>/dev/null || echo "docker-compose.yml")
+
+          echo "🐳 Pulling latest Docker images..."
+          docker compose pull
+
+          echo "🔄 Restarting services with new images..."
+          docker compose up -d --build --remove-orphans
+
+          echo "🧹 Cleaning up old images..."
+          docker image prune -f
+
+          echo "✅ Deployment complete"
+          ENDSSH
+
+      - name: Wait for services to stabilize
+        run: |
+          echo "⏳ Waiting 30 seconds for services to start..."
+          sleep 30
+
+      - name: Health check - Supabase Kong
+        id: health_check_kong
+        run: |
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          set -e
+
+          echo "🏥 Checking Supabase Kong health..."
+          TIMEOUT=${{ env.HEALTH_CHECK_TIMEOUT }}
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+              echo "✅ Kong is healthy"
+              exit 0
+            fi
+            echo "Waiting for Kong... ($ELAPSED/$TIMEOUT seconds)"
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          echo "❌ Kong health check failed after $TIMEOUT seconds"
+          exit 1
+          ENDSSH
+
+      - name: Health check - Document Processor
+        id: health_check_processor
+        run: |
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          set -e
+
+          echo "🏥 Checking Document Processor health..."
+          TIMEOUT=${{ env.HEALTH_CHECK_TIMEOUT }}
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            if curl -sf http://localhost:8090/health >/dev/null 2>&1; then
+              echo "✅ Document Processor is healthy"
+              exit 0
+            fi
+            echo "Waiting for Document Processor... ($ELAPSED/$TIMEOUT seconds)"
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          echo "❌ Document Processor health check failed after $TIMEOUT seconds"
+          exit 1
+          ENDSSH
+
+      - name: Check service status
+        run: |
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          cd ${{ env.DEPLOY_PATH }}
+          echo "📊 Service Status:"
+          docker compose ps
+
+          echo ""
+          echo "📈 Resource Usage:"
+          docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+          ENDSSH
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed, attempting rollback..."
+          ssh -i ~/.ssh/vm_deploy_key \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
+          set -e
+          cd ${{ env.DEPLOY_PATH }}
+
+          echo "🔙 Rolling back to previous commit..."
+          git reset --hard HEAD@{1}
+
+          echo "🔄 Restarting services with previous version..."
+          docker compose up -d --build
+
+          echo "⏳ Waiting for services..."
+          sleep 30
+
+          echo "📊 Rollback status:"
+          docker compose ps
+          ENDSSH
+
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/vm_deploy_key
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to Azure VM completed successfully"
+          else
+            echo "❌ Deployment to Azure VM failed"
+          fi
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **VM**: ${{ secrets.VM_PUBLIC_IP }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "### ✅ Services Deployed" >> $GITHUB_STEP_SUMMARY
+            echo "- Supabase Kong (http://localhost:8000)" >> $GITHUB_STEP_SUMMARY
+            echo "- Document Processor (http://localhost:8090)" >> $GITHUB_STEP_SUMMARY
+            echo "- Admin Dashboard (http://localhost:5173)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Services have been rolled back to the previous version." >> $GITHUB_STEP_SUMMARY
+          fi
