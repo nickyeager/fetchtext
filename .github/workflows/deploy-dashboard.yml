@@ -55,4 +55,4 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           app_location: "localai-admin-dashboard"
-          output_location: "localai-admin-dashboard/dist"
+          output_location: "dist"
