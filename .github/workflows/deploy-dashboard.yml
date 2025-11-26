@@ -48,6 +48,12 @@ jobs:
           VITE_OLLAMA_URL: ${{ secrets.VITE_OLLAMA_URL }}
         run: pnpm build
 
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p deploy-temp
+          cp -r localai-admin-dashboard/dist/* deploy-temp/
+          ls -la deploy-temp/
+
       - name: Deploy to Azure Static Web Apps
         if: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN != '' }}
         uses: Azure/static-web-apps-deploy@v1
@@ -55,7 +61,6 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "localai-admin-dashboard/dist"
-          app_build_command: "echo 'Build already completed'"
+          app_location: "deploy-temp"
           output_location: ""
           skip_api_build: true
