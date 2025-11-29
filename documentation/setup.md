@@ -82,7 +82,7 @@ These endpoints are live in the dev subscription today. Update the URLs if azd r
 
 | Component | Remote URL / Command | Notes |
 | --- | --- | --- |
-| Admin Dashboard (Static Web App) | https://red-river-0904afd10.3.azurestaticapps.net | Uses managed Supabase env vars injected via `azd`. Rebuild after rotating Supabase keys. |
+| Admin Dashboard (Static Web App) | https://kind-island-00cd78710.3.azurestaticapps.net<br>(Previous: https://red-river-0904afd10.3.azurestaticapps.net) | Uses managed Supabase env vars injected via `azd`. Rebuild after rotating Supabase keys. |
 | Document Processor (Container App) | https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io | Proxied through Azure Container Apps; expects `SUPABASE_URL` + service key from Key Vault. |
 | Supabase VM (Docker stack) | `ssh supabaseadmin@128.24.73.54` | Run `docker compose --profile supabase ps` to check Postgres/auth/rest/storage/realtime status. |
 | Supabase API via Kong | http://128.24.73.54:8000 | Frontend/dev services can target this when testing the VM stack remotely. |

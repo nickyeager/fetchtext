@@ -121,3 +121,4 @@ service_status_*.log
 localai-admin-dashboard/dist.old.*/
 localai-admin-dashboard/dist.old.1762746652/
 
+azure-credentials.json
