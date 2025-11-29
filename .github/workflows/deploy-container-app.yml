@@ -32,7 +32,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Azure Container Registry Login
-        run: az acr login --name ${{ env.AZURE_ACR_NAME }}
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ env.AZURE_ACR_NAME }}.azurecr.io
 
       - name: Build and push image
         uses: docker/build-push-action@v5
