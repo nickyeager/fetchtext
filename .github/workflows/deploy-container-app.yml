@@ -35,6 +35,9 @@ jobs:
         uses: azure/docker-login@v2
         with:
           login-server: ${{ env.AZURE_ACR_NAME }}.azurecr.io
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Build and push image
         uses: docker/build-push-action@v5
