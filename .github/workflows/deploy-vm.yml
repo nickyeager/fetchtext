@@ -35,10 +35,23 @@ jobs:
 
       - name: Setup SSH key
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/vm_deploy_key
+          printf '%s\n' "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/vm_deploy_key
           chmod 600 ~/.ssh/vm_deploy_key
-          ssh-keyscan -H ${{ secrets.VM_PUBLIC_IP }} >> ~/.ssh/known_hosts
+
+          HOST="${{ secrets.VM_PUBLIC_IP }}"
+          echo "🔐 Adding $HOST to known_hosts"
+          for attempt in {1..5}; do
+            if ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "Host key captured on attempt $attempt"
+              exit 0
+            fi
+            echo "ssh-keyscan failed (attempt $attempt). Retrying in 5s..."
+            sleep 5
+          done
+          echo "Unable to retrieve SSH host key for $HOST after multiple attempts"
+          exit 1
 
       - name: Check VM connectivity
         run: |
