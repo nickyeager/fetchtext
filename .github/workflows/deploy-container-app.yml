@@ -48,6 +48,22 @@ jobs:
             ${{ env.AZURE_ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.AZURE_ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
 
+      - name: Sync Container App secrets
+        env:
+          SUPABASE_URL_SECRET: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_SECRET: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_SECRET: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_OPENAI_KEY_SECRET: ${{ secrets.AZURE_OPENAI_API_KEY }}
+        run: |
+          az containerapp secret set \
+            --name "$AZURE_CONTAINERAPP_NAME" \
+            --resource-group "$AZURE_CONTAINERAPPS_RESOURCE_GROUP" \
+            --secrets \
+              supabase-url="$SUPABASE_URL_SECRET" \
+              supabase-anon-key="$SUPABASE_ANON_SECRET" \
+              supabase-service-role="$SUPABASE_SERVICE_ROLE_SECRET" \
+              azure-openai-key="$AZURE_OPENAI_KEY_SECRET"
+
       - name: Update Container App
         run: |
           az containerapp update \
