@@ -41,21 +41,39 @@ jobs:
           chmod 600 ~/.ssh/vm_deploy_key
 
           HOST="${{ secrets.VM_PUBLIC_IP }}"
+          KNOWN_HOSTS_FILE="$HOME/.ssh/known_hosts"
+          touch "$KNOWN_HOSTS_FILE"
+          ADDED_HOST_KEY=0
           echo "🔐 Adding $HOST to known_hosts"
           for attempt in {1..5}; do
-            if ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            if ssh-keyscan -T 5 -H "$HOST" >> "$KNOWN_HOSTS_FILE" 2>/dev/null; then
               echo "Host key captured on attempt $attempt"
-              exit 0
+              ADDED_HOST_KEY=1
+              break
             fi
             echo "ssh-keyscan failed (attempt $attempt). Retrying in 5s..."
             sleep 5
           done
-          echo "Unable to retrieve SSH host key for $HOST after multiple attempts"
-          exit 1
+
+          if [ "$ADDED_HOST_KEY" -eq 0 ]; then
+            echo "⚠️ Unable to retrieve SSH host key for $HOST after multiple attempts. Will rely on StrictHostKeyChecking=accept-new for initial connection."
+            STRICT_MODE="accept-new"
+          else
+            STRICT_MODE="yes"
+          fi
+
+          {
+            echo "SSH_KEY_PATH=$HOME/.ssh/vm_deploy_key"
+            echo "SSH_KNOWN_HOSTS=$KNOWN_HOSTS_FILE"
+            echo "SSH_STRICT_MODE=$STRICT_MODE"
+          } >> "$GITHUB_ENV"
 
       - name: Check VM connectivity
         run: |
-          ssh -i ~/.ssh/vm_deploy_key -o ConnectTimeout=10 \
+          ssh -i "$SSH_KEY_PATH" \
+            -o ConnectTimeout=10 \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} \
             "echo 'VM connection successful'"
 
@@ -63,7 +81,9 @@ jobs:
         if: ${{ !inputs.skip_backup }}
         run: |
           echo "Creating database backup before deployment..."
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           set -e
           cd ${{ env.DEPLOY_PATH }}
@@ -81,7 +101,9 @@ jobs:
 
       - name: Deploy to VM
         run: |
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           set -e
           cd ${{ env.DEPLOY_PATH }}
@@ -113,7 +135,9 @@ jobs:
       - name: Health check - Supabase Kong
         id: health_check_kong
         run: |
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           set -e
 
@@ -138,7 +162,9 @@ jobs:
       - name: Health check - Document Processor
         id: health_check_processor
         run: |
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           set -e
 
@@ -162,7 +188,9 @@ jobs:
 
       - name: Check service status
         run: |
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           cd ${{ env.DEPLOY_PATH }}
           echo "📊 Service Status:"
@@ -177,7 +205,9 @@ jobs:
         if: failure()
         run: |
           echo "❌ Deployment failed, attempting rollback..."
-          ssh -i ~/.ssh/vm_deploy_key \
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
             ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} << 'ENDSSH'
           set -e
           cd ${{ env.DEPLOY_PATH }}
@@ -198,7 +228,7 @@ jobs:
       - name: Cleanup SSH key
         if: always()
         run: |
-          rm -f ~/.ssh/vm_deploy_key
+          rm -f "$SSH_KEY_PATH"
 
       - name: Notify deployment status
         if: always()
