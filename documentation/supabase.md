@@ -52,66 +52,6 @@ Production, staging, and other cloud-hosted environments must use a hosted Supab
 - When rotating keys, update Key Vault first, redeploy infrastructure (`azd deploy`), and only then update local `.env` files so developers remain in sync.
 - Kong inside Azure does not proxy managed Supabase; applications should talk directly to the managed endpoint via the secrets described above.
 
-## Azure VM Supabase Stack Runbook
-
-The Azure VM (`supabaseadmin@<vm-ip>`) still hosts the self-contained Supabase stack for disaster recovery and heavy integration testing. The stack is defined by `docker-compose.yml` plus the trimmed `docker-compose.supabase.yml` and now includes:
-
-- Postgres (`supabase-db`)
-- GoTrue (`supabase-auth`)
-- PostgREST (`supabase-rest`)
-- Storage API + ImgProxy (`supabase-storage`, `supabase-imgproxy`)
-- Realtime (`supabase-realtime`)
-- Meta & Studio (`supabase-meta`, `supabase-studio`)
-- Kong gateway (`supabase-kong`)
-- Inbucket mail sink (`supabase-inbucket`) for password reset test flows
-
-### 1. Updating Compose + Secrets
-
-```bash
-# From your laptop
-scp docker-compose.yml supabaseadmin@${VM_IP}:/home/supabaseadmin/local-ai/
-scp docker-compose.supabase.yml supabaseadmin@${VM_IP}:/home/supabaseadmin/local-ai/
-scp .env supabaseadmin@${VM_IP}:/home/supabaseadmin/local-ai/
-```
-
-- Ensure `.env` contains the rotated `POSTGRES_PASSWORD`, anon key, service role key, and JWT secret.
-- Keep the `/home/supabaseadmin/local-ai` copy authoritative; all services read from that file when restarted.
-
-### 2. Starting or Refreshing Services
-
-```bash
-ssh supabaseadmin@${VM_IP}
-cd ~/local-ai
-docker compose --profile supabase up -d supabase-db supabase-auth supabase-rest supabase-storage \
-	supabase-imgproxy supabase-realtime supabase-meta supabase-studio supabase-kong supabase-inbucket
-```
-
-- The shared `local-ai` network is created automatically; verify with `docker network inspect local-ai` if you see DNS errors.
-- If `docker compose ps supabase-kong` reports `Created`, wait for `supabase-auth`, `supabase-rest`, and `supabase-storage` to finish warming up, then run `docker compose --profile supabase up -d supabase-kong` to attach the gateway once dependencies are healthy.
-- When rotating passwords, restart `supabase-auth`, `supabase-rest`, `supabase-storage`, and `supabase-realtime` after the database roles are updated.
-
-### 3. Health Verification
-
-```bash
-docker compose ps
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/auth/v1/health      # GoTrue via Kong
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/rest/v1/?select=1    # PostgREST via Kong
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:9000                      # Inbucket UI
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8005                      # Studio through Caddy (if enabled)
-```
-
-- All commands above should return `200`. A `503` usually indicates Kong cannot resolve a backend service; confirm the container is attached to `local-ai` and restart it.
-- For realtime, run `docker compose logs --tail 20 supabase-realtime` and confirm migrations finish without errors before allowing clients to connect.
-
-### 4. Troubleshooting Tips
-
-- **DNS errors inside Kong**: `docker network connect local-ai supabase-kong` (then restart) fixes missing network attachments.
-- **Storage uploads fail**: ensure `supabase-storage` and `supabase-imgproxy` share the `/supabase/docker/volumes/storage` bind mount and that the disk is still mounted under `/srv/supabase/volumes`.
-- **Auth email tests fail**: check `docker compose logs supabase-inbucket` and open `http://<vm-ip>:9000` in a browser to view captured messages.
-- **Studio cannot authenticate**: verify `SUPABASE_URL=http://supabase-kong:8000` and the anon key in `.env` match the running stack.
-
-Document any production-impacting changes (password rotations, disk swaps, service restarts) in `Copilot-Processing.md` or your SOC logs so the next operator understands the VM state.
-
 ## Admin Seeding Runbook
 
 - Retrieve the managed Supabase URL + service role key from Key Vault (example commands live in `documentation/setup.md`).
@@ -133,20 +73,12 @@ Use these steps whenever you rotate the primary database password (currently `**
 	  --value "$POSTGRES_PASSWORD"
 	```
 	- Repeat for other Supabase secrets if they were rotated alongside the database password.
-3. **Sync the Azure VM docker stack**
-	```bash
-	export POSTGRES_PASSWORD=***REMOVED-POSTGRES-PASSWORD-2***
-	ssh supabaseadmin@<vm-ip>
-	sudo docker exec supabase-db psql -U postgres -c "ALTER ROLE postgres PASSWORD '$POSTGRES_PASSWORD';"
-	sudo docker exec supabase-db psql -U postgres -c "ALTER ROLE authenticator PASSWORD '$POSTGRES_PASSWORD';"
-	sudo docker exec supabase-db psql -U postgres -c "ALTER ROLE supabase_auth_admin PASSWORD '$POSTGRES_PASSWORD';"
-	sudo docker compose --profile supabase up -d supabase-auth supabase-rest
-	```
-	- Restart other Supabase containers if they depend on the password (storage, realtime, etc.).
+3. **Redeploy Azure workloads**
+	- Trigger the Static Web App and Container App workflows so they pull the refreshed secrets from Key Vault.
+	- Confirm the deployments finish successfully before switching traffic.
 4. **Validate**
-	- `docker ps` should show `supabase-auth` and `supabase-rest` in a healthy state.
-	- Run `docker logs supabase-auth | tail` to confirm the new credentials allow GoTrue to connect.
-	- Run `docker logs supabase-rest | tail` to ensure PostgREST authentication succeeds.
+	- Use Supabase Studio to confirm authentication and PostgREST calls succeed with the rotated password.
+	- Run a smoke test against the document processor to ensure it can exchange tokens with Supabase.
 
 Document the rotation (time, operator, reason) in your internal runbook so auditors can trace when the password changed.
 
