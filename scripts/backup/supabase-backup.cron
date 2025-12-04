@@ -1,0 +1,3 @@
+# Place in /etc/cron.d/ to schedule nightly Supabase backups
+# Runs at 03:00 server time and stores compressed dumps in /srv/supabase/backups
+0 3 * * * root /usr/local/bin/run-supabase-backup.sh >> /var/log/supabase-backup.log 2>&1

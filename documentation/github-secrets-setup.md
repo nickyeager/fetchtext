@@ -7,9 +7,9 @@ This document contains the required GitHub secrets for deploying the FetchText p
 Run these commands to set all required GitHub secrets:
 
 ```bash
-# Supabase Configuration (VM-hosted)
-gh secret set VITE_SUPABASE_URL --body 'http://128.24.73.54:8000'
-gh secret set VITE_SUPABASE_ANON_KEY --body 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzU1MjQ0NTIzLCJleHAiOjE3ODY3ODA1MjN9.h6VsUD-W6BuvpX5giP6Q-WSKrwQa6-2PPlAPFUzvtzU'
+# Supabase Configuration (Managed project)
+gh secret set VITE_SUPABASE_URL --body 'https://<project-ref>.supabase.co'
+gh secret set VITE_SUPABASE_ANON_KEY --body '<anon-key-from-managed-project>'
 
 # Azure Authentication
 gh secret set AZURE_CLIENT_ID --body '8137d884-7105-4f60-a229-abf6ddb5f818'
@@ -26,8 +26,8 @@ gh secret set AZURE_ACR_NAME --body 'ftdevuhqrm5acr'
 
 | Secret Name | Value | Purpose |
 |-------------|-------|---------|
-| `VITE_SUPABASE_URL` | `http://128.24.73.54:8000` | Supabase VM Kong gateway endpoint |
-| `VITE_SUPABASE_ANON_KEY` | `eyJhbGc...` | Supabase anonymous authentication key |
+| `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` | Managed Supabase base URL (store actual value in Key Vault) |
+| `VITE_SUPABASE_ANON_KEY` | `<anon-key>` | Managed Supabase anon key (fetch from Key Vault) |
 | `AZURE_CLIENT_ID` | `8137d884-7105-4f60-a229-abf6ddb5f818` | Service Principal Application ID |
 | `AZURE_TENANT_ID` | `ccb37c3a-9343-439f-b6cf-640d8a76b5f5` | Azure Active Directory Tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | `9b59b2e8-2e75-459b-8632-b531c3bf5470` | Azure Subscription ID |
@@ -40,7 +40,7 @@ gh secret set AZURE_ACR_NAME --body 'ftdevuhqrm5acr'
 ### Production URLs
 - **Admin Dashboard**: https://kind-island-00cd78710.3.azurestaticapps.net
 - **Document Processor**: https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io
-- **Supabase API**: http://128.24.73.54:8000
+- **Supabase API**: Managed endpoint stored in Key Vault (`supabase-url`)
 
 ### GitHub Workflows
 - **Dashboard Deployment**: `.github/workflows/deploy-dashboard.yml`
@@ -73,10 +73,9 @@ If you see "Login failed with Error: Using auth-type: SERVICE_PRINCIPAL":
 - All secrets are stored encrypted in GitHub
 - Never commit these values to source control
 - Rotate credentials regularly following security best practices
-- The Supabase anon key is from the VM's `.env` file and should match production
+- Store Supabase secrets in Azure Key Vault and rotate them there before updating GitHub secrets
 
 ## Related Documentation
 
 - [Setup Guide](./setup.md) - Production deployment endpoints
-- [Supabase Documentation](./supabase.md) - VM configuration and management
-- [Azure Deployment](./azure-vm-deployment.md) - Infrastructure details
+- [Supabase Documentation](./supabase.md) - Managed + local Supabase overview
