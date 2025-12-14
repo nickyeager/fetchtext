@@ -110,8 +110,41 @@ export function ExtractedFieldsEditor({
           displayValue = JSON.stringify(valAny);
           console.log('     ⚠️ No .value property, stringifying entire object:', displayValue);
         }
+      } else if (typeof value === 'string') {
+        // Handle string values - check if it's a JSON-stringified object
+        if (value.trim().startsWith('{') || value.trim().startsWith('[')) {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+              // It's a stringified field object - extract the actual value
+              displayValue = parsed.value == null ? '' : String(parsed.value);
+              if (typeof parsed.confidence === 'number') {
+                confidence = parsed.confidence;
+              }
+              if (typeof parsed.source_text === 'string' || typeof parsed.sourceText === 'string') {
+                sourceText = parsed.source_text || parsed.sourceText;
+              }
+              if (typeof parsed.type === 'string') {
+                fieldType = parsed.type as ExtractedField['type'];
+              }
+              console.log('     ✅ Parsed JSON string to extract .value:', displayValue);
+            } else {
+              // Valid JSON but not a field object - use as-is
+              displayValue = value;
+              console.log('     Valid JSON string (not field object):', displayValue);
+            }
+          } catch (_e) {
+            // Not valid JSON, use the string as-is
+            displayValue = value;
+            console.log('     Regular string value:', displayValue);
+          }
+        } else {
+          // Regular string value
+          displayValue = value;
+          console.log('     Regular string value:', displayValue);
+        }
       } else {
-        displayValue = value == null ? '' : typeof value === 'string' ? value : String(value);
+        displayValue = value == null ? '' : String(value);
         console.log('     Primitive value:', displayValue);
       }
 
