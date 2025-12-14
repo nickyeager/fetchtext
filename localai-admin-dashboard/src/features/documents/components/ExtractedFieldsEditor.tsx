@@ -65,7 +65,20 @@ export function ExtractedFieldsEditor({
 
   // Initialize fields from props
   useEffect(() => {
-    const processedFields = Object.entries(initialFields || {}).map(([key, value]) => {
+    /* eslint-disable no-console */
+    console.log('');
+    console.log('🎨 [ExtractedFieldsEditor] Initializing fields from props');
+    console.log('   Prop extractedFields type:', typeof initialFields);
+    console.log('   Prop extractedFields value:', initialFields);
+    console.log('   Prop extractedFields keys:', Object.keys(initialFields || {}));
+    console.log('   Confidence scores:', confidenceScores);
+    console.log('');
+
+    const processedFields = Object.entries(initialFields || {}).map(([key, value], index) => {
+      console.log(`   Processing field ${index + 1}/${Object.keys(initialFields || {}).length}: "${key}"`);
+      console.log('     Raw value type:', typeof value);
+      console.log('     Raw value:', value);
+
       let displayValue = '';
       let confidence = confidenceScores[key] || 0;
       let sourceText = '';
@@ -74,17 +87,32 @@ export function ExtractedFieldsEditor({
       // Handle different field data structures
       if (typeof value === 'object' && value !== null) {
         const valAny = value as Record<string, unknown>;
+        console.log('     Object keys:', Object.keys(valAny));
+
         if ('value' in valAny) {
           const rawVal = valAny.value;
-            displayValue = rawVal == null ? '' : typeof rawVal === 'string' ? rawVal : JSON.stringify(rawVal);
-          if (typeof valAny.confidence === 'number') confidence = valAny.confidence;
-          if (typeof valAny.sourceText === 'string') sourceText = valAny.sourceText;
-          if (typeof valAny.type === 'string') fieldType = valAny.type as ExtractedField['type'];
+          displayValue = rawVal == null ? '' : typeof rawVal === 'string' ? rawVal : JSON.stringify(rawVal);
+          console.log('     Extracted .value property:', displayValue);
+
+          if (typeof valAny.confidence === 'number') {
+            confidence = valAny.confidence;
+            console.log('     Extracted .confidence property:', confidence);
+          }
+          if (typeof valAny.sourceText === 'string') {
+            sourceText = valAny.sourceText;
+            console.log('     Extracted .sourceText property:', sourceText);
+          }
+          if (typeof valAny.type === 'string') {
+            fieldType = valAny.type as ExtractedField['type'];
+            console.log('     Extracted .type property:', fieldType);
+          }
         } else {
           displayValue = JSON.stringify(valAny);
+          console.log('     ⚠️ No .value property, stringifying entire object:', displayValue);
         }
       } else {
         displayValue = value == null ? '' : typeof value === 'string' ? value : String(value);
+        console.log('     Primitive value:', displayValue);
       }
 
       // Infer field type from name and value
@@ -102,7 +130,7 @@ export function ExtractedFieldsEditor({
         }
       }
 
-      return {
+      const processedField = {
         id: key,
         name: key,
         value: displayValue,
@@ -111,7 +139,18 @@ export function ExtractedFieldsEditor({
         type: fieldType,
         required: confidence > 0.8 || key.toLowerCase().includes('id') || key.toLowerCase().includes('number')
       };
+
+      console.log('     Final processed field:', processedField);
+      console.log('');
+
+      return processedField;
     });
+
+    console.log('🎨 [ExtractedFieldsEditor] Field processing complete');
+    console.log('   Total processed fields:', processedFields.length);
+    console.log('   Processed fields:', processedFields);
+    console.log('');
+    /* eslint-enable no-console */
 
     setFields(processedFields);
   }, [initialFields, confidenceScores]);
