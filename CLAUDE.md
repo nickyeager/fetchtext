@@ -9,9 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **Extracts variables** - Uses AI-powered smart templates with regex fallback for reliable data extraction  
 3. **Generates new documents** - Automatically creates new documents using extracted data
 
-## ⚠️ CRITICAL: Production Readiness Verification Rule
+## ⚠️ CRITICAL: Feature Completion Verification Rule
 
-**Before declaring ANY feature "production ready" or "ready to deploy", you MUST:**
+**Before declaring ANY feature complete or deployable, you MUST:**
 
 1. **Document the exact end-user workflow** - Provide step-by-step instructions for how a real user would test the feature in the local admin frontend
 2. **Create comprehensive tests** - Write tests that cover the ACTUAL real-world usage, not simplified versions
@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **CRITICAL TESTING RULES:**
 - **NEVER simplify tests just to make them pass** - Tests must reflect real-world usage
-- **NEVER declare "production ready" without running the actual tests** - No assumptions
+- **NEVER declare a feature complete without running the actual tests** - No assumptions
 - **If tests fail, FIX THE CODE, not the tests** - The tests represent user requirements
 - **Document both passing AND failing tests** - Be transparent about what works and what doesn't
 
@@ -49,7 +49,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Error states are handled gracefully
 ```
 
-**NEVER skip this verification step.** Production readiness means a real user can successfully use the feature.
+**NEVER skip this verification step.** Feature completion means a real user can successfully use the feature.
 
 ## Architecture Overview
 
@@ -175,6 +175,32 @@ docker compose logs -f [service_name]
 docker compose ps
 ```
 
+### ⚠️ CRITICAL: Docker Restart After Code Changes
+
+**IMPORTANT: Backend Python code changes require Docker container restart!**
+
+When you modify any Python files in `document-processor/`, you MUST restart the container:
+
+```bash
+# Restart the document processor container
+docker compose -p localai restart document-processor
+
+# Verify it's running and healthy
+docker compose -p localai ps document-processor
+
+# Check logs for startup confirmation
+docker compose -p localai logs -f document-processor
+# Wait for: "Application startup complete"
+```
+
+**Automatic Restart Rule:**
+- ANY changes to `document-processor/app/**/*.py` → Restart container
+- Frontend changes (`localai-admin-dashboard/`) → No restart needed (just rebuild with `pnpm build`)
+- Environment variable changes (`.env`) → Restart ALL containers
+- Database migrations (`supabase/migrations/`) → Apply with Supabase CLI
+
+**Always restart BEFORE running tests after code changes!**
+
 ### Frontend Development (localai-admin-dashboard/)
 ```bash
 cd localai-admin-dashboard/
@@ -241,7 +267,7 @@ pnpm setup:cli        # Setup CLI environment
 - **Never mock core functionality** - Test against real implementations
 
 ### Playwright Integration Testing Requirements
-**CRITICAL: Nothing is "done" or "production ready" without passing Playwright tests**
+**CRITICAL: Nothing is "done" or "complete" without passing Playwright tests**
 
 #### Mandatory Testing Protocol
 1. **Always write Playwright tests for every feature** - No exceptions

@@ -32,6 +32,18 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Proxy Supabase requests to local instance
+      '/supabase': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/supabase/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            // eslint-disable-next-line no-console
+            console.log('Supabase proxy error:', err);
+          });
+        },
+      },
       // Proxy N8N webhook requests to avoid CORS issues
       '/n8n-webhook': {
         target: 'http://localhost:5678',

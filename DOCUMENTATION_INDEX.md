@@ -117,31 +117,27 @@ For someone new to the project, start here:
 ## 🧪 Testing & Quality Assurance
 
 ### Testing Guides
-- **[memory/TESTING.md](memory/TESTING.md)** - Overall testing strategy
-- **[memory/E2E_DOCUMENT_UPLOAD_TEST_PLAN.md](memory/E2E_DOCUMENT_UPLOAD_TEST_PLAN.md)** - E2E test plans
-- **[memory/DOCUMENT_UPLOAD_INTEGRATION_TEST_PLAN.md](memory/DOCUMENT_UPLOAD_INTEGRATION_TEST_PLAN.md)** - Integration test plans
-- **[memory/END_USER_TESTING_WITH_AUTH.md](memory/END_USER_TESTING_WITH_AUTH.md)** - User testing with authentication
+- **[localai-admin-dashboard/tests/README.md](localai-admin-dashboard/tests/README.md)** - Frontend/unit testing workflow and tooling
+- **[localai-admin-dashboard/src/__tests__/integration/README.md](localai-admin-dashboard/src/__tests__/integration/README.md)** - Integration test harness details
+- **[document-processor/tests/README.md](document-processor/tests/README.md)** - Backend testing instructions
+- **[localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md](localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md)** - Coverage expectations and suite structure
 
 ### Test Results & Analysis
-- **[AUTH_TEST_RESULTS.md](AUTH_TEST_RESULTS.md)** - Authentication test results
-- **[memory/ACTUAL_TEST_RESULTS_TEMPLATE_MATCHING.md](memory/ACTUAL_TEST_RESULTS_TEMPLATE_MATCHING.md)** - Template matching test results
-- **[memory/REAL_INTEGRATION_TEST_SUMMARY.md](memory/REAL_INTEGRATION_TEST_SUMMARY.md)** - Integration test summary
-- **[memory/OBSOLETE_TESTS_ANALYSIS.md](memory/OBSOLETE_TESTS_ANALYSIS.md)** - Deprecated tests analysis
+- **[AUTH_TEST_RESULTS.md](AUTH_TEST_RESULTS.md)** - Authentication test coverage snapshot
+- **[DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](DOCUMENT_PROCESSING_COMPLETE_GUIDE.md)** - Latest end-to-end document processing validation steps
 
 ### Bug Fixes & Resolutions
-- **[localai-admin-dashboard/PROGRESS_INDICATOR_FIX_MANUAL_TEST.md](localai-admin-dashboard/PROGRESS_INDICATOR_FIX_MANUAL_TEST.md)** - Progress indicator fix documentation
-- **[memory/DOCUMENT_STATUS_FIX_SUMMARY.md](memory/DOCUMENT_STATUS_FIX_SUMMARY.md)** - Document status fix
-- **[memory/DOCUMENT_STATUS_UPDATE_FIX_SUMMARY.md](memory/DOCUMENT_STATUS_UPDATE_FIX_SUMMARY.md)** - Status update fix
-- **[memory/TEMPLATE_GENERATION_TEST_FIX.md](memory/TEMPLATE_GENERATION_TEST_FIX.md)** - Template generation fixes
+- **[localai-admin-dashboard/PROGRESS_INDICATOR_FIX_MANUAL_TEST.md](localai-admin-dashboard/PROGRESS_INDICATOR_FIX_MANUAL_TEST.md)** - Progress indicator remediation steps
+- **[DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](DOCUMENT_PROCESSING_COMPLETE_GUIDE.md)** - Consolidated extraction + rerun fixes
 
 ---
 
 ## 🔐 Authentication & Security
 
 ### Authentication Documentation
-- **[memory/AUTHENTICATION_REMEDIATION_GUIDE_ROOT.md](memory/AUTHENTICATION_REMEDIATION_GUIDE_ROOT.md)** - Root-level auth remediation
-- **[memory/AUTHENTICATION_REMEDIATION_GUIDE.md](memory/AUTHENTICATION_REMEDIATION_GUIDE.md)** - Dashboard auth remediation
-- **[CLAUDE.md](CLAUDE.md)** - Section on JWT token synchronization and RLS policies
+- **[CLAUDE.md](CLAUDE.md)** - JWT token synchronization, Supabase auth policies, and remediation steps
+- **[documentation/supabase.md](documentation/supabase.md)** - Supabase structure, auth tables, and environment configuration
+- **[documentation/setup.md](documentation/setup.md)** - Environment/bootstrap steps including auth configuration
 
 ### Key Security Lessons
 From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
@@ -156,15 +152,9 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 ## 🎨 Features & Implementation
 
 ### Template System
-- **[memory/TEMPLATE_ANALYSIS_INSTRUCTIONS.md](memory/TEMPLATE_ANALYSIS_INSTRUCTIONS.md)** - Template analysis process
-  - AI-powered template matching
-  - Azure OpenAI integration
-  - Confidence scoring and fallback logic
-
-- **[memory/TEMPLATE_ANALYSIS_IMPLEMENTATION_STATUS.md](memory/TEMPLATE_ANALYSIS_IMPLEMENTATION_STATUS.md)** - Implementation status
-- **[memory/TEMPLATE_MATCHING_IMPLEMENTATION_PLAN.md](memory/TEMPLATE_MATCHING_IMPLEMENTATION_PLAN.md)** - Implementation plan
-- **[memory/TEMPLATE_MATCHING_PRODUCTION_READY_VERIFICATION.md](memory/TEMPLATE_MATCHING_PRODUCTION_READY_VERIFICATION.md)** - Production readiness
-- **[memory/END_USER_TEMPLATE_MATCHING_TESTING_GUIDE.md](memory/END_USER_TEMPLATE_MATCHING_TESTING_GUIDE.md)** - User testing guide
+- **[TEMPLATE_MATCHING_CURRENT_STATE.md](TEMPLATE_MATCHING_CURRENT_STATE.md)** - Deep dive into template matching and enhancement proposals
+- **[RERUN_SMART_EXTRACTION_FLOW.md](RERUN_SMART_EXTRACTION_FLOW.md)** - Smart extraction rerun flow documentation
+- **[DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](DOCUMENT_PROCESSING_COMPLETE_GUIDE.md)** - Full document processing flow plus extraction rerun details
 
 ### Document Features
 - **[features/document-complete-deletion/IMPLEMENTATION_SUMMARY.md](features/document-complete-deletion/IMPLEMENTATION_SUMMARY.md)** - Document deletion feature
@@ -174,17 +164,17 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 ## 📋 Historical Context & Decisions
 
 ### Project Status
-- **[memory/PROJECT_COMPLETION_SUMMARY.md](memory/PROJECT_COMPLETION_SUMMARY.md)** - Project milestones
-- **[memory/FINAL_PRODUCTION_READINESS_ASSESSMENT.md](memory/FINAL_PRODUCTION_READINESS_ASSESSMENT.md)** - Production readiness
-- **[memory/COMMIT_READY_SUMMARY.md](memory/COMMIT_READY_SUMMARY.md)** - Commit readiness checks
+- **[Copilot-Processing.md](Copilot-Processing.md)** - Running activity log of assistant-led changes
+- **[plans/](plans/)** - Implementation plans and retrospectives
+- **[DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](DOCUMENT_PROCESSING_COMPLETE_GUIDE.md)** - Latest end-to-end verification guide
 
 ### Historical Documentation
-- **[memory/SUPABASE_MIGRATION_PLAN.md](memory/SUPABASE_MIGRATION_PLAN.md)** - Supabase migration details
-- **[memory/ARCHITECTURE.md_20250905_193220.md](memory/ARCHITECTURE.md_20250905_193220.md)** - Archived architecture snapshot
-- **[memory/TEMPLATE_MATCHING_E2E_TESTING_GUIDE_20250905_190219.md](memory/TEMPLATE_MATCHING_E2E_TESTING_GUIDE_20250905_190219.md)** - Archived testing guide
+- **[.copilot-tracking/](.copilot-tracking/)** - Archived research, changes, and plan details
+- **[documentation/README.md](documentation/README.md)** - Entry point for structured docs
+- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Current repository layout summary
 
 ### Context Engineering
-- **[memory/CONTEXT_ENGINEERING_GUIDE.md](memory/CONTEXT_ENGINEERING_GUIDE.md)** - Guide for context management
+- **[CLAUDE.md](CLAUDE.md)** - Canonical process + agent coordination instructions
 
 ---
 
@@ -233,9 +223,9 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 | **Developing frontend** | localai-admin-dashboard/README.md → CLAUDE.md → .vscode/README.md |
 | **Working with APIs** | documentation/document-processor-api.md → document-processor/API_ENDPOINTS.md |
 | **Debugging issues** | localai-admin-dashboard/.vscode/README.md → CLAUDE.md (auth section) |
-| **Writing tests** | memory/TESTING.md → localai-admin-dashboard/tests/README.md |
+| **Writing tests** | localai-admin-dashboard/tests/README.md → localai-admin-dashboard/src/__tests__/integration/README.md |
 | **Deploying to production** | DEPLOYMENT_PLAN.md → documentation/setup.md |
-| **Understanding templates** | memory/TEMPLATE_ANALYSIS_INSTRUCTIONS.md |
+| **Understanding templates** | TEMPLATE_MATCHING_CURRENT_STATE.md |
 | **Monitoring services** | documentation/monitoring.md → documentation/setup.md |
 
 ### By Role
@@ -261,10 +251,10 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 4. documentation/SUPABASE_STRUCTURE.md
 
 #### QA/Tester
-1. memory/TESTING.md
-2. memory/E2E_DOCUMENT_UPLOAD_TEST_PLAN.md
+1. localai-admin-dashboard/tests/README.md
+2. localai-admin-dashboard/src/__tests__/integration/README.md
 3. localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md
-4. memory/END_USER_TESTING_WITH_AUTH.md
+4. DOCUMENT_PROCESSING_COMPLETE_GUIDE.md
 
 #### DevOps/SRE
 1. DEPLOYMENT_PLAN.md
@@ -277,15 +267,15 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 ## 📚 Documentation Categories
 
 ### ✅ Active & Current
-- All files in root level (README, CLAUDE, ARCHITECTURE, etc.)
+- All root-level files (README, CLAUDE, ARCHITECTURE, PROJECT_STRUCTURE, etc.)
 - documentation/ folder
 - localai-admin-dashboard/ documentation
-- memory/ files dated 2024 or later
+- document-processor/ docs and testing guides
 
 ### 📦 Historical/Reference
-- memory/ files with timestamps in names (e.g., ARCHITECTURE.md_20250905_193220.md)
 - .copilot-tracking/ folder
 - plans/ folder (older implementation plans)
+- Archived references inside `documentation/` and `DOCUMENT_PROCESSING_COMPLETE_GUIDE.md`
 
 ### 🔧 Internal/Tooling
 - .github/ folder (prompts, chatmodes, templates)
@@ -317,8 +307,8 @@ From documentation/README.md:
 1. **Quick questions**: Check README.md or CLAUDE.md
 2. **Setup issues**: See documentation/setup.md or localai-admin-dashboard/SETUP_VERIFICATION.md
 3. **Architecture questions**: ARCHITECTURE.md
-4. **Feature-specific**: Check memory/ folder for implementation guides
-5. **Testing**: memory/TESTING.md
+4. **Feature-specific**: DOCUMENT_PROCESSING_COMPLETE_GUIDE.md or TEMPLATE_MATCHING_CURRENT_STATE.md
+5. **Testing**: localai-admin-dashboard/tests/README.md
 
 ---
 

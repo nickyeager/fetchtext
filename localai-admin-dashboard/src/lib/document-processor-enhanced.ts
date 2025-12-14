@@ -557,21 +557,14 @@ export class DocumentProcessorEnhanced {
     this.validateFileFormat(file);
 
     try {
-      // Check enhanced API availability first, fallback to basic backend
-      const enhancedApiAvailable = await this.isEnhancedApiAvailable();
-      const backendAvailable = enhancedApiAvailable || await this.isBackendAvailable();
-      console.log('Document processing - enhanced API available:', enhancedApiAvailable, 'basic backend available:', backendAvailable);
-      
+      // Check if basic backend is available
+      const backendAvailable = await this.isBackendAvailable();
+      console.log('Document processing - backend available:', backendAvailable);
+
       // For testing/development, return mock data that matches test expectations
       if (process.env.NODE_ENV === 'test' || !backendAvailable) {
         console.log('Using mock processed document');
         return await this.createMockProcessedDocument(file);
-      }
-      
-      if (enhancedApiAvailable) {
-        console.log('Using enhanced API for document processing');
-      } else {
-        console.log('Using basic backend for document processing (enhanced API not available)');
       }
 
       const formData = new FormData();
@@ -579,16 +572,9 @@ export class DocumentProcessorEnhanced {
       formData.append('extract_text', 'true');
       formData.append('extract_metadata', 'true');
       formData.append('extract_structure', 'true');
-      
-      if (enhancedApiAvailable) {
-        formData.append('use_ai_enhancement', 'true');
-        formData.append('include_quality_assessment', 'true');
-      }
 
-      const endpointUrl = enhancedApiAvailable 
-        ? `${this.enhancedBaseUrl}/process-with-ai`
-        : `${this.baseUrl}/upload`;
-      
+      // Use the basic /documents/upload endpoint
+      const endpointUrl = `${this.baseUrl}/upload`;
       console.log('Making document processing request to:', endpointUrl);
 
       const response = await fetch(endpointUrl, {
@@ -603,14 +589,47 @@ export class DocumentProcessorEnhanced {
         throw new Error(`Failed to process document: ${errorData.error || 'Unknown error'}`);
       }
 
-      const result = await response.json();
-      console.log('Document processing API response:', result);
-      
-      if (enhancedApiAvailable) {
-        return this.transformEnhancedResponse(result, file);
-      } else {
-        return this.transformBackendResponse(result as BackendResponse, file);
+      const uploadResult = await response.json();
+      console.log('Document processing API upload response:', uploadResult);
+
+      // The /documents/upload endpoint returns a job_id for async processing
+      // We need to poll for the result
+      if (uploadResult.job_id) {
+        console.log('⏳ Polling for document processing result, job_id:', uploadResult.job_id);
+
+        const resultEndpoint = `${this.baseUrl.replace('/documents', '')}/documents/result/${uploadResult.job_id}`;
+        let attempts = 0;
+        const maxAttempts = 30; // 30 seconds max (1 second intervals)
+
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          attempts++;
+
+          const resultResponse = await fetch(resultEndpoint, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'omit'
+          });
+
+          if (resultResponse.ok) {
+            const result = await resultResponse.json();
+            console.log(`📊 Polling attempt ${attempts}: status =`, result.status);
+
+            if (result.status === 'completed') {
+              console.log('✅ Document processing completed, content length:', result.content?.text?.length);
+              return this.transformBackendResponse(result as BackendResponse, file);
+            } else if (result.status === 'failed') {
+              throw new Error(`Document processing failed: ${result.error || 'Unknown error'}`);
+            }
+            // Otherwise status is 'processing', continue polling
+          }
+        }
+
+        throw new Error('Document processing timeout - exceeded 30 seconds');
       }
+
+      // Fallback: if no job_id, assume synchronous response (shouldn't happen with current backend)
+      return this.transformBackendResponse(uploadResult as BackendResponse, file);
     } catch (_error) {
       // Backend not available, use mock data for development
       return await this.createMockProcessedDocument(file);
@@ -1154,53 +1173,6 @@ export class DocumentProcessorEnhanced {
   }
 
 
-  /**
-   * Transform enhanced API response to generic ProcessedDocument format
-   */
-  private transformEnhancedResponse(enhancedResponse: any, file: File): ProcessedDocument {
-    const content = enhancedResponse.content?.text || '';
-    
-    // Transform headings from enhanced API format
-    const headings = enhancedResponse.content?.layout_info?.headings?.map((h: any) => ({
-      level: h.level,
-      text: h.text,
-      position: h.position
-    })) || [];
-
-    // Transform tables from enhanced API format
-    const tables = enhancedResponse.content?.tables?.map((t: any, index: number) => ({
-      position: index * 100,
-      rows: Array.isArray(t.data) ? t.data.length : 0,
-      columns: Array.isArray(t.data) && t.data.length > 0 ? t.data[0].length : 0
-    })) || [];
-
-    // Transform images from enhanced API format
-    const images = enhancedResponse.content?.images?.map((img: any, index: number) => ({
-      position: index * 50,
-      alt: img.caption || '',
-      dimensions: img.dimensions || { width: 0, height: 0 }
-    })) || [];
-
-    return {
-      content,
-      metadata: {
-        title: enhancedResponse.metadata?.title || this.generateTitleFromFilename(file.name),
-        format: this.getFormatFromMimeType(file.type),
-        pages: enhancedResponse.metadata?.pages,
-        size: file.size,
-        author: enhancedResponse.metadata?.author || 'Unknown',
-      },
-      structure: {
-        headings,
-        tables,
-        images
-      },
-      templateSuggestions: this.generateTemplateSuggestionsFromClassification(
-        enhancedResponse.ai_classification, 
-        file
-      )
-    };
-  }
 
   /**
    * Transform enhanced API response with template-specific field extraction
@@ -1311,55 +1283,7 @@ export class DocumentProcessorEnhanced {
   /**
    * Generate template suggestions from AI classification
    */
-  private generateTemplateSuggestionsFromClassification(
-    aiClassification: any, 
-    file: File
-  ): TemplateSuggestion[] {
-    if (!aiClassification) {
-      return this.generateTemplateSuggestions(file);
-    }
 
-    const suggestions: TemplateSuggestion[] = [];
-    
-    // Use AI classification results to suggest templates
-    if (aiClassification.primary_category) {
-      suggestions.push({
-        templateId: aiClassification.primary_category,
-        templateName: this.formatCategoryName(aiClassification.primary_category),
-        confidence: aiClassification.confidence || 0.8,
-        matchReasons: [
-          `AI classified as ${aiClassification.primary_category}`,
-          ...(aiClassification.key_topics || []).slice(0, 2)
-        ]
-      });
-    }
-
-    // Add secondary categories as additional suggestions
-    if (aiClassification.secondary_categories) {
-      aiClassification.secondary_categories.slice(0, 2).forEach((category: string) => {
-        suggestions.push({
-          templateId: category,
-          templateName: this.formatCategoryName(category),
-          confidence: Math.max(0.5, (aiClassification.confidence || 0.8) - 0.2),
-          matchReasons: [`Secondary classification: ${category}`]
-        });
-      });
-    }
-
-    return suggestions.length > 0 ? suggestions : this.generateTemplateSuggestions(file);
-  }
-
-  /**
-   * Format category name for display
-   */
-  private formatCategoryName(category: string): string {
-    return category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  }
-
-  /**
-   * Transform backend response with template-specific field extraction
-   */
-  // Removed unused transformBackendResponseWithTemplate (not referenced)
 
   /**
    * Evaluate document type and suggest processing options
@@ -1421,6 +1345,116 @@ export class DocumentProcessorEnhanced {
   }
 
   /**
+   * Decide whether to use existing template or generate new one (2-way validation)
+   * Calls the /decide-template endpoint which performs real extraction testing
+   */
+  async decideTemplate(file: File, options?: {
+    minMatchConfidence?: number;
+    allowGeneration?: boolean;
+    autoSave?: boolean;
+    generationMode?: 'automatic' | 'guided' | 'custom';
+  }): Promise<{
+    action: 'use_existing' | 'generate_new';
+    chosen_template?: any;
+    alternatives?: any[];
+    generated_template?: any;
+    evaluation: DocumentEvaluation;
+    decision_metadata: {
+      reason: string;
+      validation_level: 'high_confidence' | 'medium_confidence' | 'low_confidence';
+      match_score: number;
+      extraction_quality: number;
+      combined_score: number;
+      extraction_tested: boolean;
+    };
+  }> {
+    const {
+      minMatchConfidence = 0.6,
+      allowGeneration = true,
+      autoSave = false,
+      generationMode = 'automatic'
+    } = options || {};
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const params = new URLSearchParams({
+        quick_scan: 'true',
+        min_match_confidence: minMatchConfidence.toString(),
+        allow_generation: allowGeneration.toString(),
+        auto_save: autoSave.toString(),
+        generation_mode: generationMode
+      });
+
+      console.log('🎯 Calling /decide-template endpoint with 2-way validation...');
+
+      const response = await fetch(
+        `${this.enhancedBaseUrl}/decide-template?${params}`,
+        {
+          method: 'POST',
+          body: formData,
+          signal: AbortSignal.timeout(45000) // 45 seconds for extraction testing
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const decision = await response.json();
+
+      console.log('✅ Template decision received:', {
+        action: decision.action,
+        validation_level: decision.decision_metadata?.validation_level,
+        match_score: decision.decision_metadata?.match_score,
+        extraction_quality: decision.decision_metadata?.extraction_quality,
+        combined_score: decision.decision_metadata?.combined_score
+      });
+
+      // Normalize backend response to frontend interface
+      // Backend returns action: 'generated' and template: {...}
+      // Frontend expects action: 'generate_new' and generated_template: {...}
+      if (decision.action === 'generated' && decision.template) {
+        return {
+          ...decision,
+          action: 'generate_new',
+          generated_template: decision.template
+        };
+      }
+
+      return decision;
+
+    } catch (error) {
+      console.error('Template decision failed:', error);
+
+      // Fallback to simple evaluation if decision endpoint fails
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('timed out'))) {
+        console.log('⚠️ Template decision timed out, falling back to simple evaluation');
+        const evaluation = await this.evaluateDocumentType(file);
+
+        return {
+          action: 'use_existing',
+          chosen_template: evaluation.template_suggestions?.[0] || null,
+          alternatives: evaluation.template_suggestions?.slice(1, 5) || [],
+          evaluation,
+          decision_metadata: {
+            reason: 'Fallback to simple evaluation due to timeout',
+            validation_level: 'low_confidence',
+            match_score: evaluation.template_suggestions?.[0]?.match_score || 0,
+            extraction_quality: 0,
+            combined_score: 0,
+            extraction_tested: false
+          }
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Process document with existing template
    */
   async processWithExistingTemplate(file: File, templateId: number): Promise<any> {
@@ -1429,28 +1463,49 @@ export class DocumentProcessorEnhanced {
       // Get current user for authentication
       const { data: userResponse } = await supabase.auth.getUser();
       const userId = userResponse.user?.id;
-      
-      // Fetch the template from the templates table
-      const { data: template, error } = await supabase
-        .from('templates')
+
+      // Try smart_templates table first (auto-generated templates)
+      let { data: template, error } = await supabase
+        .from('smart_templates')
         .select('*')
         .eq('id', templateId)
         .or(`is_public.eq.true,created_by.eq.${userId}`)
         .maybeSingle();
 
+      // Fallback to templates table if not found
+      if (!template) {
+        const result = await supabase
+          .from('templates')
+          .select('*')
+          .eq('id', templateId)
+          .or(`is_public.eq.true,created_by.eq.${userId}`)
+          .maybeSingle();
+
+        template = result.data;
+        error = result.error;
+      }
+
       if (error) {
         console.error('Error loading template:', error);
         throw new Error(`Template not found: ${error.message}`);
       }
-      
+
       if (!template) {
-        throw new Error(`Template with ID ${templateId} not found`);
+        throw new Error(`Template with ID ${templateId} not found in smart_templates or templates`);
       }
-      
+
+      console.log('✅ Template loaded successfully:', {
+        id: template.id,
+        name: template.name,
+        table: template.template_type ? 'smart_templates' : 'templates',
+        has_smart_variables: !!template.smart_variables,
+        variable_count: (template.smart_variables || template.variables || []).length
+      });
+
       // Transform to SmartTemplate format
       const smartTemplate: SmartTemplate = {
         ...template,
-        smart_variables: template.variables || [],
+        smart_variables: template.smart_variables || template.variables || [],
         extraction_rules: template.extraction_rules || [],
         generation_settings: template.generation_settings || {},
         category: template.category || 'general',
@@ -1916,9 +1971,23 @@ Template Version: 1.0`;
 
     // Extract smart template fields with enhanced confidence and validation
     const extractedFields: Record<string, ExtractedField> = {};
-    
-    if (response.extraction_results) {
-      Object.entries(response.extraction_results).forEach(([fieldName, fieldData]: [string, any]) => {
+
+    // CRITICAL FIX: Backend returns extracted_data.extracted_values (nested structure)
+    console.log('🔍 Checking for extraction data in response:', {
+      has_extracted_data: !!response.extracted_data,
+      has_extracted_values: !!response.extracted_data?.extracted_values,
+      has_extraction_results: !!response.extraction_results,
+      has_extracted_fields: !!response.extracted_fields,
+      response_keys: Object.keys(response)
+    });
+
+    const extractionData = response.extracted_data?.extracted_values
+      || response.extraction_results
+      || response.extracted_fields;
+
+    if (extractionData) {
+      console.log(`✅ Found extraction data with ${Object.keys(extractionData).length} fields`);
+      Object.entries(extractionData).forEach(([fieldName, fieldData]: [string, any]) => {
         extractedFields[fieldName] = {
           value: fieldData.value,
           confidence: fieldData.confidence || 0.8,
@@ -1926,15 +1995,10 @@ Template Version: 1.0`;
           location: fieldData.location || { page: 1, position: 0 }
         };
       });
-    } else if (response.extracted_fields) {
-      Object.entries(response.extracted_fields).forEach(([fieldName, fieldData]: [string, any]) => {
-        extractedFields[fieldName] = {
-          value: fieldData.value,
-          confidence: fieldData.confidence || 0.8,
-          sourceText: fieldData.source_text || fieldData.sourceText,
-          location: fieldData.location || { page: 1, position: 0 }
-        };
-      });
+      console.log(`✅ Transformed ${Object.keys(extractedFields).length} fields to extractedFields`);
+    } else {
+      console.error('❌ NO extraction data found in response! This will trigger placeholder generation.');
+      console.error('Response structure:', JSON.stringify(response, null, 2).substring(0, 1000));
     }
 
     return {
@@ -1950,16 +2014,18 @@ Template Version: 1.0`;
    * Validate and enhance template extraction results
    */
   private validateAndEnhanceTemplateResult(
-    result: TemplateExtractionResult, 
+    result: TemplateExtractionResult,
     template: SmartTemplate
   ): TemplateExtractionResult {
-    console.log('Validating and enhancing template result');
-    
+    console.log('🔍 Validating and enhancing template result');
+    console.log(`📊 Received extractedFields with ${Object.keys(result.extractedFields).length} fields:`, Object.keys(result.extractedFields));
+    console.log(`📋 Template has ${template.smart_variables?.length || 0} smart_variables:`, template.smart_variables?.map(v => v.name));
+
     // Ensure all template variables have corresponding extracted fields
     if (template.smart_variables) {
       template.smart_variables.forEach(variable => {
         if (!result.extractedFields[variable.name]) {
-          console.warn(`Missing extraction for variable: ${variable.name}`);
+          console.warn(`⚠️ Missing extraction for variable: ${variable.name} - creating placeholder`);
           
           // Add placeholder field with low confidence
           result.extractedFields[variable.name] = {

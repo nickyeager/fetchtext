@@ -17,7 +17,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, CheckCircle, XCircle, FileText, Users, Settings } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Loader2, CheckCircle, XCircle, FileText, Users, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import { ProgressiveExtractionDisplay } from './ProgressiveExtractionDisplay';
 import { WorkflowFileUpload } from './WorkflowFileUpload';
 import {
@@ -62,6 +64,7 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
     tables: false,
     images: false,
   });
+  const [showRawJSON, setShowRawJSON] = useState(false);
   // Simple in-memory log lines accumulated during progressive extraction
   const [progressLogs, setProgressLogs] = useState<string[]>([]);
   // Instrumentation for E2E visibility
@@ -128,6 +131,8 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
     setProgressiveResult(null);
     setSelectedTemplate(null);
     setIsProcessing(true);
+
+    console.log('templateExtractionResult', templateExtractionResult);
     setProgressLogs([]);
     setProcessingStarted(true);
     setProgressUpdateCount(0);
@@ -169,13 +174,16 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
         if (v.result) extractedFields[k] = v.result;
       });
       if (Object.keys(extractedFields).length > 0) {
-        setTemplateExtractionResult({
+        const progressiveResult = {
           content: lastSnapshot.content,
           metadata: lastSnapshot.metadata,
           structure: lastSnapshot.structure,
           template: lastSnapshot.template,
           extractedFields
-        });
+        };
+        // eslint-disable-next-line no-console
+        console.log('📦 [Progressive] Setting templateExtractionResult with', Object.keys(extractedFields).length, 'fields:', extractedFields);
+        setTemplateExtractionResult(progressiveResult);
         // If backend embedded correlation id in metadata during progressive path
         const cid = (lastSnapshot.metadata as Record<string, unknown>)?.correlationId as string | undefined;
         if (cid) setCorrelationId(cid);
@@ -197,6 +205,8 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
         setExtractionMode('template-standard');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await documentProcessor.processDocumentWithTemplate(f, tmpl as any);
+  // eslint-disable-next-line no-console
+  console.log('📦 [Standard] Setting templateExtractionResult with', Object.keys(result.extractedFields || {}).length, 'fields:', result.extractedFields);
   setTemplateExtractionResult(result as TemplateExtractionResult);
         const cid = (result.metadata as Record<string, unknown>)?.correlationId as string | undefined;
         if (cid) setCorrelationId(cid);
@@ -590,20 +600,21 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 Extracted Template Fields
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              {/* Form Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(templateExtractionResult.extractedFields).map(([fieldName, field]) => {
                   const variable = templateExtractionResult.template.smart_variables.find(v => v.name === fieldName);
-                  const confidenceColor = field.confidence >= 0.8 ? 'text-green-600 dark:text-green-400' : 
+                  const confidenceColor = field.confidence >= 0.8 ? 'text-green-600 dark:text-green-400' :
                                         field.confidence >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
-                  const confidenceLabel = field.confidence >= 0.8 ? 'High' : 
+                  const confidenceLabel = field.confidence >= 0.8 ? 'High' :
                                         field.confidence >= 0.6 ? 'Medium' : 'Low';
-                  
+
                   return (
-                    <div key={fieldName} className="border rounded-lg p-4 bg-muted" data-testid="extracted-field">
-                      <div className="flex items-center justify-between mb-2">
+                    <div key={fieldName} className="space-y-2" data-testid="extracted-field">
+                      <Label htmlFor={`field-${fieldName}`} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-foreground">{fieldName}</span>
+                          <span className="font-medium">{fieldName}</span>
                           {variable && (
                             <Badge variant="outline" className="text-xs">
                               {variable.type}
@@ -618,32 +629,49 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                             {Math.round(field.confidence * 100)}%
                           </span>
                         </div>
-                      </div>
-                      
-                      <div className="bg-background p-3 rounded border mb-2">
-                        <span className="text-sm font-mono">{String(field.value)}</span>
-                      </div>
-                      
+                      </Label>
+
+                      <Input
+                        id={`field-${fieldName}`}
+                        value={String(field.value)}
+                        readOnly
+                        className="font-mono text-sm"
+                      />
+
                       {variable && (
-                        <p className="text-xs text-muted-foreground mb-2">{variable.description}</p>
+                        <p className="text-xs text-muted-foreground">{variable.description}</p>
                       )}
-                      
-                      {field.sourceText && (
+
+                      {field.sourceText && !field.sourceText.startsWith('No extraction found') && (
                         <div className="text-xs text-muted-foreground">
                           <span className="font-medium">Source: </span>
                           <span className="italic">"{field.sourceText}"</span>
                         </div>
                       )}
-                      
-                      {field.location && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {field.location.page && `Page ${field.location.page}`}
-                          {field.location.position && ` • Position ${field.location.position}`}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Raw JSON Toggle */}
+              <div className="border-t pt-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowRawJSON(!showRawJSON)}
+                  className="flex items-center gap-2"
+                >
+                  {showRawJSON ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  Raw JSON ({Object.keys(templateExtractionResult.extractedFields).length} fields)
+                </Button>
+
+                {showRawJSON && (
+                  <div className="mt-3 bg-muted p-4 rounded-lg max-h-96 overflow-y-auto">
+                    <pre className="text-xs font-mono whitespace-pre-wrap">
+                      {JSON.stringify(templateExtractionResult.extractedFields, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
