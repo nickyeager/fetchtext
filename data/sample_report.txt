@@ -1,0 +1,51 @@
+QUARTERLY SALES REPORT
+Q1 2024 Performance Analysis
+
+Company: Global Tech Solutions
+Department: Sales & Marketing
+Report Date: April 5, 2024
+Prepared By: Amanda Rodriguez, Sales Manager
+
+EXECUTIVE SUMMARY
+Total Revenue: $2,847,650
+Target Achievement: 112%
+Growth vs Q1 2023: +18.5%
+
+REGIONAL PERFORMANCE
+
+North America
+Revenue: $1,423,825
+Units Sold: 8,756
+Average Deal Size: $162.50
+Top Sales Rep: David Kim
+
+Europe
+Revenue: $854,295
+Units Sold: 5,234
+Average Deal Size: $163.25
+Top Sales Rep: Maria Santos
+
+Asia-Pacific
+Revenue: $569,530
+Units Sold: 3,487
+Average Deal Size: $163.40
+Top Sales Rep: Takeshi Yamada
+
+PRODUCT CATEGORIES
+Software Licenses: $1,708,590 (60%)
+Professional Services: $683,295 (24%)
+Support Contracts: $455,765 (16%)
+
+KEY METRICS
+Customer Acquisition Cost: $245
+Customer Lifetime Value: $3,850
+Churn Rate: 3.2%
+Net Promoter Score: 67
+
+RECOMMENDATIONS
+1. Increase investment in Asia-Pacific region
+2. Expand professional services team
+3. Implement customer success program
+4. Focus on enterprise accounts for Q2
+
+Next Review Date: July 5, 2024

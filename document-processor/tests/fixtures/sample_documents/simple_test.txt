@@ -1,0 +1,13 @@
+This is a simple test document for text extraction validation.
+
+The document contains basic text formatting and common elements:
+- Simple paragraphs with standard punctuation
+- Numbers like 123 and 456
+- Special characters: $100, 50%, @email.com
+- Multiple sentences with proper spacing
+
+This content should be extracted accurately by Docling with high precision.
+
+The document serves as a baseline for testing text extraction effectiveness and measuring quality metrics.
+
+End of test document.

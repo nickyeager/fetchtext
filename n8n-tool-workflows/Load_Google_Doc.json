@@ -1,0 +1,708 @@
+{
+  "name": "Load Google Doc for Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "load-google-doc",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "noResponseBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "load-google-doc-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "google-doc-auth",
+          "name": "Google Doc API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "google-doc-id",
+              "name": "document_id",
+              "value": "={{ $json.body.document_id }}",
+              "type": "string"
+            },
+            {
+              "id": "export-format",
+              "name": "export_format", 
+              "value": "={{ $json.body.export_format || 'text/plain' }}",
+              "type": "string"
+            },
+            {
+              "id": "target-folder",
+              "name": "target_folder",
+              "value": "={{ $json.body.target_folder || 'downloaded_docs' }}",
+              "type": "string"
+            },
+            {
+              "id": "process-immediately",
+              "name": "process_immediately",
+              "value": "={{ $json.body.process_immediately !== false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "user-credentials",
+              "name": "google_credentials",
+              "value": "={{ $json.body.google_credentials }}",
+              "type": "object"
+            },
+            {
+              "id": "auth-method",
+              "name": "auth_method",
+              "value": "={{ $json.body.google_credentials.auth_method || 'oauth2' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-input-params",
+      "name": "Extract Input Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.auth_method }}",
+              "value2": "oauth2"
+            }
+          ]
+        }
+      },
+      "id": "check-authentication-method",
+      "name": "Check Authentication Method",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "oauth-client-id",
+              "name": "oauth_client_id",
+              "value": "={{ $json.google_credentials.client_id }}",
+              "type": "string"
+            },
+            {
+              "id": "oauth-client-secret",
+              "name": "oauth_client_secret",
+              "value": "={{ $json.google_credentials.client_secret }}",
+              "type": "string"
+            },
+            {
+              "id": "project-id",
+              "name": "project_id",
+              "value": "={{ $json.google_credentials.project_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "setup-oauth2-credentials",
+      "name": "Setup OAuth2 Credentials",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "service-account-email",
+              "name": "service_account_email",
+              "value": "={{ $json.google_credentials.service_account_email }}",
+              "type": "string"
+            },
+            {
+              "id": "service-account-key",
+              "name": "service_account_key",
+              "value": "={{ $json.google_credentials.service_account_key }}",
+              "type": "string"
+            },
+            {
+              "id": "project-id",
+              "name": "project_id",
+              "value": "={{ $json.google_credentials.project_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "setup-service-account-credentials",
+      "name": "Setup Service Account Credentials",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files/{{ $('Extract Input Parameters').item.json.document_id }}/export?mimeType={{ encodeURIComponent($('Extract Input Parameters').item.json.export_format) }}",
+        "authentication": "oAuth2",
+        "oAuth2": {
+          "clientId": "={{ $json.oauth_client_id }}",
+          "clientSecret": "={{ $json.oauth_client_secret }}",
+          "authUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+          "tokenUrl": "https://oauth2.googleapis.com/token",
+          "scope": "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents.readonly"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $auth.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-google-doc-oauth2",
+      "name": "Download Google Doc (OAuth2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files/{{ $('Extract Input Parameters').item.json.document_id }}/export?mimeType={{ encodeURIComponent($('Extract Input Parameters').item.json.export_format) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "httpHeaderAuth": {
+          "name": "Authorization",
+          "value": "Bearer {{ $auth.access_token }}"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-google-doc-service-account",
+      "name": "Download Google Doc (Service Account)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "file-content",
+              "name": "file_content",
+              "value": "={{ $json.data }}",
+              "type": "string"
+            },
+            {
+              "id": "file-name",
+              "name": "file_name", 
+              "value": "={{ $json.fileName }}",
+              "type": "string"
+            },
+            {
+              "id": "mime-type",
+              "name": "mime_type",
+              "value": "={{ $json.mimeType }}",
+              "type": "string"
+            },
+            {
+              "id": "file-size",
+              "name": "file_size",
+              "value": "={{ $json.fileSize }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-document-data",
+      "name": "Prepare Document Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.process_immediately }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-process-immediately",
+      "name": "Check Process Immediately",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://document-processor:8090/api/enhanced-documents/process-with-ai",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/form-data"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "extract_text",
+              "value": "true"
+            },
+            {
+              "name": "extract_metadata", 
+              "value": "true"
+            },
+            {
+              "name": "extract_structure",
+              "value": "true"
+            },
+            {
+              "name": "use_ai_enhancement",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "process-document",
+      "name": "Process Document with AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://localai-admin-dashboard:3000/api/documents/store-processed",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "source",
+              "value": "google_docs"
+            },
+            {
+              "name": "original_id",
+              "value": "={{ $('Extract Input Parameters').item.json.document_id }}"
+            },
+            {
+              "name": "file_name",
+              "value": "={{ $('Prepare Document Data').item.json.file_name }}"
+            },
+            {
+              "name": "processing_result",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "source_metadata",
+              "value": "={{ { google_doc_id: $('Extract Input Parameters').item.json.document_id, export_format: $('Extract Input Parameters').item.json.export_format, downloaded_at: $now.toISOString() } }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store-processed-document",
+      "name": "Store Processed Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "success-response",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "Document downloaded and processed successfully",
+              "type": "string"
+            },
+            {
+              "id": "document-data",
+              "name": "document_data",
+              "value": "={{ $json }}",
+              "type": "object"
+            },
+            {
+              "id": "google-doc-id",
+              "name": "google_doc_id", 
+              "value": "={{ $('Extract Input Parameters').item.json.document_id }}",
+              "type": "string"
+            },
+            {
+              "id": "processed-at",
+              "name": "processed_at",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-success-response",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "success-response",
+              "name": "success",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "message",
+              "name": "message", 
+              "value": "Document downloaded successfully (processing skipped)",
+              "type": "string"
+            },
+            {
+              "id": "file-data",
+              "name": "file_data",
+              "value": "={{ $('Prepare Document Data').item.json }}",
+              "type": "object"
+            },
+            {
+              "id": "google-doc-id",
+              "name": "google_doc_id",
+              "value": "={{ $('Extract Input Parameters').item.json.document_id }}",
+              "type": "string"
+            },
+            {
+              "id": "downloaded-at",
+              "name": "downloaded_at",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-download-only-response",
+      "name": "Format Download Only Response", 
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook", 
+      "typeVersion": 1.1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-response",
+              "name": "success",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "={{ $json.error || 'Unknown error occurred' }}",
+              "type": "string"
+            },
+            {
+              "id": "google-doc-id",
+              "name": "google_doc_id",
+              "value": "={{ $('Extract Input Parameters').item.json.document_id }}",
+              "type": "string"
+            },
+            {
+              "id": "failed-at",
+              "name": "failed_at",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-error-response",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 500]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Check Authentication Method",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Authentication Method": {
+      "main": [
+        [
+          {
+            "node": "Setup OAuth2 Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Setup Service Account Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Setup OAuth2 Credentials": {
+      "main": [
+        [
+          {
+            "node": "Download Google Doc (OAuth2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Setup Service Account Credentials": {
+      "main": [
+        [
+          {
+            "node": "Download Google Doc (Service Account)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Google Doc (OAuth2)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Google Doc (Service Account)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document Data": {
+      "main": [
+        [
+          {
+            "node": "Check Process Immediately",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Process Immediately": {
+      "main": [
+        [
+          {
+            "node": "Process Document with AI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Download Only Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Document with AI": {
+      "main": [
+        [
+          {
+            "node": "Store Processed Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Processed Document": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Download Only Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "onError": "continueRegularExecution"
+    }
+  },
+  "versionId": "google-doc-loader-v1",
+  "meta": {
+    "templateId": "google-docs-loader",
+    "templateCredsSetupCompleted": false,
+    "instanceId": "google-doc-processing-workflow"
+  },
+  "id": "GoogleDocLoader2024",
+  "tags": ["google-docs", "document-processing", "ai-enhancement"],
+  "staticData": {}
+}

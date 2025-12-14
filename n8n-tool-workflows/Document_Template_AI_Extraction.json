@@ -1,0 +1,347 @@
+{
+  "name": "Document Template AI Extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "document-extraction",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "document-extraction-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-data",
+              "name": "document_text",
+              "value": "={{ $json.body.document_text }}",
+              "type": "string"
+            },
+            {
+              "id": "template-fields", 
+              "name": "template_fields",
+              "value": "={{ $json.body.template_fields }}",
+              "type": "object"
+            },
+            {
+              "id": "extraction-prompt",
+              "name": "extraction_prompt", 
+              "value": "={{ $json.body.extraction_prompt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-input-data",
+      "name": "Extract Input Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {
+          "temperature": 0.1,
+          "topP": 0.9
+        },
+        "prompt": "={{ $json.extraction_prompt }}\n\nDocument Text:\n{{ $json.document_text }}\n\nReturn ONLY a valid JSON object with the extracted values:"
+      },
+      "id": "ollama-extraction", 
+      "name": "Ollama AI Extraction",
+      "type": "@n8n/n8n-nodes-langchain.ollamaChatModel",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-credentials",
+          "name": "Ollama API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst aiResponse = $input.first().json.response || $input.first().json.text || '';\n\n// Clean up the AI response to extract JSON\nlet jsonText = aiResponse.trim();\n\n// Remove markdown code block markers if present\nif (jsonText.startsWith('```json')) {\n  jsonText = jsonText.replace(/^```json\\s*/, '').replace(/\\s*```$/, '');\n}\nif (jsonText.startsWith('```')) {\n  jsonText = jsonText.replace(/^```\\s*/, '').replace(/\\s*```$/, '');\n}\n\n// Try to parse the JSON\nlet extractedData = {};\ntry {\n  extractedData = JSON.parse(jsonText);\n} catch (error) {\n  // If JSON parsing fails, try to extract key-value pairs with regex\n  const lines = jsonText.split('\\n');\n  for (const line of lines) {\n    const match = line.match(/[\"']?([^\"':]+)[\"']?\\s*:\\s*[\"']?([^\"',}]+)[\"']?/);\n    if (match) {\n      const [, key, value] = match;\n      extractedData[key.trim()] = value.trim();\n    }\n  }\n}\n\n// Validate and clean the extracted data\nconst templateFields = $('Extract Input Data').first().json.template_fields || [];\nconst cleanedData = {};\n\nfor (const field of templateFields) {\n  const fieldName = field.name;\n  let value = extractedData[fieldName] || extractedData[fieldName.toLowerCase()] || null;\n  \n  // Type conversion based on field type\n  if (value && field.type) {\n    switch (field.type) {\n      case 'number':\n        const num = parseFloat(value.toString().replace(/[^0-9.-]/g, ''));\n        value = isNaN(num) ? 0 : num;\n        break;\n      case 'currency':\n        const curr = value.toString().match(/[0-9.,]+/);\n        value = curr ? `$${parseFloat(curr[0].replace(/,/g, '')).toFixed(2)}` : '$0.00';\n        break;\n      case 'percentage':\n        const perc = value.toString().match(/[0-9.]+/);\n        value = perc ? `${parseFloat(perc[0])}%` : '0%';\n        break;\n      case 'date':\n        // Try to parse and format date\n        const date = new Date(value);\n        value = isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];\n        break;\n      default:\n        value = value.toString();\n    }\n  }\n  \n  cleanedData[fieldName] = value;\n}\n\nreturn {\n  extracted_data: cleanedData,\n  raw_ai_response: aiResponse,\n  success: true,\n  extraction_timestamp: new Date().toISOString()\n};\n"
+      },
+      "id": "process-ai-response",
+      "name": "Process AI Response", 
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-condition",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-extraction-success",
+      "name": "Check Extraction Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "success-response",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "extracted-data",
+              "name": "data",
+              "value": "={{ $json.extracted_data }}",
+              "type": "object"
+            },
+            {
+              "id": "confidence-score",
+              "name": "confidence",
+              "value": "0.85",
+              "type": "number"
+            },
+            {
+              "id": "processing-time",
+              "name": "processing_time_ms",
+              "value": "={{ $now - $('Webhook Trigger').first().json.timestamp }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-success-response",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-response",
+              "name": "status", 
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "error-message",
+              "name": "message",
+              "value": "Failed to extract data from document",
+              "type": "string"
+            },
+            {
+              "id": "raw-response",
+              "name": "raw_response",
+              "value": "={{ $('Process AI Response').first()?.json?.raw_ai_response || 'No response' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-error-response",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.set", 
+      "typeVersion": 3.4,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "document_processing_jobs",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.status === 'success' ? 'completed' : 'failed' }}",
+            "progress": "={{ $json.status === 'success' ? 100 : 0 }}",
+            "processing_settings": "={{ { 'ai_model': 'llama3.2', 'extraction_type': 'smart_template' } }}",
+            "error_message": "={{ $json.status === 'error' ? $json.message : null }}",
+            "created_by": "={{ $('Extract Input Data').first().json.user_id || 'system' }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-processing-job",
+      "name": "Log Processing Job",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1340, 600],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input Data": {
+      "main": [
+        [
+          {
+            "node": "Ollama AI Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama AI Extraction": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Response": {
+      "main": [
+        [
+          {
+            "node": "Check Extraction Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Extraction Success": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Processing Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Processing Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "errorWorkflow": "",
+      "errorWorkflowId": ""
+    }
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "document-ai",
+      "name": "document-ai"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1"
+} 

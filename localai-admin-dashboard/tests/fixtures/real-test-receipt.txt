@@ -1,0 +1,48 @@
+BEST BUY
+Electronics & More
+Store #2451
+1234 Shopping Mall Blvd
+Retail City, TX 75201
+Phone: (214) 555-0123
+
+RECEIPT
+
+Transaction ID: BB24-0115-7829
+Date: 01/15/2024
+Time: 2:47 PM
+Cashier: Sarah M.
+Register: 03
+
+Items Purchased:
+1. MacBook Pro 14" M3 (Space Gray)
+   SKU: MBP14-M3-SG-512
+   Regular Price: $1,999.00
+   Discount: -$200.00
+   Final Price: $1,799.00
+
+2. USB-C to Lightning Cable (2m)
+   SKU: USBC-LGT-2M
+   Price: $29.99
+
+3. AppleCare+ Protection Plan (3 years)
+   SKU: AC-MBP-3YR
+   Price: $399.00
+
+4. Screen Protector Kit
+   SKU: SP-MBP14-KIT
+   Price: $24.99
+
+Subtotal: $2,252.98
+Sales Tax (8.25%): $185.87
+Total: $2,438.85
+
+Payment Method: Credit Card ****1234
+Authorization: 789456123
+Approval Code: 052847
+
+Return Policy: 15 days with receipt
+Customer Service: 1-800-BESTBUY
+Store Hours: Mon-Sat 10AM-9PM, Sun 11AM-7PM
+
+Thank you for shopping at Best Buy!
+Save your receipt for warranty service.

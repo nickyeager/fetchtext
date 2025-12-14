@@ -1,0 +1,82 @@
+{
+  "test_documents": [
+    {
+      "name": "simple_text_extraction",
+      "source_file": "simple_test.txt",
+      "expected_file": "simple_test.expected.txt",
+      "document_type": "txt",
+      "min_similarity": 0.95,
+      "min_word_precision": 0.90,
+      "min_word_recall": 0.90,
+      "description": "Basic text extraction from plain text file",
+      "test_categories": ["basic", "text", "baseline"]
+    },
+    {
+      "name": "advanced_content_extraction", 
+      "source_file": "advanced_test.txt",
+      "expected_file": "advanced_test.expected.txt",
+      "document_type": "txt",
+      "min_similarity": 0.90,
+      "min_word_precision": 0.85,
+      "min_word_recall": 0.85,
+      "description": "Complex text with formatting, lists, special characters",
+      "test_categories": ["advanced", "formatting", "special_chars"]
+    },
+    {
+      "name": "markdown_extraction",
+      "source_file": "test_markdown.md",
+      "expected_file": "test_markdown.expected.txt",
+      "document_type": "md",
+      "min_similarity": 0.85,
+      "min_word_precision": 0.80,
+      "min_word_recall": 0.80,
+      "description": "Markdown document with formatting, lists, tables, code blocks",
+      "test_categories": ["markdown", "formatting", "tables", "code"]
+    },
+    {
+      "name": "html_extraction",
+      "source_file": "test_html.html",
+      "expected_file": "test_html.expected.txt",
+      "document_type": "html",
+      "min_similarity": 0.80,
+      "min_word_precision": 0.75,
+      "min_word_recall": 0.75,
+      "description": "HTML document with various tags, tables, special characters",
+      "test_categories": ["html", "web", "tables", "special_chars"]
+    },
+    {
+      "name": "table_extraction",
+      "source_file": "test_tables.txt",
+      "expected_file": "test_tables.expected.txt",
+      "document_type": "txt",
+      "min_similarity": 0.90,
+      "min_word_precision": 0.85,
+      "min_word_recall": 0.85,
+      "description": "Document with structured table data and CSV-like content",
+      "test_categories": ["tables", "structured_data", "csv"]
+    }
+  ],
+  "global_settings": {
+    "consistency_runs": 3,
+    "consistency_min_similarity": 0.98,
+    "performance_timeout_seconds": 30,
+    "enable_detailed_logging": true
+  },
+  "quality_thresholds": {
+    "txt": {
+      "min_similarity": 0.95,
+      "min_precision": 0.90,
+      "min_recall": 0.90
+    },
+    "pdf": {
+      "min_similarity": 0.85,
+      "min_precision": 0.80,
+      "min_recall": 0.80
+    },
+    "docx": {
+      "min_similarity": 0.80,
+      "min_precision": 0.75,
+      "min_recall": 0.75
+    }
+  }
+}

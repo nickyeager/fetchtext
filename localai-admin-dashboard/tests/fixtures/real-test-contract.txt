@@ -1,0 +1,60 @@
+SERVICE AGREEMENT
+
+Contract Number: SA-2024-0042
+Effective Date: January 15, 2024
+Expiration Date: January 14, 2025
+
+PARTIES:
+Service Provider: Digital Solutions LLC
+Address: 789 Tech Park Drive, Suite 200
+         Innovation City, CA 92101
+Phone: (619) 555-9876
+Email: contracts@digitalsolutions.com
+
+Client: Modern Manufacturing Inc.
+Address: 456 Industrial Blvd
+         Factory Town, OH 44101
+Contact: John Smith, IT Director
+Phone: (440) 555-4321
+Email: j.smith@modernmfg.com
+
+SCOPE OF SERVICES:
+1. Network Infrastructure Management
+   - 24/7 monitoring and maintenance
+   - Security updates and patches
+   - Monthly performance reports
+
+2. Help Desk Support
+   - Tier 1 & 2 technical support
+   - Response time: 4 hours (business hours)
+   - Remote troubleshooting
+
+3. Cloud Backup Services
+   - Daily automated backups
+   - 30-day retention policy
+   - Disaster recovery planning
+
+FINANCIAL TERMS:
+Monthly Service Fee: $4,850.00
+Setup Fee (One-time): $1,200.00
+Additional Support Hours: $125.00 per hour
+
+Payment Terms: Net 30 days
+Late Payment Fee: 1.5% per month
+
+TERM AND TERMINATION:
+Initial Term: 12 months
+Auto-renewal: Yes (6-month terms)
+Termination Notice: 60 days written notice
+
+SERVICE LEVEL AGREEMENT:
+- Network Uptime: 99.5% guaranteed
+- Support Response: 4 hours
+- Critical Issue Response: 2 hours
+
+This agreement is governed by the laws of California.
+Both parties acknowledge receipt and understanding of all terms.
+
+Authorized Signatures:
+Service Provider: _________________ Date: _________
+Client: _________________________ Date: _________

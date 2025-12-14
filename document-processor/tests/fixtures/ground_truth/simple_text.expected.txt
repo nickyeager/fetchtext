@@ -1,0 +1,18 @@
+This is a simple test document for text extraction evaluation.
+
+The document contains basic text formatting and structure to test the accuracy of the Docling text extraction service.
+
+Key Content Elements:
+- Plain text paragraphs
+- Basic punctuation and formatting
+- Numbers and special characters: 123, 456, $789
+- Common English words and phrases
+
+Additional Test Elements:
+• Bullet point with special character
+• Another bullet point for testing
+• Third point to verify list handling
+
+The extraction should preserve the overall structure and content while maintaining high accuracy in word-level extraction.
+
+This document serves as a baseline for text extraction quality testing.
