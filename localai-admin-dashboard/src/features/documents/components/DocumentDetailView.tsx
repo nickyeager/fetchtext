@@ -199,9 +199,97 @@ export function DocumentDetailView({
     };
   }, [document]);
 
+  // Comprehensive logging for extracted fields debugging
+  useEffect(() => {
+    if (!document) return;
+
+    /* eslint-disable no-console */
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📊 [DocumentDetailView] Full Document Data Analysis');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('Document ID:', documentId);
+    console.log('Document Name:', document.name);
+    console.log('Processing Status:', document.processing_status);
+    console.log('');
+
+    console.log('--- Top-Level extracted_fields ---');
+    console.log('Type:', typeof document.extracted_fields);
+    console.log('Value:', document.extracted_fields);
+    console.log('Keys:', document.extracted_fields ? Object.keys(document.extracted_fields) : 'N/A');
+    console.log('');
+
+    console.log('--- Metadata Structure ---');
+    console.log('Metadata keys:', Object.keys(document.metadata || {}));
+    console.log('Full metadata:', JSON.stringify(document.metadata, null, 2));
+    console.log('');
+
+    if (document.metadata) {
+      const meta = document.metadata as Record<string, unknown>;
+
+      console.log('--- metadata.extracted_fields ---');
+      console.log('Type:', typeof meta.extracted_fields);
+      console.log('Value:', meta.extracted_fields);
+      if (meta.extracted_fields && typeof meta.extracted_fields === 'object') {
+        console.log('Keys:', Object.keys(meta.extracted_fields));
+        console.log('Sample field:', Object.entries(meta.extracted_fields)[0]);
+      }
+      console.log('');
+
+      console.log('--- metadata.extraction_result ---');
+      console.log('Type:', typeof meta.extraction_result);
+      console.log('Value:', meta.extraction_result);
+      if (meta.extraction_result && typeof meta.extraction_result === 'object') {
+        const er = meta.extraction_result as Record<string, unknown>;
+        console.log('Keys:', Object.keys(er));
+        console.log('extracted_values type:', typeof er.extracted_values);
+        console.log('extracted_values value:', er.extracted_values);
+        if (er.extracted_values && typeof er.extracted_values === 'object') {
+          console.log('extracted_values keys:', Object.keys(er.extracted_values));
+          console.log('Sample extracted value:', Object.entries(er.extracted_values)[0]);
+        }
+      }
+      console.log('');
+
+      console.log('--- metadata.extracted_data ---');
+      console.log('Type:', typeof meta.extracted_data);
+      console.log('Value:', meta.extracted_data);
+      if (meta.extracted_data && typeof meta.extracted_data === 'object') {
+        const ed = meta.extracted_data as Record<string, unknown>;
+        console.log('Keys:', Object.keys(ed));
+        console.log('extracted_values type:', typeof ed.extracted_values);
+        console.log('extracted_values value:', ed.extracted_values);
+        if (ed.extracted_values && typeof ed.extracted_values === 'object') {
+          console.log('extracted_values keys:', Object.keys(ed.extracted_values));
+          console.log('Sample extracted value:', Object.entries(ed.extracted_values)[0]);
+        }
+      }
+      console.log('');
+
+      console.log('--- metadata.fields ---');
+      console.log('Type:', typeof meta.fields);
+      console.log('Value:', meta.fields);
+      if (meta.fields && typeof meta.fields === 'object') {
+        console.log('Keys:', Object.keys(meta.fields));
+        console.log('Sample field:', Object.entries(meta.fields)[0]);
+      }
+    }
+
+    console.log('═══════════════════════════════════════════════════════');
+    /* eslint-enable no-console */
+  }, [document, documentId]);
+
   // Convert document data to content format
   const documentContent: DocumentContent = useMemo(() => {
     if (!document) return { original: { text: '' }, processed: { text: '' } };
+
+    // eslint-disable-next-line no-console
+    console.log('📄 DocumentDetailView - Building content display', {
+      documentId: document.id,
+      documentName: document.name,
+      contentTextLength: document.content_text?.length,
+      contentTextPreview: document.content_text?.substring(0, 100),
+      metadataKeys: Object.keys(document.metadata || {})
+    });
 
     // Try different sources for original and processed text
     const originalText = String(
@@ -210,7 +298,7 @@ export function DocumentDetailView({
       document.content_text ??
       ''
     );
-    
+
     // For processed text, try to generate formatted template output if we have extracted data
     let processedText = String(
       (document.metadata as any)?.processed_content ??
@@ -219,6 +307,14 @@ export function DocumentDetailView({
       document.content_text ??
       ''
     );
+
+    // eslint-disable-next-line no-console
+    console.log('📄 DocumentDetailView - Content resolution', {
+      originalTextLength: originalText.length,
+      processedTextLength: processedText.length,
+      originalPreview: originalText.substring(0, 100),
+      processedPreview: processedText.substring(0, 100)
+    });
     
     // Get extracted data from various sources
     let extractedData: Record<string, unknown> = {};
@@ -1676,16 +1772,30 @@ export function DocumentDetailView({
               // Handle different possible structures for extracted fields
               let extractedFields = {};
               let confidenceScores = {};
-              
+              let detectionPath = 'none';
+
+              /* eslint-disable no-console */
+              console.log('');
+              console.log('🔍 [Field Detection] Starting field detection process');
+              console.log('Document ID:', documentId);
+
               // Try direct extracted_fields first
               if (document.extracted_fields && typeof document.extracted_fields === 'object') {
                 extractedFields = document.extracted_fields;
+                detectionPath = 'document.extracted_fields';
+                console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                console.log('   Field count:', Object.keys(extractedFields).length);
+                console.log('   Fields:', extractedFields);
               }
               // Try metadata.extracted_fields
               else if (document.metadata?.extracted_fields && typeof document.metadata.extracted_fields === 'object') {
                 extractedFields = document.metadata.extracted_fields;
+                detectionPath = 'metadata.extracted_fields';
+                console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                console.log('   Field count:', Object.keys(extractedFields).length);
+                console.log('   Fields:', extractedFields);
               }
-              // Try metadata.extraction_result.extracted_values (NEW - this is the missing piece)
+              // Try metadata.extraction_result.extracted_values
               else if ((document.metadata as Record<string, unknown>)?.extraction_result &&
                        typeof (document.metadata as Record<string, unknown>).extraction_result === 'object') {
                 const erUnknown = (document.metadata as Record<string, unknown>).extraction_result as unknown;
@@ -1693,16 +1803,62 @@ export function DocumentDetailView({
                   const er = erUnknown as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
                   if (er.extracted_values && typeof er.extracted_values === 'object') {
                     extractedFields = er.extracted_values;
+                    detectionPath = 'metadata.extraction_result.extracted_values';
+                    console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                    console.log('   Field count:', Object.keys(extractedFields).length);
+                    console.log('   Fields:', extractedFields);
                   }
                   if (er.confidence_scores && typeof er.confidence_scores === 'object') {
                     confidenceScores = er.confidence_scores as Record<string, number>;
+                    console.log('   Found confidence scores:', confidenceScores);
+                  }
+                }
+              }
+              // CRITICAL FIX: Also check metadata.extracted_data.extracted_values (backend response structure)
+              else if ((document.metadata as Record<string, unknown>)?.extracted_data &&
+                       typeof (document.metadata as Record<string, unknown>).extracted_data === 'object') {
+                const edUnknown = (document.metadata as Record<string, unknown>).extracted_data as unknown;
+                if (edUnknown && typeof edUnknown === 'object') {
+                  const ed = edUnknown as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
+                  if (ed.extracted_values && typeof ed.extracted_values === 'object') {
+                    extractedFields = ed.extracted_values;
+                    detectionPath = 'metadata.extracted_data.extracted_values';
+                    console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                    console.log('   Field count:', Object.keys(extractedFields).length);
+                    console.log('   Fields:', extractedFields);
+                  }
+                  if (ed.confidence_scores && typeof ed.confidence_scores === 'object') {
+                    confidenceScores = ed.confidence_scores as Record<string, number>;
+                    console.log('   Found confidence scores:', confidenceScores);
                   }
                 }
               }
               // Try metadata.fields
               else if (document.metadata?.fields && typeof document.metadata.fields === 'object') {
                 extractedFields = document.metadata.fields;
+                detectionPath = 'metadata.fields';
+                console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                console.log('   Field count:', Object.keys(extractedFields).length);
+                console.log('   Fields:', extractedFields);
+              } else {
+                console.log('❌ [Field Detection] No fields found in any expected location');
+                console.log('   Checked paths:');
+                console.log('   - document.extracted_fields');
+                console.log('   - metadata.extracted_fields');
+                console.log('   - metadata.extraction_result.extracted_values');
+                console.log('   - metadata.extracted_data.extracted_values');
+                console.log('   - metadata.fields');
               }
+
+              console.log('');
+              console.log('📦 [Field Detection] Final Results:');
+              console.log('   Detection path:', detectionPath);
+              console.log('   Field count:', Object.keys(extractedFields).length);
+              console.log('   Field names:', Object.keys(extractedFields));
+              console.log('   Full extracted fields:', extractedFields);
+              console.log('   Confidence scores:', confidenceScores);
+              console.log('');
+              /* eslint-enable no-console */
               
               return (
                 <ExtractedFieldsEditor
