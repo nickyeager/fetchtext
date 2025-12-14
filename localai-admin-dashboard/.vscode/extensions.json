@@ -1,0 +1,39 @@
+{
+  "recommendations": [
+    // Essential for debugging
+    "msjsdiag.debugger-for-chrome",
+    "firefox-devtools.vscode-firefox-debug",
+    "ms-edgedevtools.vscode-edge-devtools",
+    
+    // TypeScript and JavaScript
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-typescript-next",
+    
+    // React development
+    "dsznajder.es7-react-js-snippets",
+    "burkeholland.simple-react-snippets",
+    "styled-components.vscode-styled-components",
+    
+    // Testing
+    "ZixuanChen.vitest-explorer",
+    "vitest.explorer",
+    
+    // TailwindCSS
+    "bradlc.vscode-tailwindcss",
+    
+    // Git
+    "eamodio.gitlens",
+    
+    // Utilities
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "naumovs.color-highlight",
+    "mikestead.dotenv",
+    "usernamehw.errorlens",
+    
+    // Code quality
+    "streetsidesoftware.code-spell-checker",
+    "sonarsource.sonarlint-vscode"
+  ]
+}

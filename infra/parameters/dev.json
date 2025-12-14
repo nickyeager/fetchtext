@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": {
+      "value": "dev"
+    },
+    "deploymentPrincipalObjectId": {
+      "value": "9f26cb07-8dab-41df-b472-84d7d8f7bd56"
+    },
+    "supabaseUrl": {
+      "value": "*** set via azd env: SUPABASE_URL ***"
+    },
+    "supabaseAnonKey": {
+      "value": "*** set via azd env: SUPABASE_ANON_KEY ***"
+    },
+    "supabaseServiceRoleKey": {
+      "value": "*** set via azd env: SUPABASE_SERVICE_ROLE_KEY ***"
+    },
+    "supabaseDbConnection": {
+      "value": "*** set via azd env: SUPABASE_DB_CONNECTION ***"
+    }
+  }
+}

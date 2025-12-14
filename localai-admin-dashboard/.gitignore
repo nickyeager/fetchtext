@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local generated artifacts (Playwright/Vitest/Vite)
+/playwright-report/
+/test-results/
+/htmlcov/
+/coverage.xml
+/.coverage
+/.pw-results.json
+/.pw-run.json
+/.pw.xml
+/.auth-preview.*
+/.preview.*
+/.tanstack/
+
+# Test-generated screenshots (do not track)
+/current-ui-state.png
+/no-file-input-found.png
+/debug-ui-state.png

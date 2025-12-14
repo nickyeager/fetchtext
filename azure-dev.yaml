@@ -1,0 +1,55 @@
+name: fetchtext-platform
+metadata:
+  template: custom
+  description: |
+    Provision Azure Container Apps for the document processor and Static Web Apps for the dashboard.
+
+services:
+  dashboard:
+    project: ./localai-admin-dashboard
+    language: custom
+    host: staticwebapp
+    dist: dist
+    config:
+      appLocation: .
+      outputLocation: dist
+    hooks:
+      prepackage:
+        posix:
+          shell: sh
+          run: |
+            set -euo pipefail
+            if command -v corepack >/dev/null 2>&1; then
+              corepack enable || true
+              corepack prepare pnpm@9 --activate || true
+            fi
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            pnpm install
+            pnpm build
+        windows:
+          shell: pwsh
+          run: |
+            Set-StrictMode -Version Latest
+            if (Get-Command corepack -ErrorAction SilentlyContinue) {
+              corepack enable | Out-Null
+              corepack prepare pnpm@9 --activate | Out-Null
+            }
+            $env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'
+            pnpm install
+            pnpm build
+
+  document-processor:
+    project: ./document-processor
+    language: docker
+    host: containerapp
+    docker:
+      path: ./Dockerfile
+      context: .
+      registry: ${AZURE_CONTAINER_REGISTRY_ENDPOINT}
+      image: document-processor
+      tag: latest
+
+infra:
+  provider: bicep
+  path: infra
+  parametersFile: infra/parameters/${AZURE_ENV_NAME}.json

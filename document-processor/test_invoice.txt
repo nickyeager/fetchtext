@@ -1,0 +1,17 @@
+
+INVOICE
+
+Invoice Number: INV-2024-001
+Date: January 15, 2024
+
+Bill To:
+Test Company Inc.
+123 Main Street
+New York, NY 10001
+
+Description: Professional Services
+Amount: $1,500.00
+Tax: $150.00
+Total Due: $1,650.00
+
+Payment Terms: Net 30

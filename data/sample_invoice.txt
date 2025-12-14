@@ -1,0 +1,30 @@
+ACME Corporation
+123 Business Street
+New York, NY 10001
+Phone: (555) 123-4567
+Email: billing@acme.com
+
+INVOICE
+
+Invoice Number: INV-2024-001
+Date: January 15, 2024
+Due Date: February 15, 2024
+
+Bill To:
+Tech Solutions Inc.
+456 Client Avenue
+San Francisco, CA 94102
+
+Description                    Quantity    Rate        Amount
+Web Development Services       40 hours    $125.00     $5,000.00
+Database Setup                 8 hours     $150.00     $1,200.00
+Testing & QA                   12 hours    $100.00     $1,200.00
+
+                              Subtotal:    $7,400.00
+                              Tax (8.5%):    $629.00
+                              Total:       $8,029.00
+
+Payment Terms: Net 30 days
+Payment Method: Check or Wire Transfer
+
+Thank you for your business!

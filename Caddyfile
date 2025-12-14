@@ -32,7 +32,7 @@
 
 # Supabase
 {$SUPABASE_HOSTNAME} {
-    reverse_proxy kong:8000
+    reverse_proxy supabase-kong:8000
 }
 
 # Neo4j
@@ -40,7 +40,10 @@
     reverse_proxy neo4j:7474
 }
 
-import /etc/caddy/addons/*.conf
+# Document Processor
+{$DOCUMENT_PROCESSOR_HOSTNAME} {
+    reverse_proxy document-processor:8090
+}
 
 # # SearXNG
 # {$SEARXNG_HOSTNAME} {

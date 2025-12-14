@@ -1,0 +1,9 @@
+# Enhanced document processing dependencies
+qdrant-client>=1.7.0
+openai>=1.12.0
+numpy>=1.24.0
+
+# Optional dependencies for better performance
+# sentence-transformers>=2.2.0  # For local embeddings if needed
+# nltk>=3.8  # For advanced text processing
+# spacy>=3.7.0  # For NLP features

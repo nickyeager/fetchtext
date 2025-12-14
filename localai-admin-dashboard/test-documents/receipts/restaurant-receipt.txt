@@ -1,0 +1,26 @@
+THE GOURMET KITCHEN
+-----------------
+123 Food Court
+San Francisco, CA
+
+Date: 02/28/2024
+Time: 7:45 PM
+Server: Maria
+
+Order #1234
+Table 15
+
+Grilled Salmon        $28.00
+Caesar Salad         $12.00
+House Wine           $15.00
+Chocolate Cake        $9.00
+
+Subtotal:            $64.00
+Tax (8.5%):           $5.44
+Tip:                 $12.00
+
+TOTAL:               $81.44
+
+Payment: Visa ****1234
+
+Thank you for dining with us!

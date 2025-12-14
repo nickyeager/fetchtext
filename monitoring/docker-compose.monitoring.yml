@@ -1,0 +1,518 @@
+version: '3.8'
+
+services:
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: localai-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./metrics/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./metrics/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - monitoring
+
+  # Grafana - Visualization Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: localai-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboards/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # cAdvisor - Container Metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: localai-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8084:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    networks:
+      - monitoring
+
+  # Node Exporter - System Metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: localai-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+
+  # AlertManager - Alert Routing
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: localai-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alerts/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    networks:
+      - monitoring
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: localai-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./logs/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  # Promtail - Log Collector
+  promtail:
+    image: grafana/promtail:latest
+    container_name: localai-promtail
+    restart: unless-stopped
+    volumes:
+      - ./logs/promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitoring
+    depends_on:
+      - loki
+
+  # Jaeger - Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: localai-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    volumes:
+      - jaeger_data:/tmp
+    networks:
+      - monitoring
+
+  # Elasticsearch - Log Storage (alternative to Loki)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: localai-elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring
+
+  # Kibana - Elasticsearch Dashboard
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: localai-kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - monitoring
+    depends_on:
+      - elasticsearch
+
+  # Uptime Kuma - Uptime Monitoring
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: localai-uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3003:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - monitoring
+
+  # Netdata - Real-time performance monitoring
+  netdata:
+    image: netdata/netdata:latest
+    container_name: localai-netdata
+    restart: unless-stopped
+    ports:
+      - "19999:19999"
+    environment:
+      - PGID=999
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+    networks:
+      - monitoring
+
+  # Portainer - Docker management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: localai-portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - monitoring
+
+  # Watchtower - Automatic container updates
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: localai-watchtower
+    restart: unless-stopped
+    environment:
+      - WATCHTOWER_SCHEDULE=0 2 * * *  # Daily at 2 AM
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_MONITOR_ONLY=true  # Set to false to enable auto-updates
+      - WATCHTOWER_NOTIFICATIONS=slack
+      - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+
+  # Dive - Docker image analysis (run manually)
+  dive:
+    image: wagoodman/dive:latest
+    container_name: localai-dive
+    restart: "no"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+    profiles:
+      - tools  # Only start when specifically requested
+
+  # Falco - Runtime security monitoring
+  falco:
+    image: falcosecurity/falco:latest
+    container_name: localai-falco
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8765:8765"
+    environment:
+      - FALCO_GRPC_ENABLED=true
+      - FALCO_GRPC_BIND_ADDRESS=0.0.0.0:5060
+      - FALCO_HTTP_OUTPUT_ENABLED=true
+      - FALCO_HTTP_OUTPUT_URL=http://prometheus:9090/api/v1/write
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock:ro
+      - /dev:/host/dev:ro
+      - /proc:/host/proc:ro
+      - /boot:/host/boot:ro
+      - /lib/modules:/host/lib/modules:ro
+      - /usr:/host/usr:ro
+      - /etc:/host/etc:ro
+    networks:
+      - monitoring
+
+  # Ouroboros - Automated container updates
+  ouroboros:
+    image: pyouroboros/ouroboros:latest
+    container_name: localai-ouroboros
+    restart: unless-stopped
+    environment:
+      - CLEANUP=true
+      - INTERVAL=300  # 5 minutes
+      - LOG_LEVEL=info
+      - SELF_UPDATE=true
+      - IGNORE=prometheus,grafana,mongo  # Don't auto-update critical services
+      - MONITOR_ONLY=true  # Set to false to enable auto-updates
+      - NOTIFIERS=slack://hooks.slack.com/services/${SLACK_WEBHOOK_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+
+  # Docker System Events Monitor
+  docker-events:
+    image: alpine:latest
+    container_name: localai-docker-events
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli curl &&
+        while true; do
+          docker events --format "{{.Time}} {{.Type}} {{.Action}} {{.Actor.ID}} {{.Actor.Attributes.name}}" | 
+          while read event; do
+            echo "Docker Event: $$event"
+            # Send to monitoring endpoint if available
+            curl -X POST -H "Content-Type: application/json" \
+              -d "{\"event\":\"$$event\", \"timestamp\":\"$$(date -Iseconds)\"}" \
+              http://prometheus:9090/api/v1/write 2>/dev/null || true
+          done
+          sleep 1
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+
+  # Container Resource Limits Monitor
+  resource-monitor:
+    image: alpine:latest
+    container_name: localai-resource-monitor
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli jq curl &&
+        while true; do
+          docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" > /tmp/stats.txt
+          cat /tmp/stats.txt
+          # Send alerts for high resource usage
+          docker stats --no-stream --format "{{.Container}},{{.CPUPerc}},{{.MemPerc}}" | 
+          while IFS=, read container cpu mem; do
+            cpu_val=$${cpu%\%}
+            mem_val=$${mem%\%}
+            if [ "$${cpu_val%.*}" -gt 80 ] || [ "$${mem_val%.*}" -gt 80 ]; then
+              echo "ALERT: High resource usage in $$container - CPU: $$cpu, Memory: $$mem"
+            fi
+          done
+          sleep 30
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+
+  # Docker Garbage Collection Monitor
+  docker-gc:
+    image: spotify/docker-gc:latest
+    container_name: localai-docker-gc
+    restart: unless-stopped
+    environment:
+      - DRY_RUN=1  # Set to 0 to actually clean up
+      - GRACE_PERIOD_SECONDS=3600
+      - CLEAN_UP_VOLUMES=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+    profiles:
+      - cleanup  # Only run when requested
+
+  # Container Healthcheck Monitor
+  health-monitor:
+    image: alpine:latest
+    container_name: localai-health-monitor
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli curl jq &&
+        while true; do
+          echo "=== Container Health Check Report ===" 
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | head -20
+          
+          # Check for unhealthy containers
+          unhealthy=$$(docker ps --filter health=unhealthy --format "{{.Names}}")
+          if [ -n "$$unhealthy" ]; then
+            echo "🔴 UNHEALTHY CONTAINERS: $$unhealthy"
+          fi
+          
+          # Check for stopped containers that should be running
+          stopped=$$(docker ps -a --filter status=exited --filter restart=unless-stopped --format "{{.Names}}")
+          if [ -n "$$stopped" ]; then
+            echo "⚠️  STOPPED CONTAINERS (should be running): $$stopped"
+          fi
+          
+          echo "Next check in 60 seconds..."
+          sleep 60
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+
+  # Docker Image Vulnerability Scanner
+  trivy-scanner:
+    image: aquasec/trivy:latest
+    container_name: localai-trivy-scanner
+    restart: "no"
+    command: |
+      sh -c '
+        # Scan all running containers for vulnerabilities
+        docker ps --format "{{.Image}}" | sort -u | while read image; do
+          echo "Scanning $$image for vulnerabilities..."
+          trivy image --severity HIGH,CRITICAL $$image
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - trivy_cache:/root/.cache/trivy
+    networks:
+      - monitoring
+    profiles:
+      - security  # Only run when requested
+
+  # Docker Compose Project Monitor
+  compose-monitor:
+    image: alpine:latest
+    container_name: localai-compose-monitor
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli docker-compose curl &&
+        cd /workspace &&
+        while true; do
+          echo "=== Docker Compose Stack Status ==="
+          docker-compose ps
+          
+          # Check service health
+          docker-compose ps --services | while read service; do
+            status=$$(docker-compose ps -q $$service | xargs docker inspect --format="{{.State.Status}}")
+            if [ "$$status" != "running" ]; then
+              echo "⚠️  Service $$service is $$status"
+            fi
+          done
+          
+          sleep 120
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${PWD}:/workspace
+    working_dir: /workspace
+    networks:
+      - monitoring
+
+  # Docker Network Monitor
+  network-monitor:
+    image: alpine:latest
+    container_name: localai-network-monitor
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli curl netcat-openbsd &&
+        while true; do
+          echo "=== Docker Network Status ==="
+          docker network ls
+          
+          # Test connectivity between services
+          echo "Testing internal connectivity..."
+          nc -zv prometheus 9090 2>&1 | grep succeeded || echo "⚠️  Cannot reach Prometheus"
+          nc -zv grafana 3000 2>&1 | grep succeeded || echo "⚠️  Cannot reach Grafana"
+          
+          # Check for orphaned networks
+          orphaned=$$(docker network ls --filter dangling=true -q)
+          if [ -n "$$orphaned" ]; then
+            echo "🧹 Found orphaned networks: $$orphaned"
+          fi
+          
+          sleep 180
+        done'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+
+  # Container Log Size Monitor
+  log-size-monitor:
+    image: alpine:latest
+    container_name: localai-log-size-monitor
+    restart: unless-stopped
+    command: |
+      sh -c '
+        apk add --no-cache docker-cli &&
+        while true; do
+          echo "=== Container Log Sizes ==="
+          docker ps --format "{{.Names}}" | while read container; do
+            log_path=$$(docker inspect $$container | grep LogPath | cut -d\" -f4)
+            if [ -f "$$log_path" ]; then
+              size=$$(du -h "$$log_path" | cut -f1)
+              echo "$$container: $$size"
+              # Alert if log size > 100MB
+              size_mb=$$(du -m "$$log_path" | cut -f1)
+              if [ "$$size_mb" -gt 100 ]; then
+                echo "⚠️  Large log file for $$container: $${size_mb}MB"
+              fi
+            fi
+          done
+          sleep 300  # Check every 5 minutes
+        done'
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - monitoring
+
+networks:
+  default:
+    name: local-ai
+    external: true
+  monitoring:
+    driver: bridge
+    external: false
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  loki_data:
+  jaeger_data:
+  elasticsearch_data:
+  uptime_kuma_data:
+  portainer_data:
+  trivy_cache:

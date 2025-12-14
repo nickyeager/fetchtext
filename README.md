@@ -2,7 +2,7 @@
 
 **Self-hosted AI Package** is an open, docker compose template that
 quickly bootstraps a fully featured Local AI and Low Code development
-environment including Ollama for your local LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication. 
+environment including Ollama for local LLMs, Azure OpenAI for cloud LLMs, Open WebUI for an interface to chat with your N8N agents, and Supabase for your database, vector store, and authentication. 
 
 This is Cole's version with a couple of improvements and the addition of Supabase, Open WebUI, Flowise, Neo4j, Langfuse, SearXNG, and Caddy!
 Also, the local RAG AI Agent workflows from the video will be automatically in your 
@@ -109,6 +109,19 @@ Before running the services, you need to set up your environment variables for S
    NEXTAUTH_SECRET=
    ENCRYPTION_KEY=  
    ```
+
+### Seeding a dashboard login
+
+If you need a known Supabase auth user for the dashboard, run:
+
+```bash
+python scripts/seed_supabase_user.py \
+  --email admin@fetchtext.local \
+  --password ***REMOVED-TEST-PASSWORD*** \
+  --service-role-key "$SERVICE_ROLE_KEY"
+```
+
+This script uses the Supabase admin API to insert the user (defaults to `http://localhost:8000`). Update the email/password flags as needed.
 
 > [!IMPORTANT]
 > Make sure to generate secure random values for all secrets. Never use the example values in production.

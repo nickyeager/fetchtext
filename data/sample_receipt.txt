@@ -1,0 +1,33 @@
+Best Buy Store #1234
+Electronics & Appliances
+789 Shopping Plaza
+Los Angeles, CA 90210
+(310) 555-0123
+
+RECEIPT
+
+Receipt #: R-789456123
+Date: March 10, 2024
+Time: 2:45 PM
+Cashier: Sarah M.
+
+Items Purchased:
+1. MacBook Pro 16" M3          $2,399.00
+2. USB-C Hub                     $49.99
+3. Wireless Mouse                $29.99
+4. Extended Warranty (2yr)      $199.00
+
+Subtotal:                      $2,677.98
+Sales Tax (9.75%):              $261.10
+Total:                         $2,939.08
+
+Payment Method: Credit Card ****1234
+Card Type: Visa
+Approval Code: 123456
+
+Customer: Mike Johnson
+Phone: (555) 987-6543
+Email: mike.j@email.com
+
+Thank you for shopping with us!
+Return Policy: 30 days with receipt
