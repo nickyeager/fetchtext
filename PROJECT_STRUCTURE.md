@@ -22,7 +22,7 @@
 - `n8n/` – Backup directory for n8n workflows and credentials.
 - `n8n-tool-workflows/` – Additional n8n workflow exports.
 - `scripts/` – Utility scripts for document processing tests, validation, and PR preparation.
-- `plans/`, `memory/`, `documentation/` – Project plans, historical notes, and formal documentation (supabase setup, monitoring guides, etc.).
+- `plans/`, `documentation/`, `.copilot-tracking/` – Project plans, historical notes, and formal documentation (supabase setup, monitoring guides, etc.).
 
 ## Supabase Stack
 - `supabase/docker/` – Service-specific configuration (Kong, Storage, etc.) and volume mounts.

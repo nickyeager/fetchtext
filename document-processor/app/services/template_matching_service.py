@@ -467,5 +467,136 @@ class TemplateMatchingService:
         self.cache_enabled = True
         self.logger.info("Template caching enabled")
 
+    async def validate_template_extraction(
+        self,
+        content: str,
+        templates: List[Dict[str, Any]],
+        confidence_threshold: float = 0.6,
+        provider: str = "azure"
+    ) -> List[Dict[str, Any]]:
+        """
+        Validate extraction quality for multiple templates in parallel.
+
+        This method performs REAL extraction tests on multiple templates simultaneously
+        using asyncio.gather() for optimal performance.
+
+        Args:
+            content: Document text content to test extraction on
+            templates: List of template dicts with smart_variables
+            confidence_threshold: Minimum confidence for extraction (default: 0.6)
+            provider: AI provider to use ("azure" or "ollama")
+
+        Returns:
+            List of templates with extraction validation results added:
+            - extraction_quality: Field success rate (0.0-1.0)
+            - avg_field_confidence: Average confidence of extracted fields
+            - extractable_fields: Number of fields successfully extracted
+            - failed_fields: List of field names that couldn't be extracted
+            - extraction_error: Error message if validation failed
+
+        Example:
+            templates = [
+                {'id': 4, 'name': 'Contract Template', 'smart_variables': [...]},
+                {'id': 5, 'name': 'Invoice Template', 'smart_variables': [...]}
+            ]
+
+            validated = await service.validate_template_extraction(
+                content=document_text,
+                templates=templates,
+                confidence_threshold=0.6
+            )
+
+            # validated[0] now includes:
+            # {
+            #     'id': 4,
+            #     'name': 'Contract Template',
+            #     'extraction_quality': 0.85,
+            #     'avg_field_confidence': 0.82,
+            #     'extractable_fields': 6,
+            #     'failed_fields': ['warranty_period']
+            # }
+        """
+        from .smart_field_extractor import smart_field_extractor
+
+        self.logger.info(f"Validating extraction for {len(templates)} templates in parallel")
+
+        validated_templates = []
+
+        # Create async tasks for parallel extraction testing
+        async def test_single_template(template: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+            """Test extraction for a single template and return (template, result)"""
+            try:
+                smart_variables = template.get('smart_variables', [])
+
+                if not smart_variables:
+                    self.logger.warning(f"Template '{template.get('name')}' has no smart_variables")
+                    return (template, {
+                        'field_success_rate': 0.0,
+                        'avg_confidence': 0.0,
+                        'extractable_count': 0,
+                        'total_fields': 0,
+                        'failed_fields': [],
+                        'extraction_quality': 0.0
+                    })
+
+                # Perform real extraction test
+                result = await smart_field_extractor.test_template_extraction(
+                    content=content,
+                    template_variables=smart_variables,
+                    confidence_threshold=confidence_threshold,
+                    provider=provider
+                )
+
+                return (template, result)
+
+            except Exception as e:
+                self.logger.error(f"Extraction test failed for template '{template.get('name')}': {str(e)}")
+                return (template, {
+                    'field_success_rate': 0.0,
+                    'avg_confidence': 0.0,
+                    'extractable_count': 0,
+                    'total_fields': len(template.get('smart_variables', [])),
+                    'failed_fields': [var.get('name', var.get('id', '')) for var in template.get('smart_variables', [])],
+                    'extraction_quality': 0.0,
+                    'extraction_error': str(e)
+                })
+
+        # Execute all tests in parallel
+        tasks = [test_single_template(template) for template in templates]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Combine results with templates
+        for result in results:
+            if isinstance(result, Exception):
+                self.logger.error(f"Template validation task failed: {result}")
+                continue
+
+            template, extraction_result = result
+
+            # Add extraction metrics to template
+            template['extraction_quality'] = extraction_result.get('field_success_rate', 0.0)
+            template['avg_field_confidence'] = extraction_result.get('avg_confidence', 0.0)
+            template['extractable_fields'] = extraction_result.get('extractable_count', 0)
+            template['total_fields'] = extraction_result.get('total_fields', 0)
+            template['failed_fields'] = extraction_result.get('failed_fields', [])
+
+            if 'extraction_error' in extraction_result:
+                template['extraction_error'] = extraction_result['extraction_error']
+
+            validated_templates.append(template)
+
+            self.logger.debug(
+                f"Template '{template.get('name')}': "
+                f"extraction_quality={template['extraction_quality']:.2f}, "
+                f"fields={template['extractable_fields']}/{template['total_fields']}"
+            )
+
+        self.logger.info(
+            f"Completed parallel validation for {len(validated_templates)} templates "
+            f"(avg quality: {sum(t['extraction_quality'] for t in validated_templates) / len(validated_templates):.2f})"
+        )
+
+        return validated_templates
+
 # Global instance
 template_matching_service = TemplateMatchingService()

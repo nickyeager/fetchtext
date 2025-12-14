@@ -235,20 +235,35 @@ export class UnifiedDocumentService {
         console.log('🎯 Document has pre-selected template, triggering template extraction...');
         setTimeout(() => this.triggerTemplateExtraction(documentId), 100);
       }
-      // If we have template suggestions, automatically select and apply the best one
+      // If we have template suggestions, automatically select and apply the best one (if confidence is high enough)
       else if (evaluation.template_suggestions && evaluation.template_suggestions.length > 0) {
-        console.log('🤖 Auto-selecting best template suggestion for extraction...');
         const bestTemplate = evaluation.template_suggestions
           .sort((a, b) => b.match_score - a.match_score)[0];
-        
-        console.log('🎯 Selected template:', {
+
+        const MIN_AUTO_SELECT_CONFIDENCE = 0.70; // Require 70% match score for auto-selection
+
+        console.log('🤖 Evaluating template auto-selection...', {
           templateId: bestTemplate.template_id,
           templateName: bestTemplate.template_name,
-          matchScore: bestTemplate.match_score
+          matchScore: bestTemplate.match_score,
+          threshold: MIN_AUTO_SELECT_CONFIDENCE
         });
-        
-        // Apply the best template and trigger extraction
-        setTimeout(() => this.applyTemplateToDocument(documentId, bestTemplate.template_id, bestTemplate.template_name), 100);
+
+        // Only auto-select if confidence is above threshold
+        if (bestTemplate.match_score >= MIN_AUTO_SELECT_CONFIDENCE) {
+          console.log('🎯 Auto-selecting template (confidence above threshold)');
+          // Apply the best template and trigger extraction
+          setTimeout(() => this.applyTemplateToDocument(documentId, bestTemplate.template_id, bestTemplate.template_name), 100);
+        } else {
+          console.log('⚠️ Template match score too low for auto-selection:', {
+            matchScore: bestTemplate.match_score,
+            required: MIN_AUTO_SELECT_CONFIDENCE,
+            templateName: bestTemplate.template_name
+          });
+          console.log('💡 User will need to manually select a template or create a new one');
+          // Do generic text extraction instead
+          setTimeout(() => this.triggerGenericTextExtraction(documentId), 100);
+        }
       }
       // If no template suggestions, do generic text extraction
       else {
@@ -530,12 +545,36 @@ export class UnifiedDocumentService {
 
       // Get the template
       const template = await templateService.getTemplate(Number(templateId));
-      
+
       if (!template) {
         console.error('Template not found:', templateId);
         await this.markDocumentFailed(documentId, `Template not found: ${templateId}`);
         return;
       }
+
+      // VALIDATION: Verify template has smart_variables
+      console.log('🔍 Validating template data...', {
+        templateId: template.id,
+        templateName: template.name,
+        hasSmartVariables: !!template.smart_variables,
+        smartVariablesLength: template.smart_variables?.length ?? 0,
+        smartVariablesType: typeof template.smart_variables
+      });
+
+      if (!template.smart_variables || !Array.isArray(template.smart_variables) || template.smart_variables.length === 0) {
+        console.error('❌ Template missing smart_variables:', {
+          templateId: template.id,
+          templateName: template.name,
+          smart_variables: template.smart_variables
+        });
+        await this.markDocumentFailed(documentId, `Template ${template.name} (ID: ${template.id}) is missing smart_variables definition`);
+        return;
+      }
+
+      console.log('✅ Template validation passed:', {
+        variableCount: template.smart_variables.length,
+        variables: template.smart_variables.map((v: any) => v.name || v.id).join(', ')
+      });
 
       // Initialize document processor and perform extraction
       const { DocumentProcessorEnhanced } = await import('@/lib/document-processor-enhanced');

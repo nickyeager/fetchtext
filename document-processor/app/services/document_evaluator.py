@@ -74,22 +74,30 @@ class DocumentEvaluator:
         }
     
     async def evaluate_document(
-        self, 
+        self,
         file_path: Path,
         filename: str,
         content_type: str,
-        quick_scan: bool = True
+        quick_scan: bool = True,
+        content_override: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Evaluate document type with configurable depth
-        
+
+        Args:
+            file_path: Path to document file
+            filename: Original filename
+            content_type: MIME type of the file
+            quick_scan: If True, performs quick analysis; if False, full analysis
+            content_override: Pre-extracted clean text content (bypasses file extraction)
+
         Quick scan: First page/partial analysis, basic patterns
         Full scan: Complete document analysis with AI
         """
         
         # Get file info
         file_info = self._get_file_info(file_path, filename, content_type)
-        
+
         if not file_info['format_supported']:
             return {
                 'document_info': file_info,
@@ -104,15 +112,19 @@ class DocumentEvaluator:
                     'alternative_actions': []
                 }
             }
-        
+
         # Perform document analysis
         if quick_scan:
-            type_evaluation = await self._quick_type_detection_simple(file_path, file_info)
+            type_evaluation = await self._quick_type_detection_simple(file_path, file_info, content_override)
         else:
-            type_evaluation = await self._quick_type_detection_simple(file_path, file_info)
-        
+            type_evaluation = await self._quick_type_detection_simple(file_path, file_info, content_override)
+
         # Get content preview
-        content_preview = await self._get_content_preview_simple(file_path, quick_scan)
+        if content_override:
+            logger.info(f"Using provided content override ({len(content_override)} chars) for content preview")
+            content_preview = self._get_content_preview_from_text(content_override, quick_scan)
+        else:
+            content_preview = await self._get_content_preview_simple(file_path, quick_scan)
         
         # Find matching templates using the advanced template matching service
         print(f"[TEMPLATE DEBUG] Finding templates for document type: {type_evaluation['primary_type']}")
@@ -161,11 +173,15 @@ class DocumentEvaluator:
             'format_supported': format_supported
         }
     
-    async def _quick_type_detection_simple(self, file_path: Path, file_info: Dict[str, Any]) -> Dict[str, Any]:
+    async def _quick_type_detection_simple(self, file_path: Path, file_info: Dict[str, Any], content_override: Optional[str] = None) -> Dict[str, Any]:
         """Simple document type detection without external services"""
         try:
+            # Use content_override if provided
+            if content_override:
+                logger.info(f"Using provided content override ({len(content_override)} chars) for type detection")
+                content = content_override[:5000]  # First 5000 chars
             # For PDFs and other binary formats, use the enhanced service with timeout
-            if file_info['file_extension'] in ['.pdf', '.docx', '.doc', '.xlsx']:
+            elif file_info['file_extension'] in ['.pdf', '.docx', '.doc', '.xlsx']:
                 # Use the actual document processing service for binary files with timeout
                 try:
                     result = await asyncio.wait_for(
@@ -177,12 +193,12 @@ class DocumentEvaluator:
                         ),
                         timeout=self.document_processing_timeout
                     )
-                    
+
                     if result.get('status') != 'completed':
                         # Fallback to filename-based detection
                         logger.warning("Document processing failed, using filename detection")
                         return self._detect_from_filename(file_info['filename'])
-                    
+
                     content = result.get('content', {}).get('text', '')[:5000]
                 except asyncio.TimeoutError:
                     logger.warning(f"Document processing timed out after {self.document_processing_timeout} seconds, using filename detection")
@@ -349,10 +365,10 @@ class DocumentEvaluator:
             # Read file content
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
-            
+
             # Extract key phrases
             key_phrases = self._extract_key_phrases(text, limit=10 if quick_scan else 20)
-            
+
             return {
                 'has_tables': 'table' in text.lower() or '|' in text or '\t' in text,
                 'has_images': False,  # Simple implementation doesn't detect images
@@ -360,7 +376,7 @@ class DocumentEvaluator:
                 'page_count': max(1, text.count('\f') + 1),  # Count form feeds as page breaks
                 'key_phrases': key_phrases
             }
-            
+
         except Exception:
             return {
                 'has_tables': False,
@@ -369,7 +385,30 @@ class DocumentEvaluator:
                 'page_count': 0,
                 'key_phrases': []
             }
-    
+
+    def _get_content_preview_from_text(self, text: str, quick_scan: bool) -> Dict[str, Any]:
+        """Generate content preview from provided text (used with content_override)"""
+        try:
+            # Extract key phrases
+            key_phrases = self._extract_key_phrases(text, limit=10 if quick_scan else 20)
+
+            return {
+                'has_tables': 'table' in text.lower() or '|' in text or '\t' in text,
+                'has_images': False,  # Cannot detect images from text alone
+                'detected_language': 'en',
+                'page_count': max(1, text.count('\f') + 1),  # Count form feeds as page breaks
+                'key_phrases': key_phrases
+            }
+
+        except Exception:
+            return {
+                'has_tables': False,
+                'has_images': False,
+                'detected_language': 'unknown',
+                'page_count': 0,
+                'key_phrases': []
+            }
+
     async def _get_content_preview(self, file_path: Path, quick_scan: bool) -> Dict[str, Any]:
         """Extract content preview information"""
         

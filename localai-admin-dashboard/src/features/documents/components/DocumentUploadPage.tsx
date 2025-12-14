@@ -11,6 +11,8 @@ import { useDocumentManager } from '@/hooks/use-document-manager';
 import { UploadSource } from '@/services/unified-document-service';
 import { Sparkles, ArrowRight, Settings, FileText, Zap, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { withAuthentication } from '@/lib/supabase-auth-utils';
 
 interface DocumentEvaluation {
   document_info: {
@@ -268,26 +270,197 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         status: 'analyzing' as any,
       });
 
-      // Step 3: Call the document type evaluation endpoint
-      const evaluationResult = await documentProcessor.evaluateDocumentType(file);
-      setEvaluation(evaluationResult);
+      // Step 3: Call the /decide-template endpoint with 2-way validation
+      console.log('🎯 Using intelligent template decision with 2-way validation...');
+      const decisionResult = await documentProcessor.decideTemplate(file, {
+        minMatchConfidence: 0.6,
+        allowGeneration: true,
+        autoSave: false
+      });
 
-      // Step 4: Update document with AI analysis results
+      setEvaluation(decisionResult.evaluation);
+
+      // Step 4: Extract document content using Docling
+      console.log('📄 Extracting document content...');
       await documentManager.updateDocumentStatus(documentRecord.id, {
-        status: 'uploaded' as any, // Ready for user action
+        status: 'processing' as any,
+      });
+
+      const processedContent = await documentProcessor.processDocumentWithDocling(file);
+      console.log('✅ Content extracted:', processedContent.content?.substring(0, 100) + '...');
+
+      // Step 5: Check if we should auto-apply template based on 2-way validation
+      let extractedData = null;
+      let finalStatus: any = 'uploaded'; // Default: Ready for user action
+
+      if (
+        decisionResult.action === 'use_existing' &&
+        decisionResult.chosen_template &&
+        decisionResult.decision_metadata.validation_level === 'high_confidence'
+      ) {
+        // Auto-extract fields with high-confidence template
+        console.log('✨ High confidence match detected - auto-extracting fields...', {
+          template: decisionResult.chosen_template.template_name,
+          match_score: decisionResult.decision_metadata.match_score,
+          extraction_quality: decisionResult.decision_metadata.extraction_quality,
+          combined_score: decisionResult.decision_metadata.combined_score
+        });
+
+        try {
+          const extractionResult = await documentProcessor.processWithExistingTemplate(
+            file,
+            decisionResult.chosen_template.template_id
+          );
+
+          // Get extracted fields (backend returns extractedFields, not extracted_data)
+          const rawExtractedFields = extractionResult.extractedFields || extractionResult.extracted_data;
+
+          // Transform to the format DocumentDetailView expects
+          extractedData = {
+            extracted_values: rawExtractedFields,
+            confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
+              acc[key] = field.confidence || 0;
+              return acc;
+            }, {} as Record<string, number>)
+          };
+
+          finalStatus = 'completed'; // Fully processed
+
+          console.log('✅ Auto-extraction completed:', {
+            fields_extracted: Object.keys(rawExtractedFields || {}).length,
+            template_used: decisionResult.chosen_template.template_name,
+            extracted_data_format: extractedData
+          });
+        } catch (extractError) {
+          console.error('⚠️ Auto-extraction failed, falling back to manual selection:', extractError);
+          // Still save document but let user manually select template
+        }
+      } else if (decisionResult.action === 'generate_new' && decisionResult.generated_template) {
+        // Auto-generate new template and extract fields
+        const generatedTemplate = decisionResult.generated_template;
+        console.log('✨ No suitable template found - generating new template with AI...', {
+          template_name: generatedTemplate.name,
+          variables_count: (generatedTemplate.smart_variables || generatedTemplate.variables)?.length || 0
+        });
+
+        try {
+          // Map 'variables' to 'smart_variables' if needed (backend field name compatibility)
+          const templateVariables = generatedTemplate.smart_variables || generatedTemplate.variables || [];
+
+          if (!Array.isArray(templateVariables) || templateVariables.length === 0) {
+            throw new Error('Generated template has no variables defined');
+          }
+
+          console.log('📝 Saving generated template to database...', {
+            name: generatedTemplate.name,
+            category: generatedTemplate.category,
+            variable_names: templateVariables.map((v: any) => v.name).join(', ')
+          });
+
+          // Save template to database with authentication
+          const savedTemplate = await withAuthentication(async (user) => {
+            const { data, error } = await supabase
+              .from('smart_templates')
+              .insert({
+                name: generatedTemplate.name,
+                description: generatedTemplate.description || `Auto-generated template for ${decisionResult.evaluation.type_evaluation.primary_type} documents`,
+                category: generatedTemplate.category || 'general',
+                smart_variables: templateVariables,
+                extraction_rules: generatedTemplate.extraction_rules || [],
+                is_public: false, // Private by default
+                created_by: user.id,
+                template_type: 'smart',
+                tags: generatedTemplate.tags || []
+              })
+              .select()
+              .single();
+
+            if (error) throw error;
+            return data;
+          }, 'Save Generated Template');
+
+          console.log('✅ Template saved successfully:', {
+            template_id: savedTemplate.id,
+            name: savedTemplate.name
+          });
+
+          // Extract fields using the newly saved template
+          console.log('🔍 Extracting fields with generated template...');
+          const extractionResult = await documentProcessor.processWithExistingTemplate(
+            file,
+            savedTemplate.id
+          );
+
+          // Get extracted fields (backend returns extractedFields, not extracted_data)
+          const rawExtractedFields = extractionResult.extractedFields || extractionResult.extracted_data;
+
+          // Transform to the format DocumentDetailView expects
+          extractedData = {
+            extracted_values: rawExtractedFields,
+            confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
+              acc[key] = field.confidence || 0;
+              return acc;
+            }, {} as Record<string, number>)
+          };
+
+          finalStatus = 'completed'; // Fully processed
+
+          console.log('✅ Auto-extraction with generated template completed:', {
+            fields_extracted: Object.keys(rawExtractedFields || {}).length,
+            template_id: savedTemplate.id,
+            template_name: savedTemplate.name,
+            extracted_data_format: extractedData
+          });
+        } catch (generationError) {
+          console.error('⚠️ Failed to save/apply generated template:', generationError);
+          console.error('   Error details:', {
+            message: generationError instanceof Error ? generationError.message : String(generationError),
+            template_data: generatedTemplate
+          });
+          // Still save document but without extracted fields
+          // User can manually select template or retry later
+        }
+      } else {
+        console.log('📋 Medium/low confidence - user will select template manually', {
+          validation_level: decisionResult.decision_metadata.validation_level,
+          match_score: decisionResult.decision_metadata.match_score,
+          extraction_quality: decisionResult.decision_metadata.extraction_quality
+        });
+      }
+
+      // Step 6: Update document with content, decision results, and optional extracted fields
+      await documentManager.finalizeDocument(documentRecord.id, {
+        status: finalStatus,
+        content_text: processedContent.content,
+        extracted_fields: extractedData,
         metadata: {
-          document_type: evaluationResult.type_evaluation.primary_type,
-          type_confidence: evaluationResult.type_evaluation.confidence,
+          document_type: decisionResult.evaluation.type_evaluation.primary_type,
+          type_confidence: decisionResult.evaluation.type_evaluation.confidence,
           ai_classification: {
-            primary_category: evaluationResult.type_evaluation.primary_type,
-            confidence_score: evaluationResult.type_evaluation.confidence,
-            detection_method: evaluationResult.type_evaluation.detection_method,
+            primary_category: decisionResult.evaluation.type_evaluation.primary_type,
+            confidence_score: decisionResult.evaluation.type_evaluation.confidence,
+            detection_method: decisionResult.evaluation.type_evaluation.detection_method,
           },
-          template_suggestions: evaluationResult.template_suggestions,
+          template_decision: {
+            action: decisionResult.action,
+            validation_level: decisionResult.decision_metadata.validation_level,
+            match_score: decisionResult.decision_metadata.match_score,
+            extraction_quality: decisionResult.decision_metadata.extraction_quality,
+            combined_score: decisionResult.decision_metadata.combined_score,
+            extraction_tested: decisionResult.decision_metadata.extraction_tested,
+            auto_applied: finalStatus === 'completed',
+            chosen_template: decisionResult.chosen_template
+          },
+          template_suggestions: decisionResult.alternatives || [],
+          // CRITICAL: Store extracted_data for DocumentDetailView compatibility
+          extracted_data: extractedData,
+          title: processedContent.metadata?.title,
+          author: processedContent.metadata?.author,
+          page_count: processedContent.metadata?.page_count,
         },
       });
 
-      // Redirect to document detail page after evaluation is complete
+      // Redirect to document detail page
       navigate({ to: `/documents/${documentRecord.id}` });
 
     } catch (err) {

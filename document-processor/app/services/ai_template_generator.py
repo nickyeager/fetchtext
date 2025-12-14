@@ -9,6 +9,7 @@ import re
 
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.ai_content_classifier import ai_classifier
+from ..services.llm_service import llm_service
 
 
 class FieldDetectionAI:
@@ -277,9 +278,114 @@ class AITemplateGenerator:
         self.logger = logging.getLogger(__name__)
         self.field_detector = FieldDetectionAI()
     
+    async def _detect_fields_with_azure_openai(self, content: str, document_type: str) -> List[Dict[str, Any]]:
+        """Use Azure OpenAI to detect ALL extractable fields in the document."""
+
+        print("=" * 80)
+        print("🚀 _detect_fields_with_azure_openai() CALLED")
+        print(f"Content length: {len(content)}, Document type: {document_type}")
+        print("=" * 80)
+
+        self.logger.info("🚀 STARTING Azure OpenAI field detection")
+        self.logger.info(f"📄 Content length: {len(content)} chars, Document type: {document_type}")
+
+        # Prepare prompt for Azure OpenAI
+        system_prompt = """You are a document field extraction expert. Analyze documents and identify ALL extractable fields with values.
+
+Return ONLY valid JSON in this exact format:
+{
+  "fields": [
+    {"name": "field_name", "type": "text|currency|date|email|phone|number", "description": "what it is", "sample_value": "actual value from doc", "extraction_hints": ["keyword1", "keyword2"]}
+  ]
+}"""
+
+        user_prompt = f"""Document type: {document_type}
+
+Find ALL fields with these patterns:
+1. Label: Value (e.g., "Name: John", "Total: $500")
+2. Form fields with colons or dashes
+3. Dates, prices, amounts, names, emails, phones
+4. Any structured data
+
+Extract AT LEAST 10-15 fields if they exist in the document.
+
+Document:
+{content[:3000]}
+
+Return JSON only:"""
+
+        try:
+            # Call Azure OpenAI using the LLM service
+            # Combine system and user prompts for the complete() method
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            response = await llm_service.complete(
+                prompt=full_prompt,
+                provider="azure_openai",
+                temperature=0.1,
+                max_tokens=2000
+            )
+
+            self.logger.info(f"Azure OpenAI response received: {len(response) if response else 0} chars")
+            self.logger.info(f"Response preview: {response[:500]}")
+
+            # Parse the response
+            if not response:
+                self.logger.warning("Empty response from Azure OpenAI")
+                return []
+
+            # Strip markdown code blocks if present
+            response_clean = response.strip()
+            if response_clean.startswith('```'):
+                # Remove ```json or ``` at start and ``` at end
+                lines = response_clean.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]  # Remove first line
+                if lines and lines[-1].strip() == '```':
+                    lines = lines[:-1]  # Remove last line
+                response_clean = '\n'.join(lines)
+
+            # Try to parse the cleaned response as JSON directly
+            try:
+                parsed = json.loads(response_clean)
+                self.logger.info("✅ Successfully parsed JSON response directly")
+            except json.JSONDecodeError as parse_error:
+                self.logger.error(f"Failed to parse JSON: {parse_error}")
+                self.logger.info(f"Response was: {response_clean[:500]}")
+                return []
+
+            detected_fields = parsed.get('fields', [])
+            self.logger.info(f"✅ Azure OpenAI detected {len(detected_fields)} fields")
+
+            # Convert to our internal format
+            formatted_fields = []
+            for field in detected_fields:
+                formatted_fields.append({
+                    'name': field.get('name', 'unknown_field'),
+                    'suggested_type': field.get('type', 'text'),
+                    'confidence': 0.85,
+                    'sample_values': [field.get('sample_value')] if field.get('sample_value') else [],
+                    'extraction_hints': field.get('extraction_hints', [field.get('name')]),
+                    'importance': 'high',
+                    'description': field.get('description', f'Extracted {field.get("name")}'),
+                    'position': {'page': 1, 'section': 'body', 'relative_position': 0.5}
+                })
+
+            self.logger.info(f"Formatted {len(formatted_fields)} fields for template")
+            return formatted_fields
+
+        except Exception as e:
+            self.logger.error(f"Azure OpenAI field detection failed: {e}", exc_info=True)
+            self.logger.info("Falling back to pattern-based field detection")
+            return []
+
     async def analyze_document_structure(self, document_path: Path) -> Dict[str, Any]:
         """Analyze document structure and identify potential fields."""
-        
+
+        print("=" * 80)
+        print(f"🔍 analyze_document_structure() CALLED with {document_path}")
+        print("=" * 80)
+
         # Process document with enhanced service
         result = await enhanced_docling_service.process_document_with_ai_enhancement(
             document_path,
@@ -288,30 +394,48 @@ class AITemplateGenerator:
             extract_structure=True,
             use_ai_enhancement=True
         )
-        
+
         if result.get('status') != 'completed':
             # Try to extract whatever we can
             self.logger.warning(f"Document processing had issues: {result.get('status')}")
             content = result.get('content', {}).get('text', '')
             if not content and result.get('error_message'):
                 raise Exception(f"Document processing failed: {result.get('error_message')}")
-        
+
         content = result.get('content', {}).get('text', '')
         metadata = result.get('metadata', {})
         classification = result.get('ai_classification', {})
-        
-        # Detect fields using AI
-        detected_fields = await self.field_detector.detect_fields(
-            content, 
+
+        print("=" * 80)
+        print("DEBUG: analyze_document_structure() reached field detection code")
+        print(f"Content length: {len(content)}")
+        print(f"Classification: {classification.get('primary_category', 'unknown')}")
+        print("=" * 80)
+
+        # Try Azure OpenAI detection first
+        self.logger.info("⚡ About to call _detect_fields_with_azure_openai")
+        detected_fields = await self._detect_fields_with_azure_openai(
+            content,
             classification.get('primary_category', 'unknown')
         )
-        
+        self.logger.info(f"⚡ Returned from _detect_fields_with_azure_openai: {len(detected_fields) if detected_fields else 0} fields")
+
+        # If Azure OpenAI didn't find fields, fall back to pattern detection
+        if not detected_fields or len(detected_fields) < 3:
+            self.logger.info("Falling back to pattern-based field detection")
+            detected_fields = await self.field_detector.detect_fields(
+                content,
+                classification.get('primary_category', 'unknown')
+            )
+        else:
+            self.logger.info(f"Using Azure OpenAI detected fields: {len(detected_fields)} fields found")
+
         # Analyze structural elements
         structural_elements = self._analyze_structural_elements(result.get('content', {}))
-        
+
         # Determine extraction complexity
         complexity = self._determine_extraction_complexity(detected_fields, structural_elements)
-        
+
         return {
             'analysis_id': str(uuid.uuid4()),
             'document_type': classification.get('primary_category', 'unknown'),
@@ -324,7 +448,7 @@ class AITemplateGenerator:
             'analysis_metadata': {
                 'analysis_time': 2.5,  # Simulated analysis time
                 'ai_model_version': '1.0.0',
-                'processing_method': 'enhanced_ai'
+                'processing_method': 'azure_openai_enhanced' if detected_fields else 'pattern_based'
             }
         }
     

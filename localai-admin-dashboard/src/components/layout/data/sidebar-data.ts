@@ -1,11 +1,7 @@
 import {
-  IconBarrierBlock,
-  IconBrowserCheck,
-  IconBug,
-  IconChecklist,
-  IconError404,
+  
   IconFile,
-  IconHelp,
+
   IconLayoutDashboard,
   IconLock,
   IconLockAccess,
@@ -58,6 +54,11 @@ export const sidebarData: SidebarData = {
       title: 'General',
       items: [
         {
+          title: 'Upload Document',
+          url: '/documents/upload',
+          icon: IconUpload,
+        },
+        {
           title: 'Dashboard',
           url: '/dashboard',
           icon: IconLayoutDashboard,
@@ -67,127 +68,23 @@ export const sidebarData: SidebarData = {
           url: '/documents',
           icon: IconFile,
         },
+        
         {
           title: 'Document Gallery',
           url: '/documents/gallery',
           icon: IconPhoto,
         },
-        {
-          title: 'Upload Document',
-          url: '/documents/upload',
-          icon: IconUpload,
-        },
+
         {
           title: 'Templates',
           url: '/templates',
           icon: IconTemplate,
         },
         {
-          title: 'Workflows',
-          url: '/workflows/instances',
-          icon: IconGitBranch,
-        },
-        {
-          title: 'Tasks',
-          url: '/tasks',
-          icon: IconChecklist,
-        },
-        {
-          title: 'Apps',
-          url: '/apps',
-          icon: IconPackages,
-        },
-        {
-          title: 'Chats',
-          url: '/chats',
-          badge: '3',
-          icon: IconMessages,
-        },
-        {
           title: 'Users',
           url: '/users',
           icon: IconUsers,
-        },
-        {
-          title: 'Secured by Clerk',
-          icon: ClerkLogo,
-          items: [
-            {
-              title: 'Sign In',
-              url: '/clerk/sign-in',
-            },
-            {
-              title: 'Sign Up',
-              url: '/clerk/sign-up',
-            },
-            {
-              title: 'User Management',
-              url: '/clerk/user-management',
-            },
-          ],
-        },
-      ],
-    },
-    {
-      title: 'Pages',
-      items: [
-        {
-          title: 'Auth',
-          icon: IconLockAccess,
-          items: [
-            {
-              title: 'Sign In',
-              url: '/sign-in',
-            },
-            {
-              title: 'Sign In (2 Col)',
-              url: '/sign-in-2',
-            },
-            {
-              title: 'Sign Up',
-              url: '/sign-up',
-            },
-            {
-              title: 'Forgot Password',
-              url: '/forgot-password',
-            },
-            {
-              title: 'OTP',
-              url: '/otp',
-            },
-          ],
-        },
-        {
-          title: 'Errors',
-          icon: IconBug,
-          items: [
-            {
-              title: 'Unauthorized',
-              url: '/401',
-              icon: IconLock,
-            },
-            {
-              title: 'Forbidden',
-              url: '/403',
-              icon: IconUserOff,
-            },
-            {
-              title: 'Not Found',
-              url: '/404',
-              icon: IconError404,
-            },
-            {
-              title: 'Internal Server Error',
-              url: '/500',
-              icon: IconServerOff,
-            },
-            {
-              title: 'Maintenance Error',
-              url: '/503',
-              icon: IconBarrierBlock,
-            },
-          ],
-        },
+        }
       ],
     },
     {
@@ -213,38 +110,12 @@ export const sidebarData: SidebarData = {
               icon: IconCpu,
             },
             {
-              title: 'Appearance',
-              url: '/settings/appearance',
-              icon: IconPalette,
-            },
-            {
               title: 'Notifications',
               url: '/settings/notifications',
               icon: IconNotification,
-            },
-            {
-              title: 'Display',
-              url: '/settings/display',
-              icon: IconBrowserCheck,
-            },
+            }
           ],
-        },
-        {
-          title: 'Admin',
-          icon: IconDatabase,
-          items: [
-            {
-              title: 'Template Migration',
-              url: '/admin/template-migration',
-              icon: IconTemplate,
-            },
-          ],
-        },
-        {
-          title: 'Help Center',
-          url: '/help-center',
-          icon: IconHelp,
-        },
+        }
       ],
     },
   ],

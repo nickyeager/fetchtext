@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Form
 from fastapi.responses import JSONResponse
 
 # Safe logger initialization for Docker environment
@@ -35,6 +35,7 @@ from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.template_matching_service import template_matching_service
 from ..services.template_generation_service import template_generation_service
+from ..config.database import db_config
 
 router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
 
@@ -495,17 +496,145 @@ async def decide_template_strategy(
         )
 
         suggestions = evaluation.get('template_suggestions', []) or []
-        chosen = suggestions[0] if suggestions and suggestions[0].get('match_score', 0) >= min_match_confidence else None
+
+        # 2) Extract document text for real extraction testing
+        document_text = ""
+        if suggestions:
+            try:
+                # Extract full text content for validation
+                extraction_result = await enhanced_docling_service.process_document(
+                    temp_file_path,
+                    extract_text=True,
+                    extract_metadata=False,
+                    extract_structure=False
+                )
+                if extraction_result.get('status') == 'completed':
+                    document_text = extraction_result.get('content', {}).get('text', '')
+                    logger.info(f"Extracted {len(document_text)} characters for template validation")
+            except Exception as e:
+                logger.warning(f"Failed to extract document text for validation: {str(e)}")
+
+        # 3) Test extraction quality for top suggestions (2-way validation)
+        if suggestions and document_text:
+            logger.info(f"Testing extraction quality for top {min(len(suggestions), 3)} template suggestions")
+
+            # Test top 3 suggestions to avoid performance issues
+            for i, suggestion in enumerate(suggestions[:3]):
+                try:
+                    # Fetch full template with smart_variables from database
+                    template_id = suggestion.get('template_id')
+                    if not template_id:
+                        logger.warning(f"Suggestion {i} missing template_id, skipping extraction test")
+                        continue
+
+                    # Query database for full template
+                    if db_config.is_configured and db_config.client:
+                        template_result = db_config.client.table('smart_templates').select(
+                            'id, name, smart_variables, category'
+                        ).eq('id', template_id).single().execute()
+
+                        if template_result.data:
+                            template = template_result.data
+                            smart_variables = template.get('smart_variables', [])
+
+                            if smart_variables:
+                                # Perform REAL extraction test
+                                test_result = await smart_field_extractor.test_template_extraction(
+                                    content=document_text,
+                                    template_variables=smart_variables,
+                                    confidence_threshold=0.6,
+                                    provider="azure"  # Use configured AI provider
+                                )
+
+                                # Add extraction metrics to suggestion
+                                suggestion['extraction_quality'] = test_result.get('field_success_rate', 0.0)
+                                suggestion['avg_field_confidence'] = test_result.get('avg_confidence', 0.0)
+                                suggestion['extractable_fields'] = test_result.get('extractable_count', 0)
+                                suggestion['total_fields'] = test_result.get('total_fields', 0)
+                                suggestion['failed_fields'] = test_result.get('failed_fields', [])
+                                suggestion['extraction_test_passed'] = test_result.get('test_passed', False)
+
+                                # Calculate combined score (match_score * extraction_quality)
+                                suggestion['combined_score'] = suggestion.get('match_score', 0.0) * suggestion['extraction_quality']
+
+                                logger.info(
+                                    f"Template '{suggestion.get('template_name')}': "
+                                    f"match_score={suggestion.get('match_score', 0):.2f}, "
+                                    f"extraction_quality={suggestion['extraction_quality']:.2f}, "
+                                    f"combined_score={suggestion['combined_score']:.2f}"
+                                )
+                            else:
+                                logger.warning(f"Template {template_id} has no smart_variables, skipping extraction test")
+                                suggestion['extraction_quality'] = 0.0
+                                suggestion['combined_score'] = 0.0
+                        else:
+                            logger.warning(f"Template {template_id} not found in database")
+                            suggestion['extraction_quality'] = 0.0
+                            suggestion['combined_score'] = 0.0
+                    else:
+                        logger.warning("Database not configured, skipping extraction validation")
+                        suggestion['extraction_quality'] = suggestion.get('match_score', 0.0)  # Fallback to match_score
+                        suggestion['combined_score'] = suggestion.get('match_score', 0.0)
+
+                except Exception as e:
+                    logger.error(f"Failed to test extraction for suggestion {i}: {str(e)}", exc_info=True)
+                    suggestion['extraction_quality'] = 0.0
+                    suggestion['combined_score'] = 0.0
+                    suggestion['extraction_error'] = str(e)
+
+            # Re-sort suggestions by combined_score (match_score * extraction_quality)
+            suggestions.sort(key=lambda x: x.get('combined_score', 0), reverse=True)
+            logger.info("Re-sorted suggestions by combined score")
+
+        # 4) Apply 2-way validation thresholds for decision
+        chosen = None
+        if suggestions:
+            best = suggestions[0]
+            match_score = best.get('match_score', 0.0)
+            extraction_quality = best.get('extraction_quality', match_score)  # Fallback to match_score if not tested
+
+            # 2-way validation: BOTH match_score AND extraction_quality must meet thresholds
+            if match_score >= 0.70 and extraction_quality >= 0.70:
+                chosen = best
+                logger.info(f"High confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}")
+            elif match_score >= 0.60 and extraction_quality >= 0.50:
+                # Medium confidence - show options to user
+                logger.info(f"Medium confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}")
+                chosen = best  # Still use it, but mark for user review
+            else:
+                logger.info(
+                    f"Low confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}. "
+                    f"Will generate new template if allowed."
+                )
 
         if chosen:
             # Strong enough existing template found
+            match_score = chosen.get('match_score', 0.0)
+            extraction_quality = chosen.get('extraction_quality', 0.0)
+
+            # Determine validation level for user transparency
+            if match_score >= 0.70 and extraction_quality >= 0.70:
+                validation_level = 'high_confidence'
+                reason = 'Template meets high confidence thresholds for both matching and extraction'
+            elif match_score >= 0.60 and extraction_quality >= 0.50:
+                validation_level = 'medium_confidence'
+                reason = 'Template meets medium confidence thresholds - please review extracted fields'
+            else:
+                validation_level = 'low_confidence'
+                reason = 'Best available template, but extraction quality may be limited'
+
             response = {
                 'action': 'use_existing',
                 'chosen_template': chosen,
                 'alternatives': suggestions[1:5],
                 'evaluation': evaluation,
                 'decision_metadata': {
-                    'reason': 'Top suggestion meets minimum match confidence',
+                    'reason': reason,
+                    'validation_level': validation_level,
+                    'match_score': match_score,
+                    'extraction_quality': extraction_quality,
+                    'combined_score': chosen.get('combined_score', 0.0),
+                    'extraction_tested': 'extraction_quality' in chosen,
                     'min_match_confidence': min_match_confidence,
                     'quick_scan': quick_scan,
                     'timestamp': datetime.now(timezone.utc).isoformat()
@@ -693,13 +822,37 @@ async def evaluate_document_type(
     try:
         # Save uploaded file temporarily
         temp_file_path = await save_uploaded_file(file)
-        
-        # Evaluate document type
+
+        # For PDFs and binary files, extract clean text using Docling first
+        clean_text = None
+        file_extension = Path(file.filename).suffix.lower()
+        if file_extension in ['.pdf', '.docx', '.doc', '.xlsx']:
+            logger.info(f"Pre-extracting clean text for {file_extension} file using Docling")
+            try:
+                # Use enhanced Docling service to get clean text
+                result = await enhanced_docling_service.process_document(
+                    temp_file_path,
+                    extract_text=True,
+                    extract_metadata=False,
+                    extract_structure=False
+                )
+
+                if result.get('status') == 'completed':
+                    clean_text = result.get('content', {}).get('text', '')
+                    logger.info(f"Extracted {len(clean_text)} chars of clean text from PDF")
+                else:
+                    logger.warning(f"Docling extraction failed with status: {result.get('status')}")
+            except Exception as e:
+                logger.warning(f"Failed to pre-extract text from {file_extension}: {e}")
+                # Continue without clean text - evaluator will extract directly
+
+        # Evaluate document type with clean text if available
         evaluation_result = await document_evaluator.evaluate_document(
             temp_file_path,
             file.filename,
             file.content_type or "",
-            quick_scan=quick_scan
+            quick_scan=quick_scan,
+            content_override=clean_text
         )
         
         # Filter results based on parameters
@@ -733,11 +886,11 @@ async def evaluate_document_type(
 @router.post("/extract-with-smart-template")
 async def extract_with_smart_template(
     file: UploadFile = File(...),
-    template_data: Optional[str] = Query(None, description="JSON string containing smart template data"),
-    processing_mode: str = Query("smart_template", description="Processing mode: smart_template or progressive"), 
-    confidence_threshold: float = Query(0.7, description="Minimum confidence threshold for extraction"),
-    enable_validation: bool = Query(True, description="Enable extraction validation"),
-    provider: str = Query("azure", description="AI provider to use (azure or ollama)")
+    template_data: Optional[str] = Form(None, description="JSON string containing smart template data"),
+    processing_mode: str = Form("smart_template", description="Processing mode: smart_template or progressive"),
+    confidence_threshold: float = Form(0.7, description="Minimum confidence threshold for extraction"),
+    enable_validation: bool = Form(True, description="Enable extraction validation"),
+    provider: str = Form("azure", description="AI provider to use (azure or ollama)")
 ):
     """
     Extract structured data from document using smart template with AI-based field extraction.
@@ -767,21 +920,53 @@ async def extract_with_smart_template(
     
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
-    
+
     temp_file_path = None
-    
+
     try:
+        # DEBUG: Log incoming request details
+        logger.info("=" * 80)
+        logger.info("EXTRACT-WITH-SMART-TEMPLATE REQUEST")
+        logger.info("=" * 80)
+        logger.info(f"Filename: {file.filename}")
+        logger.info(f"Content-Type: {file.content_type}")
+        logger.info(f"Processing Mode: {processing_mode}")
+        logger.info(f"Confidence Threshold: {confidence_threshold}")
+        logger.info(f"Provider: {provider}")
+        logger.info(f"Template Data Received: {bool(template_data)}")
+        if template_data:
+            logger.info(f"Template Data Length: {len(template_data)} chars")
+            logger.info(f"Template Data Preview: {template_data[:200]}...")
+
         # Parse template data if provided
         template_info = None
         template_variables = []
         if template_data:
             try:
                 template_info = json.loads(template_data)
-                template_variables = template_info.get('smart_variables', [])
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
-        
+                logger.info(f"✓ Template data parsed successfully")
+                logger.info(f"Template ID: {template_info.get('id')}")
+                logger.info(f"Template Name: {template_info.get('name')}")
+
+                # Support both 'smart_variables' and 'variables' field names
+                template_variables = template_info.get('smart_variables') or template_info.get('variables', [])
+                logger.info(f"✓ Found {len(template_variables)} variables in template")
+
+                # DEBUG: Log each variable structure
+                for i, var in enumerate(template_variables[:3]):  # Log first 3 variables
+                    logger.info(f"  Variable {i+1}: {var.get('name')} (type: {var.get('type')})")
+                    logger.info(f"    Description: {var.get('description', 'N/A')}")
+                    logger.info(f"    Hints: {var.get('extraction_hints', [])}")
+
+            except json.JSONDecodeError as e:
+                logger.error(f"✗ Failed to parse template_data JSON: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in template_data: {str(e)}")
+        else:
+            logger.warning("✗ No template_data provided in request")
+
         if not template_variables:
+            logger.error("✗ No smart template variables found after parsing")
+            logger.error(f"Template info structure: {template_info}")
             raise HTTPException(status_code=400, detail="No smart template variables provided")
         
         # Save uploaded file temporarily

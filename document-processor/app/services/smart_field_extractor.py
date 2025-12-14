@@ -584,7 +584,6 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         # Email validation
         if 'email' in field_lower:
-            import re
             if re.match(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$', value_clean):
                 return min(raw_confidence + 0.2, 1.0)  # Boost valid emails
             elif '@' in value_clean:
@@ -643,7 +642,88 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         # Default - slight boost for having any value
         return min(raw_confidence + 0.05, 1.0)
-    
+
+    async def test_template_extraction(
+        self,
+        content: str,
+        template_variables: List[Dict[str, Any]],
+        confidence_threshold: float = 0.6,
+        provider: str = "azure"
+    ) -> Dict[str, Any]:
+        """
+        Test extraction with a template to validate field extractability.
+        This performs REAL extraction to determine if template fields can be extracted.
+
+        Returns:
+            ExtractionTestResult with:
+            - field_success_rate: Ratio of successfully extracted fields
+            - avg_confidence: Average confidence of extracted fields
+            - extractable_count: Number of fields that passed threshold
+            - total_fields: Total number of fields in template
+            - failed_fields: List of field names that couldn't be extracted
+            - successful_fields: Dict of successfully extracted field data
+        """
+        self.logger.info(f"Testing template extraction for {len(template_variables)} fields")
+
+        try:
+            # Perform actual extraction
+            extraction_result = await self.extract_fields_intelligently(
+                text_content=content,
+                template_variables=template_variables,
+                confidence_threshold=confidence_threshold,
+                provider=provider
+            )
+
+            # Analyze results
+            extracted_values = extraction_result.get('extracted_values', {})
+            total_fields = len(template_variables)
+            extractable_count = len(extracted_values)
+
+            # Calculate average confidence
+            if extracted_values:
+                confidences = [field.get('confidence', 0.0) for field in extracted_values.values()]
+                avg_confidence = sum(confidences) / len(confidences)
+            else:
+                avg_confidence = 0.0
+
+            # Identify failed fields
+            extracted_field_names = set(extracted_values.keys())
+            all_field_names = {var.get('name', var.get('id', '')) for var in template_variables}
+            failed_fields = list(all_field_names - extracted_field_names)
+
+            # Calculate success rate
+            field_success_rate = extractable_count / total_fields if total_fields > 0 else 0.0
+
+            self.logger.info(
+                f"Template extraction test complete: {extractable_count}/{total_fields} fields "
+                f"extracted ({field_success_rate:.1%}), avg confidence: {avg_confidence:.2f}"
+            )
+
+            return {
+                'field_success_rate': field_success_rate,
+                'avg_confidence': avg_confidence,
+                'extractable_count': extractable_count,
+                'total_fields': total_fields,
+                'failed_fields': failed_fields,
+                'successful_fields': extracted_values,
+                'extraction_quality': field_success_rate,  # Alias for consistency
+                'test_passed': field_success_rate >= 0.7 and avg_confidence >= 0.6
+            }
+
+        except Exception as e:
+            self.logger.error(f"Template extraction test failed: {str(e)}", exc_info=True)
+            return {
+                'field_success_rate': 0.0,
+                'avg_confidence': 0.0,
+                'extractable_count': 0,
+                'total_fields': len(template_variables),
+                'failed_fields': [var.get('name', var.get('id', '')) for var in template_variables],
+                'successful_fields': {},
+                'extraction_quality': 0.0,
+                'test_passed': False,
+                'error': str(e)
+            }
+
     async def _fallback_simple_extraction(
         self,
         text_content: str,
