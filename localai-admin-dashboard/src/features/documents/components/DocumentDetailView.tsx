@@ -46,6 +46,33 @@ import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplat
 import { ExtractedFieldsEditor } from './ExtractedFieldsEditor';
 import { CreateTemplateFromFields } from './CreateTemplateFromFields';
 
+/**
+ * Parses extracted fields data that may be stored as JSON string or object
+ * Handles double-stringification issues from Supabase storage
+ */
+function parseExtractedFields(data: unknown): Record<string, unknown> {
+  if (!data) return {};
+
+  // If it's already an object, return it
+  if (typeof data === 'object' && data !== null) {
+    return data as Record<string, unknown>;
+  }
+
+  // If it's a string, try to parse it
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch (e) {
+      console.error('[parseExtractedFields] Failed to parse JSON string:', e);
+    }
+  }
+
+  return {};
+}
+
 interface DocumentDetailViewProps {
   documentId: string;
   onBack?: () => void;
@@ -1779,75 +1806,75 @@ export function DocumentDetailView({
               console.log('🔍 [Field Detection] Starting field detection process');
               console.log('Document ID:', documentId);
 
-              // Try direct extracted_fields first
-              if (document.extracted_fields && typeof document.extracted_fields === 'object') {
-                extractedFields = document.extracted_fields;
-                detectionPath = 'document.extracted_fields';
-                console.log('✅ [Field Detection] Found fields at:', detectionPath);
-                console.log('   Field count:', Object.keys(extractedFields).length);
-                console.log('   Fields:', extractedFields);
-              }
-              // Try metadata.extracted_fields
-              else if (document.metadata?.extracted_fields && typeof document.metadata.extracted_fields === 'object') {
-                extractedFields = document.metadata.extracted_fields;
-                detectionPath = 'metadata.extracted_fields';
-                console.log('✅ [Field Detection] Found fields at:', detectionPath);
-                console.log('   Field count:', Object.keys(extractedFields).length);
-                console.log('   Fields:', extractedFields);
-              }
-              // Try metadata.extraction_result.extracted_values
-              else if ((document.metadata as Record<string, unknown>)?.extraction_result &&
-                       typeof (document.metadata as Record<string, unknown>).extraction_result === 'object') {
-                const erUnknown = (document.metadata as Record<string, unknown>).extraction_result as unknown;
-                if (erUnknown && typeof erUnknown === 'object') {
-                  const er = erUnknown as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
-                  if (er.extracted_values && typeof er.extracted_values === 'object') {
-                    extractedFields = er.extracted_values;
-                    detectionPath = 'metadata.extraction_result.extracted_values';
+              // Define data sources in priority order (most reliable first)
+              const sources = [
+                {
+                  name: 'metadata.extracted_data.extracted_values',
+                  getter: () => (document.metadata as Record<string, unknown>)?.extracted_data,
+                  hasConfidence: true
+                },
+                {
+                  name: 'metadata.extraction_result.extracted_values',
+                  getter: () => (document.metadata as Record<string, unknown>)?.extraction_result,
+                  hasConfidence: true
+                },
+                {
+                  name: 'document.extracted_fields',
+                  getter: () => document.extracted_fields,
+                  hasConfidence: false
+                },
+                {
+                  name: 'metadata.extracted_fields',
+                  getter: () => document.metadata?.extracted_fields,
+                  hasConfidence: false
+                },
+                {
+                  name: 'metadata.fields',
+                  getter: () => document.metadata?.fields,
+                  hasConfidence: false
+                }
+              ];
+
+              // Try each source in priority order
+              for (const source of sources) {
+                const rawData = source.getter();
+                if (!rawData) continue;
+
+                // Parse the data (handles JSON strings and objects)
+                const parsed = parseExtractedFields(rawData);
+                if (Object.keys(parsed).length === 0) continue;
+
+                // Check if this source has extracted_values structure
+                if (source.hasConfidence && 'extracted_values' in parsed) {
+                  const data = parsed as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
+                  if (data.extracted_values && Object.keys(data.extracted_values).length > 0) {
+                    extractedFields = parseExtractedFields(data.extracted_values);
+                    detectionPath = source.name;
+                    if (data.confidence_scores) {
+                      confidenceScores = data.confidence_scores;
+                    }
                     console.log('✅ [Field Detection] Found fields at:', detectionPath);
                     console.log('   Field count:', Object.keys(extractedFields).length);
                     console.log('   Fields:', extractedFields);
+                    console.log('   Confidence scores:', confidenceScores);
+                    break;
                   }
-                  if (er.confidence_scores && typeof er.confidence_scores === 'object') {
-                    confidenceScores = er.confidence_scores as Record<string, number>;
-                    console.log('   Found confidence scores:', confidenceScores);
-                  }
+                } else {
+                  // Direct field data without nested structure
+                  extractedFields = parsed;
+                  detectionPath = source.name;
+                  console.log('✅ [Field Detection] Found fields at:', detectionPath);
+                  console.log('   Field count:', Object.keys(extractedFields).length);
+                  console.log('   Fields:', extractedFields);
+                  break;
                 }
               }
-              // CRITICAL FIX: Also check metadata.extracted_data.extracted_values (backend response structure)
-              else if ((document.metadata as Record<string, unknown>)?.extracted_data &&
-                       typeof (document.metadata as Record<string, unknown>).extracted_data === 'object') {
-                const edUnknown = (document.metadata as Record<string, unknown>).extracted_data as unknown;
-                if (edUnknown && typeof edUnknown === 'object') {
-                  const ed = edUnknown as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
-                  if (ed.extracted_values && typeof ed.extracted_values === 'object') {
-                    extractedFields = ed.extracted_values;
-                    detectionPath = 'metadata.extracted_data.extracted_values';
-                    console.log('✅ [Field Detection] Found fields at:', detectionPath);
-                    console.log('   Field count:', Object.keys(extractedFields).length);
-                    console.log('   Fields:', extractedFields);
-                  }
-                  if (ed.confidence_scores && typeof ed.confidence_scores === 'object') {
-                    confidenceScores = ed.confidence_scores as Record<string, number>;
-                    console.log('   Found confidence scores:', confidenceScores);
-                  }
-                }
-              }
-              // Try metadata.fields
-              else if (document.metadata?.fields && typeof document.metadata.fields === 'object') {
-                extractedFields = document.metadata.fields;
-                detectionPath = 'metadata.fields';
-                console.log('✅ [Field Detection] Found fields at:', detectionPath);
-                console.log('   Field count:', Object.keys(extractedFields).length);
-                console.log('   Fields:', extractedFields);
-              } else {
+
+              // Log if no fields found
+              if (detectionPath === 'none') {
                 console.log('❌ [Field Detection] No fields found in any expected location');
                 console.log('   Checked paths:');
-                console.log('   - document.extracted_fields');
-                console.log('   - metadata.extracted_fields');
-                console.log('   - metadata.extraction_result.extracted_values');
-                console.log('   - metadata.extracted_data.extracted_values');
-                console.log('   - metadata.fields');
+                sources.forEach(s => console.log(`   - ${s.name}`));
               }
 
               console.log('');
