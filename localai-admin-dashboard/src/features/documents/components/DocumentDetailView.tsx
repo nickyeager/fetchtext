@@ -6,12 +6,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { 
-  ArrowLeft, 
-  Download, 
-  FileText, 
-  Copy, 
-  Eye, 
+import {
+  ArrowLeft,
+  Download,
+  FileText,
+  Copy,
+  Eye,
   RefreshCw,
   Save,
   Edit3,
@@ -23,7 +23,8 @@ import {
   CheckCircle,
   Edit,
   Zap,
-  Settings
+  Settings,
+  Workflow
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ import TemplateSelector from '@/components/documents/TemplateSelector';
 import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplateDialog';
 import { ExtractedFieldsEditor } from './ExtractedFieldsEditor';
 import { CreateTemplateFromFields } from './CreateTemplateFromFields';
+import { DocumentPipelineView } from './DocumentPipelineView';
 
 /**
  * Parses extracted fields data that may be stored as JSON string or object
@@ -106,7 +108,7 @@ export function DocumentDetailView({
 }: DocumentDetailViewProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<'side-by-side' | 'tabs' | 'overlay'>('side-by-side');
+  const [viewMode, setViewMode] = useState<'side-by-side' | 'tabs' | 'overlay' | 'pipeline'>('side-by-side');
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -304,6 +306,74 @@ export function DocumentDetailView({
     console.log('═══════════════════════════════════════════════════════');
     /* eslint-enable no-console */
   }, [document, documentId]);
+
+  // Comprehensive field detection hook (reusable across components)
+  const comprehensiveFieldDetection = useMemo(() => {
+    if (!document) return { extractedFields: {}, confidenceScores: {}, detectionPath: 'none' };
+
+    let extractedFields = {};
+    let confidenceScores = {};
+    let detectionPath = 'none';
+
+    // Define data sources in priority order (most reliable first)
+    const sources = [
+      {
+        name: 'metadata.extracted_data.extracted_values',
+        getter: () => (document.metadata as Record<string, unknown>)?.extracted_data,
+        hasConfidence: true
+      },
+      {
+        name: 'metadata.extraction_result.extracted_values',
+        getter: () => (document.metadata as Record<string, unknown>)?.extraction_result,
+        hasConfidence: true
+      },
+      {
+        name: 'document.extracted_fields',
+        getter: () => document.extracted_fields,
+        hasConfidence: false
+      },
+      {
+        name: 'metadata.extracted_fields',
+        getter: () => document.metadata?.extracted_fields,
+        hasConfidence: false
+      },
+      {
+        name: 'metadata.fields',
+        getter: () => document.metadata?.fields,
+        hasConfidence: false
+      }
+    ];
+
+    // Try each source in priority order
+    for (const source of sources) {
+      const rawData = source.getter();
+      if (!rawData) continue;
+
+      // Parse the data (handles JSON strings and objects)
+      const parsed = parseExtractedFields(rawData);
+      if (Object.keys(parsed).length === 0) continue;
+
+      // Check if this source has extracted_values structure
+      if (source.hasConfidence && 'extracted_values' in parsed) {
+        const data = parsed as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
+        if (data.extracted_values && Object.keys(data.extracted_values).length > 0) {
+          extractedFields = parseExtractedFields(data.extracted_values);
+          detectionPath = source.name;
+          if (data.confidence_scores) {
+            confidenceScores = data.confidence_scores;
+          }
+          break;
+        }
+      } else {
+        // Direct field data without nested structure
+        extractedFields = parsed;
+        detectionPath = source.name;
+        break;
+      }
+    }
+
+    return { extractedFields, confidenceScores, detectionPath };
+  }, [document]);
 
   // Convert document data to content format
   const documentContent: DocumentContent = useMemo(() => {
@@ -1595,9 +1665,39 @@ export function DocumentDetailView({
         </Card>
       </TabsContent>
       </Tabs>
-      
+
     </>
   );
+
+  const renderPipelineView = () => {
+    // Use comprehensive field detection for all fields
+    const { extractedFields, confidenceScores } = comprehensiveFieldDetection;
+    const templateVariables = Object.keys(extractedFields);
+
+    // Get template content (for now, use the original text as a proxy)
+    const templateContent = documentContent.original.text || '';
+
+    // Get metadata with proper typing
+    const metadata = document?.metadata as Record<string, unknown> | undefined;
+    const templateName = metadata?.template_name as string | undefined;
+    const templateId = metadata?.template_id as number | undefined;
+    const updatedAt = metadata?.updated_at as string | undefined;
+
+    return (
+      <DocumentPipelineView
+        templateContent={templateContent}
+        templateVariables={templateVariables}
+        extractedFields={extractedFields}
+        confidenceScores={confidenceScores}
+        finalOutput={formattedOutput || documentContent.processed.text}
+        documentName={document?.name}
+        templateName={templateName}
+        templateId={templateId}
+        templateUpdatedAt={updatedAt}
+        onUpdateTemplate={templateId ? () => navigateToTemplateEdit(templateId) : undefined}
+      />
+    );
+  };
 
   return (
     <div className={`p-4 sm:p-6 ${isFullscreen ? 'fixed inset-0 bg-white z-50' : ''}`}>
@@ -1663,11 +1763,30 @@ export function DocumentDetailView({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setViewMode(viewMode === 'side-by-side' ? 'tabs' : 'side-by-side')}
+              onClick={() => {
+                const modes: Array<'side-by-side' | 'tabs' | 'pipeline'> = ['side-by-side', 'tabs', 'pipeline'];
+                const currentIndex = modes.indexOf(viewMode as 'side-by-side' | 'tabs' | 'pipeline');
+                const nextIndex = (currentIndex + 1) % modes.length;
+                setViewMode(modes[nextIndex]);
+              }}
               className="flex-1 sm:flex-none"
             >
-              <SplitSquareHorizontal className="w-4 h-4 mr-2" />
-              {viewMode === 'side-by-side' ? 'Tabs' : 'Split'}
+              {viewMode === 'pipeline' ? (
+                <>
+                  <Workflow className="w-4 h-4 mr-2" />
+                  Pipeline
+                </>
+              ) : viewMode === 'side-by-side' ? (
+                <>
+                  <SplitSquareHorizontal className="w-4 h-4 mr-2" />
+                  Split
+                </>
+              ) : (
+                <>
+                  <SplitSquareHorizontal className="w-4 h-4 mr-2" />
+                  Tabs
+                </>
+              )}
             </Button>
             
             <Button
@@ -1706,7 +1825,13 @@ export function DocumentDetailView({
 
       {/* Content Area */}
       <div className="flex-1">
-        {viewMode === 'side-by-side' ? renderSideBySideView() : renderTabsView()}
+        {viewMode === 'pipeline' ? (
+          renderPipelineView()
+        ) : viewMode === 'side-by-side' ? (
+          renderSideBySideView()
+        ) : (
+          renderTabsView()
+        )}
       </div>
 
       {/* Consolidated Template Change Functionality */}
