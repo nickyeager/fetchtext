@@ -57,15 +57,40 @@ This is a comprehensive self-hosted AI platform called "FetchText" that combines
 
 1. **LocalAI Admin Dashboard** (`localai-admin-dashboard/`) - React/TypeScript frontend with TanStack Router
 
-Always regenerate routes using the `pnpm run build` command
+**IMPORTANT**: Always source NVM and use Node 20 before running pnpm commands:
+```bash
+source ~/.nvm/nvm.sh && nvm use 20 && npx pnpm [command]
+```
+
+Example for building the frontend:
+```bash
+source ~/.nvm/nvm.sh && nvm use 20 && cd localai-admin-dashboard && npx pnpm build
+```
+
+Always regenerate routes using this pattern with `npx pnpm build`
 
 2. **Document Processor** (`document-processor/`) - Python FastAPI service for document processing using Docling
 3. **Service Infrastructure** - Docker Compose orchestrated services including Supabase, N8N, Ollama, and monitoring
 
-## 📋 **Key Process Documentation**
+## 📋 **Key Documentation**
 
-- **Template Analysis & Selection**: See `TEMPLATE_ANALYSIS_INSTRUCTIONS.md` for complete details on how the system intelligently matches documents with existing templates using Azure OpenAI
-- **Document Upload Flow**: See `localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md` for the complete upload process from gallery to document view
+### Core Documentation
+- **Documentation Index**: See [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md) for a complete overview of all project documentation
+- **Document Upload Flow**: See [localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md) for the complete upload process
+
+### Architecture & Planning (docs/architecture/)
+- [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) - System architecture, service ports, data flows
+- [PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md) - Directory structure and organization
+- [DEPLOYMENT_PLAN.md](docs/architecture/DEPLOYMENT_PLAN.md) - Production deployment strategy
+
+### User & Developer Guides (docs/guides/)
+- [DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](docs/guides/DOCUMENT_PROCESSING_COMPLETE_GUIDE.md) - End-to-end document processing
+- [TEMPLATE_MATCHING_CURRENT_STATE.md](docs/guides/TEMPLATE_MATCHING_CURRENT_STATE.md) - Template matching system details
+- [MANUAL_FRONTEND_TESTING_CHECKLIST.md](docs/guides/MANUAL_FRONTEND_TESTING_CHECKLIST.md) - Frontend testing procedures
+
+### Deployment Tracking (docs/)
+- [supabase-deployment-log.md](docs/supabase-deployment-log.md) - Production Supabase migration log
+- [deployment-verification-checklist.md](docs/deployment-verification-checklist.md) - Deployment verification steps
 
 ### Service Architecture
 
@@ -195,7 +220,7 @@ docker compose -p localai logs -f document-processor
 
 **Automatic Restart Rule:**
 - ANY changes to `document-processor/app/**/*.py` → Restart container
-- Frontend changes (`localai-admin-dashboard/`) → No restart needed (just rebuild with `pnpm build`)
+- Frontend changes (`localai-admin-dashboard/`) → No restart needed (just rebuild with `npx pnpm build`)
 - Environment variable changes (`.env`) → Restart ALL containers
 - Database migrations (`supabase/migrations/`) → Apply with Supabase CLI
 
@@ -204,13 +229,13 @@ docker compose -p localai logs -f document-processor
 ### Frontend Development (localai-admin-dashboard/)
 ```bash
 cd localai-admin-dashboard/
-pnpm build        # Production build (preferred for testing changes)
-pnpm test         # Run Vitest tests (DO NOT use --watch flag)
-pnpm test:auth    # Run authentication compliance tests
-pnpm check:auth   # Quick authentication compliance check
-pnpm lint         # ESLint
-pnpm format       # Prettier formatting
-# Note: Avoid running `pnpm dev` unless specifically needed for development
+npx pnpm build        # Production build (preferred for testing changes)
+npx pnpm test         # Run Vitest tests (DO NOT use --watch flag)
+npx pnpm test:auth    # Run authentication compliance tests
+npx pnpm check:auth   # Quick authentication compliance check
+npx pnpm lint         # ESLint
+npx pnpm format       # Prettier formatting
+# Note: Avoid running `npx pnpm dev` unless specifically needed for development
 ```
 
 ### Document Processor Testing
@@ -230,12 +255,26 @@ pytest tests/ -v                      # Direct pytest
 ```
 
 ### Supabase Management
+
+⚠️ **IMPORTANT: Production uses Managed Supabase, not Docker**
+
+**Local Development** (Docker-based):
 ```bash
 cd supabase/
-pnpm dev:studio       # Local Supabase Studio
-pnpm generate:types   # Generate TypeScript types
-pnpm setup:cli        # Setup CLI environment
+npx pnpm dev:studio       # Local Supabase Studio
+npx pnpm generate:types   # Generate TypeScript types
+npx pnpm setup:cli        # Setup CLI environment
 ```
+
+**Production** (Managed Supabase):
+- **Instance**: https://rawhmcrtzfdhryyfovee.supabase.co
+- **SQL Editor**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+- **Deployment Log**: [docs/supabase-deployment-log.md](docs/supabase-deployment-log.md)
+- **Migration Process**:
+  1. Test migration locally with Docker
+  2. Document in deployment log
+  3. Apply via SQL Editor (copy/paste SQL)
+  4. Verify and mark checkboxes in log
 
 ## Key Technical Patterns
 

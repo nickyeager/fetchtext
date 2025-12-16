@@ -1,6 +1,6 @@
 # FetchText Project - Complete Documentation Index
 
-**Last Updated**: 2025-11-22
+**Last Updated**: 2025-12-16
 **Purpose**: Comprehensive guide to all documentation in the FetchText project
 
 ---
@@ -9,17 +9,17 @@
 
 For someone new to the project, start here:
 
-1. **[README.md](README.md)** - Project overview, prerequisites, installation instructions
-2. **[CLAUDE.md](CLAUDE.md)** - Development guidelines for AI assistants working on this codebase
-3. **[documentation/setup.md](documentation/setup.md)** - Detailed setup verification and service access URLs
-4. **[localai-admin-dashboard/SETUP_VERIFICATION.md](localai-admin-dashboard/SETUP_VERIFICATION.md)** - Frontend-specific setup guide with JWT token verification
+1. **[README.md](../README.md)** - Project overview, prerequisites, installation instructions
+2. **[CLAUDE.md](../CLAUDE.md)** - Development guidelines for AI assistants working on this codebase
+3. **[documentation/setup.md](../documentation/setup.md)** - Detailed setup verification and service access URLs
+4. **[localai-admin-dashboard/SETUP_VERIFICATION.md](../localai-admin-dashboard/SETUP_VERIFICATION.md)** - Frontend-specific setup guide with JWT token verification
 
 ---
 
 ## 📐 Architecture & System Design
 
 ### High-Level Architecture
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete system architecture diagram
+- **[architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md)** - Complete system architecture diagram
   - Service ports and external access mappings
   - Data flow diagrams (auth, AI chat, workflows, documents)
   - Volume mounts and shared storage configuration
@@ -27,7 +27,7 @@ For someone new to the project, start here:
   - LLM provider integration (Ollama + Azure OpenAI)
 
 ### Project Structure
-- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - Directory structure explanation
+- **[architecture/PROJECT_STRUCTURE.md](architecture/PROJECT_STRUCTURE.md)** - Directory structure explanation
   - Core orchestration files (docker-compose, scripts)
   - Application services (document-processor, admin dashboard)
   - Data, backups, and shared assets
@@ -35,20 +35,22 @@ For someone new to the project, start here:
   - Dependencies and configuration
 
 ### Database
-- **[documentation/SUPABASE_STRUCTURE.md](documentation/SUPABASE_STRUCTURE.md)** - Database schema and tables
-- **[documentation/supabase.md](documentation/supabase.md)** - Supabase integration details
-- **[documentation/database_schema.sql](documentation/database_schema.sql)** - SQL schema definitions
+- **[documentation/SUPABASE_STRUCTURE.md](../documentation/SUPABASE_STRUCTURE.md)** - Database schema and tables
+- **[documentation/supabase.md](../documentation/supabase.md)** - Supabase integration details
+- **[documentation/database_schema.sql](../documentation/database_schema.sql)** - SQL schema definitions
 
 ---
 
 ## 🚀 Deployment & Operations
 
 ### Deployment
-- **[DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)** - Production deployment strategy
-- **[documentation/setup.md](documentation/setup.md)** - Setup verification and port configuration
+- **[architecture/DEPLOYMENT_PLAN.md](architecture/DEPLOYMENT_PLAN.md)** - Production deployment strategy
+- **[documentation/setup.md](../documentation/setup.md)** - Setup verification and port configuration
+- **[supabase-deployment-log.md](supabase-deployment-log.md)** - Production Supabase migration tracking
+- **[deployment-verification-checklist.md](deployment-verification-checklist.md)** - Deployment verification steps
 
 ### Monitoring
-- **[documentation/monitoring.md](documentation/monitoring.md)** - Monitoring tools overview
+- **[../documentation/monitoring.md](../documentation/monitoring.md)** - Monitoring tools overview
   - Langfuse (AI observability)
   - Health check scripts
   - Service status monitoring
@@ -64,53 +66,53 @@ For someone new to the project, start here:
 ### Frontend (LocalAI Admin Dashboard)
 
 #### Setup & Configuration
-- **[localai-admin-dashboard/README.md](localai-admin-dashboard/README.md)** - Dashboard overview
+- **[../localai-admin-dashboard/README.md](../localai-admin-dashboard/README.md)** - Dashboard overview
   - Tech stack (React 19, TanStack Router, Vite, TypeScript)
   - Available scripts and testing commands
   - Environment configuration
   - VSCode debugging setup
 
-- **[localai-admin-dashboard/SETUP_VERIFICATION.md](localai-admin-dashboard/SETUP_VERIFICATION.md)** - Setup guide
+- **[../localai-admin-dashboard/SETUP_VERIFICATION.md](../localai-admin-dashboard/SETUP_VERIFICATION.md)** - Setup guide
   - JWT token alignment verification
   - Node.js and pnpm installation
   - Environment variable configuration
   - Common issues and solutions
 
-- **[localai-admin-dashboard/.vscode/README.md](localai-admin-dashboard/.vscode/README.md)** - VSCode debugging
+- **[../localai-admin-dashboard/.vscode/README.md](../localai-admin-dashboard/.vscode/README.md)** - VSCode debugging
   - Setting breakpoints in TypeScript/TSX files
   - Debugging React components
   - Vitest test debugging
   - Performance and network debugging
 
 #### Features & Workflows
-- **[localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md)** - Document upload process
+- **[../localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](../localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md)** - Document upload process
   - Gallery view to document view flow
   - File upload mechanisms
   - Processing status updates
   - Error handling
 
-- **[localai-admin-dashboard/src/features/documents/README.md](localai-admin-dashboard/src/features/documents/README.md)** - Documents feature documentation
+- **[../localai-admin-dashboard/src/features/documents/README.md](../localai-admin-dashboard/src/features/documents/README.md)** - Documents feature documentation
   - Component structure
   - Service layer architecture
   - State management
 
 #### Testing
-- **[localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md](localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md)** - Test organization
-- **[localai-admin-dashboard/tests/README.md](localai-admin-dashboard/tests/README.md)** - Testing guidelines
-- **[localai-admin-dashboard/src/__tests__/integration/README.md](localai-admin-dashboard/src/__tests__/integration/README.md)** - Integration tests
+- **[../localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md](../localai-admin-dashboard/TEST_ORGANIZATION_SUMMARY.md)** - Test organization
+- **[../localai-admin-dashboard/tests/README.md](../localai-admin-dashboard/tests/README.md)** - Testing guidelines
+- **[../localai-admin-dashboard/src/__tests__/integration/README.md](../localai-admin-dashboard/src/__tests__/integration/README.md)** - Integration tests
 
 #### Changelog
-- **[localai-admin-dashboard/CHANGELOG.md](localai-admin-dashboard/CHANGELOG.md)** - Version history and changes
+- **[../localai-admin-dashboard/CHANGELOG.md](../localai-admin-dashboard/CHANGELOG.md)** - Version history and changes
 
 ### Backend (Document Processor)
 
-- **[documentation/document-processor-api.md](documentation/document-processor-api.md)** - API documentation
+- **[../documentation/document-processor-api.md](../documentation/document-processor-api.md)** - API documentation
   - Endpoints and usage
   - Request/response formats
   - Error codes
 
-- **[document-processor/API_ENDPOINTS.md](document-processor/API_ENDPOINTS.md)** - Detailed endpoint specs
-- **[document-processor/tests/README.md](document-processor/tests/README.md)** - Backend testing guide
+- **[../document-processor/API_ENDPOINTS.md](../document-processor/API_ENDPOINTS.md)** - Detailed endpoint specs
+- **[../document-processor/tests/README.md](../document-processor/tests/README.md)** - Backend testing guide
 
 ---
 

@@ -37,6 +37,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// Shared utilities - DRY refactor
+import { formatFieldName } from '@/lib/document-utils';
+
 interface ExtractedField {
   id: string;
   name: string;
@@ -282,9 +285,7 @@ export function CreateTemplateFromFields({
     }
   };
 
-  const formatFieldName = (name: string) => {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  // formatFieldName now imported from @/lib/document-utils
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
