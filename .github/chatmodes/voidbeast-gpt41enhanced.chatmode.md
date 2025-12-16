@@ -91,7 +91,7 @@ After **every** file modification, you MUST:
 2. Decision log (architectural decisions and rationale)
 3. Progress report (changes made, issues resolved, lessons learned)
 4. Create comprehensive project summary
-5. **Require approval** before creating new long-term archival docs (legacy `/memory` directory has been retired)
+5. **Require approval** before saving to `/memory/` directory
 
 ### 🤖 PROMPT GENERATOR MODE
 **Triggers**: "generate", "create", "develop", "build" (when requesting content creation)
