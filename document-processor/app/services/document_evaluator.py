@@ -79,7 +79,8 @@ class DocumentEvaluator:
         filename: str,
         content_type: str,
         quick_scan: bool = True,
-        content_override: Optional[str] = None
+        content_override: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Evaluate document type with configurable depth
@@ -90,6 +91,7 @@ class DocumentEvaluator:
             content_type: MIME type of the file
             quick_scan: If True, performs quick analysis; if False, full analysis
             content_override: Pre-extracted clean text content (bypasses file extraction)
+            user_id: Optional user ID to include their private templates in matching
 
         Quick scan: First page/partial analysis, basic patterns
         Full scan: Complete document analysis with AI
@@ -126,17 +128,19 @@ class DocumentEvaluator:
         else:
             content_preview = await self._get_content_preview_simple(file_path, quick_scan)
         
-        # Find matching templates using the advanced template matching service
-        print(f"[TEMPLATE DEBUG] Finding templates for document type: {type_evaluation['primary_type']}")
-        print(f"[TEMPLATE DEBUG] Key phrases: {content_preview.get('key_phrases', [])}")
+        # Find matching templates using the advanced template matching service with semantic embeddings
+        document_text = content_preview.get('document_text', '')
         logger.info(f"Finding templates for document type: {type_evaluation['primary_type']}")
         logger.info(f"Key phrases: {content_preview.get('key_phrases', [])}")
+        logger.info(f"User ID for private template matching: {user_id}")
+        logger.info(f"Document text available for semantic matching: {len(document_text)} chars")
         template_suggestions = await template_matching_service.find_matching_templates(
             document_type=type_evaluation['primary_type'],
             content_keywords=content_preview.get('key_phrases', []),
-            min_confidence=0.5  # Lower threshold for better suggestions
+            min_confidence=0.65,  # 65% threshold - takes highest rated template above this
+            user_id=user_id,  # Include user's private templates in search
+            document_text=document_text  # Pass document text for semantic similarity
         )
-        print(f"[TEMPLATE DEBUG] Template suggestions returned: {len(template_suggestions)} templates")
         logger.info(f"Template suggestions returned: {len(template_suggestions)} templates")
         
         # Determine processing workflow
@@ -360,30 +364,68 @@ class DocumentEvaluator:
             return self._unknown_type_result(str(e))
     
     async def _get_content_preview_simple(self, file_path: Path, quick_scan: bool) -> Dict[str, Any]:
-        """Simple content preview without external services"""
+        """Simple content preview - uses Docling for PDFs, direct read for text files"""
         try:
-            # Read file content
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
+            file_extension = file_path.suffix.lower()
 
-            # Extract key phrases
+            # For PDFs and binary formats, use Docling to extract actual text
+            if file_extension in ['.pdf', '.docx', '.doc', '.xlsx']:
+                try:
+                    result = await asyncio.wait_for(
+                        enhanced_docling_service.process_document(
+                            file_path,
+                            extract_text=True,
+                            extract_metadata=True,
+                            extract_structure=False
+                        ),
+                        timeout=self.document_processing_timeout
+                    )
+
+                    if result.get('status') == 'completed':
+                        text = result.get('content', {}).get('text', '')
+                        metadata = result.get('metadata', {})
+                        page_count = metadata.get('pages', 1)
+                        has_tables = len(result.get('content', {}).get('tables', [])) > 0
+                        logger.info(f"Extracted {len(text)} chars from {file_extension} file for content preview")
+                    else:
+                        logger.warning(f"Docling processing failed for {file_extension}, using empty text")
+                        text = ''
+                        page_count = 0
+                        has_tables = False
+                except asyncio.TimeoutError:
+                    logger.warning(f"Docling timed out for content preview, using empty text")
+                    text = ''
+                    page_count = 0
+                    has_tables = False
+            else:
+                # For text files, read directly
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    text = f.read()
+                page_count = max(1, text.count('\f') + 1)
+                has_tables = 'table' in text.lower() or '|' in text or '\t' in text
+
+            # Extract key phrases from actual text content
             key_phrases = self._extract_key_phrases(text, limit=10 if quick_scan else 20)
+            logger.info(f"Extracted key phrases for template matching: {key_phrases[:5]}...")
 
             return {
-                'has_tables': 'table' in text.lower() or '|' in text or '\t' in text,
+                'has_tables': has_tables,
                 'has_images': False,  # Simple implementation doesn't detect images
                 'detected_language': 'en',
-                'page_count': max(1, text.count('\f') + 1),  # Count form feeds as page breaks
-                'key_phrases': key_phrases
+                'page_count': page_count,
+                'key_phrases': key_phrases,
+                'document_text': text  # Include full text for semantic matching
             }
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in content preview: {str(e)}")
             return {
                 'has_tables': False,
                 'has_images': False,
                 'detected_language': 'unknown',
                 'page_count': 0,
-                'key_phrases': []
+                'key_phrases': [],
+                'document_text': ''
             }
 
     def _get_content_preview_from_text(self, text: str, quick_scan: bool) -> Dict[str, Any]:
@@ -397,7 +439,8 @@ class DocumentEvaluator:
                 'has_images': False,  # Cannot detect images from text alone
                 'detected_language': 'en',
                 'page_count': max(1, text.count('\f') + 1),  # Count form feeds as page breaks
-                'key_phrases': key_phrases
+                'key_phrases': key_phrases,
+                'document_text': text  # Include full text for semantic matching
             }
 
         except Exception:
@@ -406,7 +449,8 @@ class DocumentEvaluator:
                 'has_images': False,
                 'detected_language': 'unknown',
                 'page_count': 0,
-                'key_phrases': []
+                'key_phrases': [],
+                'document_text': ''
             }
 
     async def _get_content_preview(self, file_path: Path, quick_scan: bool) -> Dict[str, Any]:

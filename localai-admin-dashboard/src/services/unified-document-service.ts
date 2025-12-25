@@ -99,10 +99,44 @@ export interface DocumentMetadata {
   // Error tracking
   error_message?: string;
   error_details?: any;
-  
+
   // Additional context
   processing_settings?: any;
   user_notes?: string;
+
+  // Template decision from smart upload (2-way validation)
+  template_decision?: {
+    action: 'use_existing' | 'generate_new' | 'none';
+    validation_level: 'high_confidence' | 'medium_confidence' | 'low_confidence';
+    match_score?: number;
+    extraction_quality?: number;
+    combined_score?: number;
+    extraction_tested?: boolean;
+    auto_applied: boolean;
+    chosen_template?: {
+      template_id: number;
+      template_name: string;
+      match_score?: number;
+      category?: string;
+      field_count?: number;
+      total_fields?: number;
+      description?: string;
+      extractable_fields?: number;
+      failed_fields?: string[];
+      avg_field_confidence?: number;
+      extraction_quality?: number;
+      extraction_test_passed?: boolean;
+      combined_score?: number;
+      usage_count?: number;
+    };
+  };
+
+  // Extracted data from template extraction
+  extracted_data?: {
+    extracted_values?: Record<string, any>;
+    confidence_scores?: Record<string, number>;
+  } | null;
+
   // Permit additional dynamic metadata keys to avoid strict typing issues
   [key: string]: unknown;
 }
@@ -110,6 +144,7 @@ export interface DocumentMetadata {
 export interface CreateDocumentOptions {
   file: File;
   uploadSource: UploadSource;
+  organizationId: string; // Required: organization to create document in
   templateId?: number;
   templateName?: string;
   processingMethod?: 'template_guided' | 'generic' | 'progressive' | 'ai_enhanced';
@@ -240,7 +275,7 @@ export class UnifiedDocumentService {
         const bestTemplate = evaluation.template_suggestions
           .sort((a, b) => b.match_score - a.match_score)[0];
 
-        const MIN_AUTO_SELECT_CONFIDENCE = 0.70; // Require 70% match score for auto-selection
+        const MIN_AUTO_SELECT_CONFIDENCE = 0.60; // Require 60% match score for auto-selection
 
         console.log('🤖 Evaluating template auto-selection...', {
           templateId: bestTemplate.template_id,
@@ -802,6 +837,11 @@ export class UnifiedDocumentService {
         uploaded_at: new Date().toISOString(),
       };
 
+      // Validate organization_id
+      if (!options.organizationId) {
+        throw new Error('organization_id is required to create a document');
+      }
+
       // Create document record
       const documentData = {
         name: options.file.name,
@@ -811,6 +851,7 @@ export class UnifiedDocumentService {
         processing_status: 'uploaded', // Set initial status
         metadata,
         uploaded_by: user.id,
+        organization_id: options.organizationId,
       };
 
       console.log('Creating document record:', documentData);
@@ -1330,6 +1371,7 @@ export class UnifiedDocumentService {
 
   /**
    * Get template suggestions for a document
+   * Includes both template_suggestions array AND chosen_template from template_decision
    */
   static getDocumentTemplateSuggestions(document: DocumentRecord): Array<{
     template_id: number;
@@ -1338,17 +1380,61 @@ export class UnifiedDocumentService {
     category: string;
     field_count: number;
   }> {
-    return document.metadata?.template_suggestions || [];
+    const suggestions = document.metadata?.template_suggestions || [];
+
+    // Also include chosen_template from template_decision if not auto_applied
+    const templateDecision = document.metadata?.template_decision;
+    if (templateDecision?.chosen_template && !templateDecision.auto_applied) {
+      const chosenTemplate = templateDecision.chosen_template;
+      // Check if it's already in suggestions
+      const alreadyIncluded = suggestions.some(
+        (s: { template_id: number }) => s.template_id === chosenTemplate.template_id
+      );
+      if (!alreadyIncluded) {
+        // Add chosen_template as a suggestion
+        return [
+          {
+            template_id: chosenTemplate.template_id,
+            template_name: chosenTemplate.template_name,
+            match_score: chosenTemplate.match_score || templateDecision.match_score || 0,
+            category: chosenTemplate.category || 'general',
+            field_count: chosenTemplate.field_count || chosenTemplate.total_fields || 0,
+          },
+          ...suggestions,
+        ];
+      }
+    }
+
+    return suggestions;
   }
 
   /**
    * Check if document needs template selection
+   * Returns true when document is completed but has no extracted fields and has template suggestions
    */
   static documentNeedsTemplateSelection(document: DocumentRecord): boolean {
     const hasTemplateId = !!document.metadata?.template_id;
-    const hasSuggestions = !!(document.metadata?.template_suggestions?.length);
-    const isProcessing = document.processing_status === 'processing' || document.status === 'processing';
-    
-    return isProcessing && !hasTemplateId && hasSuggestions;
+    const hasExtractedFields = !!(
+      document.metadata?.extracted_fields ||
+      document.metadata?.extracted_data?.extracted_values ||
+      document.extracted_fields
+    );
+
+    // Check for suggestions from both sources
+    const hasExplicitSuggestions = !!(document.metadata?.template_suggestions?.length);
+    const hasChosenTemplate = !!(
+      document.metadata?.template_decision?.chosen_template &&
+      !document.metadata?.template_decision?.auto_applied
+    );
+    const hasSuggestions = hasExplicitSuggestions || hasChosenTemplate;
+
+    // Document is in a state needing template selection if:
+    // - No template has been applied AND
+    // - No fields have been extracted AND
+    // - There are template suggestions available AND
+    // - Document is not in error state
+    const isNotError = document.processing_status !== 'failed' && document.processing_status !== 'error';
+
+    return !hasTemplateId && !hasExtractedFields && hasSuggestions && isNotError;
   }
 }

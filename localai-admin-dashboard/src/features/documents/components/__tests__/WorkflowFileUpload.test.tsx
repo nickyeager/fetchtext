@@ -51,8 +51,8 @@ describe('WorkflowFileUpload', () => {
 
   it('accepts correct file types', () => {
     render(<WorkflowFileUpload {...defaultProps} />);
-    
+
     const fileInput = screen.getByLabelText('Upload document');
-    expect(fileInput).toHaveAttribute('accept', '.pdf,.docx,.txt,.md,.pptx,.xlsx,.html,.csv');
+    expect(fileInput).toHaveAttribute('accept', '.pdf,.docx,.txt,.md,.pptx,.xlsx,.html,.csv,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tiff');
   });
 });

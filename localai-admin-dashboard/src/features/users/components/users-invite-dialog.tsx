@@ -1,8 +1,7 @@
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconMailPlus, IconSend } from '@tabler/icons-react'
-import { showSubmittedData } from '@/utils/show-submitted-data'
+import { IconMailPlus, IconSend, IconLoader2 } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,7 +23,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SelectDropdown } from '@/components/select-dropdown'
-import { userTypes } from '../data/data'
+import { useInviteMember } from '../hooks/use-organization-members'
+import { invitableRoles } from '../data/data'
+import type { OrganizationRole } from '@/types/organization'
 
 const formSchema = z.object({
   email: z
@@ -42,33 +43,46 @@ interface Props {
 }
 
 export function UsersInviteDialog({ open, onOpenChange }: Props) {
+  const inviteMutation = useInviteMember()
+
   const form = useForm<UserInviteForm>({
     resolver: zodResolver(formSchema),
-    defaultValues: { email: '', role: '', desc: '' },
+    defaultValues: { email: '', role: 'member', desc: '' },
   })
 
   const onSubmit = (values: UserInviteForm) => {
-    form.reset()
-    showSubmittedData(values)
-    onOpenChange(false)
+    inviteMutation.mutate(
+      {
+        email: values.email,
+        role: values.role as OrganizationRole,
+      },
+      {
+        onSuccess: () => {
+          form.reset()
+          onOpenChange(false)
+        },
+      }
+    )
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(state) => {
-        form.reset()
-        onOpenChange(state)
+        if (!inviteMutation.isPending) {
+          form.reset()
+          onOpenChange(state)
+        }
       }}
     >
       <DialogContent className='sm:max-w-md'>
         <DialogHeader className='text-left'>
           <DialogTitle className='flex items-center gap-2'>
-            <IconMailPlus /> Invite User
+            <IconMailPlus /> Invite Team Member
           </DialogTitle>
           <DialogDescription>
-            Invite new user to join your team by sending them an email
-            invitation. Assign a role to define their access level.
+            Invite a new member to join your organization by email. They will
+            receive an invitation link to accept.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -87,6 +101,7 @@ export function UsersInviteDialog({ open, onOpenChange }: Props) {
                     <Input
                       type='email'
                       placeholder='eg: john.doe@gmail.com'
+                      disabled={inviteMutation.isPending}
                       {...field}
                     />
                   </FormControl>
@@ -104,8 +119,9 @@ export function UsersInviteDialog({ open, onOpenChange }: Props) {
                     defaultValue={field.value}
                     onValueChange={field.onChange}
                     placeholder='Select a role'
-                    items={userTypes.map(({ label, value }) => ({
-                      label,
+                    disabled={inviteMutation.isPending}
+                    items={invitableRoles.map(({ label, value, description }) => ({
+                      label: `${label} - ${description}`,
                       value,
                     }))}
                   />
@@ -117,12 +133,13 @@ export function UsersInviteDialog({ open, onOpenChange }: Props) {
               control={form.control}
               name='desc'
               render={({ field }) => (
-                <FormItem className=''>
-                  <FormLabel>Description (optional)</FormLabel>
+                <FormItem>
+                  <FormLabel>Personal Note (optional)</FormLabel>
                   <FormControl>
                     <Textarea
                       className='resize-none'
                       placeholder='Add a personal note to your invitation (optional)'
+                      disabled={inviteMutation.isPending}
                       {...field}
                     />
                   </FormControl>
@@ -134,10 +151,25 @@ export function UsersInviteDialog({ open, onOpenChange }: Props) {
         </Form>
         <DialogFooter className='gap-y-2'>
           <DialogClose asChild>
-            <Button variant='outline'>Cancel</Button>
+            <Button variant='outline' disabled={inviteMutation.isPending}>
+              Cancel
+            </Button>
           </DialogClose>
-          <Button type='submit' form='user-invite-form'>
-            Invite <IconSend />
+          <Button
+            type='submit'
+            form='user-invite-form'
+            disabled={inviteMutation.isPending}
+          >
+            {inviteMutation.isPending ? (
+              <>
+                <IconLoader2 className='animate-spin' />
+                Sending...
+              </>
+            ) : (
+              <>
+                Invite <IconSend />
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

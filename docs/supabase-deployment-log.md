@@ -114,3 +114,67 @@ CREATE POLICY objects_all_authenticated ON storage.objects
 - **ACTION REQUIRED**: Apply fix via Supabase Dashboard UI (SQL method fails due to permissions)
 - **UI Method**: See `APPLY_STORAGE_FIX_VIA_UI.md` for step-by-step instructions
 - **Why SQL fails**: Managed Supabase restricts ALTER TABLE on storage system tables
+
+---
+
+### [PENDING] - Multi-Organization Support (Migration 014)
+
+**Deployed By:** [Your Name]
+**Migration Files Applied:**
+- `supabase/migrations/014_add_organizations.sql`
+
+**Changes:**
+- Created `organizations` table for teams/workspaces
+- Created `organization_members` table with three-tier roles (owner, admin, member)
+- Created `organization_invitations` table for pending invites
+- Added `organization_id` column to: smart_templates, templates, workflow_templates, documents, workflow_instances
+- Created helper functions: `user_is_org_member()`, `user_has_org_role()`, `get_user_organizations()`
+- Auto-created personal organization for each existing user
+- Migrated all existing user data to their personal organizations
+- Updated RLS policies to use organization-based access control
+- Added trigger to auto-create personal org for new user signups
+
+**Pre-Deployment Checklist:**
+- [ ] Tested migration on local Docker Supabase
+- [ ] Verified all existing data migrated correctly
+- [ ] Tested RLS policies with multiple users
+- [ ] Created production backup
+
+**Verification (Post-Deployment):**
+- [ ] Organizations table created with personal orgs for all users
+- [ ] organization_members table has owner entries for each user
+- [ ] All smart_templates have organization_id (none NULL)
+- [ ] All documents have organization_id (none NULL)
+- [ ] RLS policies allow org members to see org data
+- [ ] RLS policies prevent cross-org data access
+- [ ] New user signup creates personal organization automatically
+- [ ] Frontend tested with organization switching
+
+**Verification Queries:**
+```sql
+-- Check org counts
+SELECT organization_type, COUNT(*) FROM organizations GROUP BY 1;
+
+-- Check membership counts
+SELECT role, COUNT(*) FROM organization_members GROUP BY 1;
+
+-- Verify no NULL organization_ids
+SELECT 'smart_templates' as tbl, COUNT(*) FILTER (WHERE organization_id IS NULL) as nulls FROM smart_templates
+UNION ALL SELECT 'documents', COUNT(*) FILTER (WHERE organization_id IS NULL) FROM documents;
+
+-- Test RLS (as authenticated user)
+SELECT COUNT(*) FROM organizations; -- Should return user's orgs only
+```
+
+**Rollback Plan:**
+- Run `supabase/migrations/014_rollback_organizations.sql`
+- This will:
+  - Drop organization tables
+  - Remove organization_id columns
+  - Restore original RLS policies
+  - **WARNING**: All organization data will be lost
+
+**Notes:**
+- This is a major schema change - test thoroughly before production
+- Frontend must be updated to use organization context after this migration
+- Storage bucket paths may need updating to `{org_id}/{user_id}/filename` pattern

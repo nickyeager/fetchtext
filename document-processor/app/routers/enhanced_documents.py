@@ -35,6 +35,7 @@ from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.template_matching_service import template_matching_service
 from ..services.template_generation_service import template_generation_service
+from ..services.document_fingerprint import compute_document_fingerprint, fingerprints_match
 from ..config.database import db_config
 
 router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
@@ -463,7 +464,8 @@ async def decide_template_strategy(
     min_match_confidence: float = Query(0.7, ge=0.0, le=1.0, description="Minimum match score to use an existing template"),
     allow_generation: bool = Query(True, description="Allow generating a template when no strong match exists"),
     auto_save: bool = Query(False, description="Auto-save generated templates to the database"),
-    generation_mode: str = Query("automatic", description="Template generation mode when generation is chosen: automatic, guided, custom")
+    generation_mode: str = Query("automatic", description="Template generation mode when generation is chosen: automatic, guided, custom"),
+    user_id: Optional[str] = Query(None, description="User ID to include their private templates in matching")
 ):
     """
     Decide whether to use an existing template or generate a new one for the uploaded document.
@@ -473,6 +475,7 @@ async def decide_template_strategy(
     - If a top suggestion meets `min_match_confidence`, returns an action to use that template.
     - Otherwise, if `allow_generation` is true, generates a new smart template and validates extraction.
     - Returns a unified response structure including the chosen action, rationale, and artifacts.
+    - When user_id is provided, the user's private templates are also considered for matching.
 
     This endpoint centralizes the decision logic previously split between evaluation and generation endpoints.
     """
@@ -483,25 +486,100 @@ async def decide_template_strategy(
         raise HTTPException(status_code=400, detail="generation_mode must be automatic, guided, or custom")
 
     temp_file_path: Optional[Path] = None
+    document_fingerprint = ""  # Will be computed from document text
+
     try:
         # Save uploaded file temporarily
         temp_file_path = await save_uploaded_file(file)
 
+        # 0) Extract document text FIRST for fingerprinting
+        document_text = ""
+        try:
+            extraction_result = await enhanced_docling_service.process_document(
+                temp_file_path,
+                extract_text=True,
+                extract_metadata=False,
+                extract_structure=False
+            )
+            if extraction_result.get('status') == 'completed':
+                document_text = extraction_result.get('content', {}).get('text', '')
+                logger.info(f"Extracted {len(document_text)} characters for fingerprinting and validation")
+
+                # Compute document fingerprint for matching
+                if document_text:
+                    document_fingerprint = compute_document_fingerprint(document_text)
+                    logger.info(f"Document fingerprint: {document_fingerprint[:16]}...")
+        except Exception as e:
+            logger.warning(f"Failed to extract document text for fingerprinting: {str(e)}")
+
+        # 0.5) Check for EXACT fingerprint match BEFORE regular scoring
+        # If the same document was used to generate a template before, auto-select it
+        fingerprint_matched_template = None
+        if document_fingerprint and db_config.is_configured and db_config.client:
+            try:
+                # Query templates that have source fingerprints stored
+                result = db_config.client.table('smart_templates').select(
+                    'id, name, category, smart_variables, generation_settings'
+                ).execute()
+
+                for template in result.data:
+                    gen_settings = template.get('generation_settings', {}) or {}
+                    source_fingerprint = gen_settings.get('source_document_fingerprint', '')
+
+                    if source_fingerprint and fingerprints_match(document_fingerprint, source_fingerprint):
+                        logger.info(f"🎯 EXACT FINGERPRINT MATCH! Template '{template['name']}' (ID: {template['id']}) was generated from this document")
+                        fingerprint_matched_template = {
+                            'template_id': template['id'],
+                            'template_name': template['name'],
+                            'match_score': 1.0,  # Perfect match - same document
+                            'extraction_quality': 1.0,  # Assume perfect since it was generated from this doc
+                            'combined_score': 1.0,
+                            'category': template.get('category', ''),
+                            'field_count': len(template.get('smart_variables', [])),
+                            'match_reason': 'exact_fingerprint_match',
+                            'description': 'This template was generated from this exact document'
+                        }
+                        break
+            except Exception as e:
+                logger.warning(f"Fingerprint matching query failed: {str(e)}")
+
+        # If we found a fingerprint match, return immediately
+        if fingerprint_matched_template:
+            return JSONResponse(content={
+                'action': 'use_existing',
+                'chosen_template': fingerprint_matched_template,
+                'alternatives': [],
+                'evaluation': {'document_fingerprint': document_fingerprint[:16]},
+                'decision_metadata': {
+                    'reason': 'Exact fingerprint match - this document was previously used to generate this template',
+                    'validation_level': 'fingerprint_verified',
+                    'match_score': 1.0,
+                    'extraction_quality': 1.0,
+                    'combined_score': 1.0,
+                    'extraction_tested': False,  # Skip since fingerprint match guarantees compatibility
+                    'min_match_confidence': min_match_confidence,
+                    'quick_scan': quick_scan,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            })
+
         # 1) Evaluate document (type + suggestions)
+        # Pass user_id to include their private templates in matching
         evaluation = await document_evaluator.evaluate_document(
             temp_file_path,
             file.filename,
             file.content_type or "",
             quick_scan=quick_scan,
+            user_id=user_id,
         )
 
         suggestions = evaluation.get('template_suggestions', []) or []
 
-        # 2) Extract document text for real extraction testing
-        document_text = ""
-        if suggestions:
+        # 2) Document text already extracted for fingerprinting - reuse it
+        # Only re-extract if we don't have text yet (shouldn't happen normally)
+        if not document_text and suggestions:
+            logger.warning("Document text not available from fingerprinting step, re-extracting...")
             try:
-                # Extract full text content for validation
                 extraction_result = await enhanced_docling_service.process_document(
                     temp_file_path,
                     extract_text=True,
@@ -587,23 +665,25 @@ async def decide_template_strategy(
             logger.info("Re-sorted suggestions by combined score")
 
         # 4) Apply 2-way validation thresholds for decision
+        # Use the min_match_confidence parameter from the request - this is the MINIMUM required threshold
+        logger.info(f"[DECISION] Evaluating {len(suggestions)} suggestions with min_match_confidence={min_match_confidence}")
         chosen = None
         if suggestions:
             best = suggestions[0]
             match_score = best.get('match_score', 0.0)
             extraction_quality = best.get('extraction_quality', match_score)  # Fallback to match_score if not tested
 
-            # 2-way validation: BOTH match_score AND extraction_quality must meet thresholds
-            if match_score >= 0.70 and extraction_quality >= 0.70:
+            logger.info(f"[DECISION] Best template: '{best.get('template_name')}' (ID: {best.get('template_id')})")
+            logger.info(f"[DECISION] match_score={match_score:.2f}, extraction_quality={extraction_quality:.2f}, threshold={min_match_confidence}")
+
+            # 2-way validation: BOTH match_score AND extraction_quality must meet the requested threshold
+            # The user-specified min_match_confidence is the MINIMUM - we don't automatically fall back
+            if match_score >= min_match_confidence and extraction_quality >= min_match_confidence:
                 chosen = best
-                logger.info(f"High confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}")
-            elif match_score >= 0.60 and extraction_quality >= 0.50:
-                # Medium confidence - show options to user
-                logger.info(f"Medium confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}")
-                chosen = best  # Still use it, but mark for user review
+                logger.info(f"[DECISION] Template ACCEPTED: match={match_score:.2f} >= {min_match_confidence}, extraction={extraction_quality:.2f} >= {min_match_confidence}")
             else:
                 logger.info(
-                    f"Low confidence match: match={match_score:.2f}, extraction={extraction_quality:.2f}. "
+                    f"[DECISION] Template REJECTED: match={match_score:.2f}, extraction={extraction_quality:.2f}, threshold={min_match_confidence}. "
                     f"Will generate new template if allowed."
                 )
 
@@ -613,12 +693,13 @@ async def decide_template_strategy(
             extraction_quality = chosen.get('extraction_quality', 0.0)
 
             # Determine validation level for user transparency
-            if match_score >= 0.70 and extraction_quality >= 0.70:
+            # Score both relative to the requested threshold
+            if match_score >= 0.80 and extraction_quality >= 0.80:
                 validation_level = 'high_confidence'
                 reason = 'Template meets high confidence thresholds for both matching and extraction'
-            elif match_score >= 0.60 and extraction_quality >= 0.50:
+            elif match_score >= min_match_confidence and extraction_quality >= min_match_confidence:
                 validation_level = 'medium_confidence'
-                reason = 'Template meets medium confidence thresholds - please review extracted fields'
+                reason = 'Template meets requested confidence thresholds - please review extracted fields'
             else:
                 validation_level = 'low_confidence'
                 reason = 'Best available template, but extraction quality may be limited'
@@ -655,6 +736,16 @@ async def decide_template_strategy(
                 template_name
             )
 
+            # DEBUG: Log generated template details
+            template_vars = generated_template.get('variables', [])
+            logger.info("=" * 80)
+            logger.info("📋 GENERATED TEMPLATE DETAILS")
+            logger.info(f"Template name: {generated_template.get('name')}")
+            logger.info(f"Variables count: {len(template_vars)}")
+            for i, var in enumerate(template_vars[:5]):
+                logger.info(f"  Var {i+1}: {var.get('name')} (type: {var.get('type')})")
+            logger.info("=" * 80)
+
             # Override category with detected type if missing
             if 'category' not in generated_template or not generated_template['category']:
                 generated_template['category'] = primary_type
@@ -662,16 +753,33 @@ async def decide_template_strategy(
             # Validate extraction with the same source document
             test_extraction = await _test_template_extraction(temp_file_path, generated_template)
 
+            # DEBUG: Log test extraction results
+            logger.info("=" * 80)
+            logger.info("🧪 TEST EXTRACTION RESULTS")
+            logger.info(f"Extraction successful: {test_extraction.get('extraction_successful')}")
+            logger.info(f"Fields extracted: {test_extraction.get('extracted_fields_count')}")
+            logger.info(f"Avg confidence: {test_extraction.get('average_confidence', 0):.2f}")
+            logger.info(f"Failed fields: {test_extraction.get('failed_fields', [])}")
+            if test_extraction.get('successful_fields'):
+                for name, data in list(test_extraction.get('successful_fields', {}).items())[:3]:
+                    logger.info(f"  ✓ {name}: {data.get('value', 'N/A')[:50]} (conf: {data.get('confidence', 0):.2f})")
+            logger.info("=" * 80)
+
+            # Include fingerprint in template data for saving later
+            generated_template['source_document_fingerprint'] = document_fingerprint
+
             decision = {
                 'action': 'generated',
                 'template': generated_template,
                 'evaluation': evaluation,
+                'source_document_fingerprint': document_fingerprint,  # Also expose at top level
                 'generation_metadata': {
                     'generation_method': generation_mode,
                     'ai_confidence': analysis.get('confidence'),
                     'fields_detected': len(analysis.get('detected_fields', [])),
                     'original_filename': file.filename,
                     'auto_save': auto_save,
+                    'source_document_fingerprint': document_fingerprint,
                     'timestamp': datetime.now(timezone.utc).isoformat()
                 },
                 'validation_results': {
@@ -691,7 +799,10 @@ async def decide_template_strategy(
             # Optional auto-save
             if auto_save:
                 try:
-                    saved_template = await _save_template_to_database(generated_template, template_name, generated_template.get('category', primary_type))
+                    saved_template = await _save_template_to_database(
+                        generated_template, template_name, generated_template.get('category', primary_type),
+                        user_id=user_id, source_document_fingerprint=document_fingerprint
+                    )
                     decision['generation_metadata']['saved_to_database'] = True
                     decision['generation_metadata']['template_id'] = saved_template['id']
                     decision['template']['id'] = saved_template['id']
@@ -1246,22 +1357,33 @@ async def suggest_template_improvements(
 async def save_generated_template(
     template_data: str = Query(..., description="JSON string containing generated template data"),
     template_name: str = Query(..., description="Name for the template"),
-    category: str = Query("Generated", description="Category for the template")
+    category: str = Query("Generated", description="Category for the template"),
+    user_id: Optional[str] = Query(None, description="User ID for template ownership"),
+    source_document_fingerprint: Optional[str] = Query(None, description="Fingerprint of source document for matching")
 ):
     """
     Save a generated template to the database.
-    
+
     This endpoint allows saving templates that were generated via /decide-template
     but not initially saved.
+
+    The source_document_fingerprint parameter enables fingerprint-based matching:
+    when the same document is uploaded again, it will automatically match this template.
     """
-    
+
     try:
         # Parse template data
         import json
         template = json.loads(template_data)
-        
-        # Save to database
-        saved_template = await _save_template_to_database(template, template_name, category)
+
+        # Check if fingerprint is in the template data (from decide-template response)
+        fingerprint = source_document_fingerprint or template.get('source_document_fingerprint', '')
+
+        # Save to database with fingerprint
+        saved_template = await _save_template_to_database(
+            template, template_name, category, user_id=user_id,
+            source_document_fingerprint=fingerprint
+        )
         
         return JSONResponse(content={
             'success': True,
@@ -1277,56 +1399,83 @@ async def save_generated_template(
         raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
 
 async def _test_template_extraction(document_path: Path, template: Dict[str, Any]) -> Dict[str, Any]:
-    """Test template extraction on the source document"""
-    
+    """Test template extraction on the source document using actual LLM extraction"""
+
     try:
-        # Process document with enhanced service
+        # Process document to get text content
         result = await enhanced_docling_service.process_document_with_ai_enhancement(
             document_path,
             extract_text=True,
-            extract_metadata=True,
-            extract_structure=True,
-            use_ai_enhancement=True
+            extract_metadata=False,
+            extract_structure=False,
+            use_ai_enhancement=False  # Skip AI enhancement for faster text extraction
         )
-        
+
         if result.get('status') != 'completed':
+            template_variables = template.get('variables', template.get('smart_variables', []))
             return {
                 'extraction_successful': False,
                 'extracted_fields_count': 0,
                 'average_confidence': 0.0,
-                'failed_fields': list(template.get('variables', []))
+                'failed_fields': [var.get('name', var.get('id', 'unknown')) for var in template_variables],
+                'successful_fields': {}
             }
-        
-        # Simulate field extraction based on template variables
-        extracted_data = result.get('extracted_data', {}).get('extracted_values', {})
-        template_variables = template.get('variables', [])
-        
-        successful_extractions = 0
-        total_confidence = 0.0
-        failed_fields = []
-        
-        for variable in template_variables:
-            field_name = variable['name']
-            # Simple check: if we have any extracted data that might match
-            if field_name in extracted_data or any(hint in str(extracted_data) for hint in variable.get('extraction_hints', [])):
-                successful_extractions += 1
-                total_confidence += 0.8  # Simulated confidence
-            else:
-                failed_fields.append(field_name)
-        
+
+        # Get document text content
+        document_text = result.get('content', {}).get('text', '')
+        if not document_text:
+            template_variables = template.get('variables', template.get('smart_variables', []))
+            return {
+                'extraction_successful': False,
+                'extracted_fields_count': 0,
+                'average_confidence': 0.0,
+                'failed_fields': [var.get('name', var.get('id', 'unknown')) for var in template_variables],
+                'successful_fields': {},
+                'error': 'No text content extracted from document'
+            }
+
+        # Get template variables (support both 'variables' and 'smart_variables' keys)
+        template_variables = template.get('variables', template.get('smart_variables', []))
+
+        if not template_variables:
+            return {
+                'extraction_successful': False,
+                'extracted_fields_count': 0,
+                'average_confidence': 0.0,
+                'failed_fields': [],
+                'successful_fields': {},
+                'error': 'No template variables defined'
+            }
+
+        # Use smart_field_extractor to perform REAL extraction test
+        test_result = await smart_field_extractor.test_template_extraction(
+            content=document_text,
+            template_variables=template_variables,
+            confidence_threshold=0.6,
+            provider="azure"  # Use Azure for faster/better results
+        )
+
+        # Format response to match expected structure
         return {
-            'extraction_successful': successful_extractions > 0,
-            'extracted_fields_count': successful_extractions,
-            'average_confidence': total_confidence / len(template_variables) if template_variables else 0.0,
-            'failed_fields': failed_fields
+            'extraction_successful': test_result.get('extractable_count', 0) > 0,
+            'extracted_fields_count': test_result.get('extractable_count', 0),
+            'average_confidence': test_result.get('avg_confidence', 0.0),
+            'failed_fields': test_result.get('failed_fields', []),
+            'successful_fields': test_result.get('successful_fields', {}),
+            'field_success_rate': test_result.get('field_success_rate', 0.0),
+            'test_passed': test_result.get('test_passed', False)
         }
-        
-    except Exception:
+
+    except Exception as e:
+        logger.error(f"Template extraction test failed: {str(e)}", exc_info=True)
+        template_variables = template.get('variables', template.get('smart_variables', []))
         return {
             'extraction_successful': False,
             'extracted_fields_count': 0,
             'average_confidence': 0.0,
-            'failed_fields': [var['name'] for var in template.get('variables', [])]
+            'failed_fields': [var.get('name', var.get('id', 'unknown')) for var in template_variables],
+            'successful_fields': {},
+            'error': str(e)
         }
 
 def _validate_extraction_results(
@@ -1380,26 +1529,59 @@ def _validate_extraction_results(
     return validation_results
 
 async def _save_template_to_database(
-    template: Dict[str, Any], 
-    template_name: str, 
-    category: str
+    template: Dict[str, Any],
+    template_name: str,
+    category: str,
+    user_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    source_document_fingerprint: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Save generated template to the Supabase database"""
-    
+    """Save generated template to the Supabase database
+
+    Args:
+        template: The template data to save
+        template_name: Name for the template
+        category: Category for the template
+        user_id: User ID for template ownership
+        organization_id: Organization ID (required)
+        source_document_fingerprint: Fingerprint of the source document used to generate this template.
+                                     When the same document is uploaded again, this enables instant matching.
+    """
+
     # Get Supabase connection details from environment
+    # Use SERVICE_ROLE_KEY for database writes (bypasses RLS)
     supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
-    supabase_key = os.getenv('ANON_KEY', '')
-    
+    supabase_key = os.getenv('SERVICE_ROLE_KEY', os.getenv('ANON_KEY', ''))
+
     if not supabase_url or not supabase_key:
         raise ValueError("Supabase credentials not configured")
-    
+
     headers = {
         'apikey': supabase_key,
         'Authorization': f'Bearer {supabase_key}',
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
     }
-    
+
+    # If no organization_id provided, get the first available organization
+    if not organization_id:
+        try:
+            org_url = f"{supabase_url}/rest/v1/organizations?limit=1"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(org_url, headers=headers) as resp:
+                    if resp.status == 200:
+                        orgs = await resp.json()
+                        if orgs and len(orgs) > 0:
+                            organization_id = orgs[0]['id']
+                            logger.info(f"Using default organization: {organization_id}")
+                        else:
+                            raise ValueError("No organizations found in database")
+                    else:
+                        raise ValueError(f"Failed to fetch organizations: {resp.status}")
+        except Exception as e:
+            logger.error(f"Failed to get default organization: {str(e)}")
+            raise ValueError(f"organization_id is required: {str(e)}")
+
     # Prepare template data for database
     template_data = {
         'name': template_name,
@@ -1409,7 +1591,9 @@ async def _save_template_to_database(
         'template_type': 'smart',
         'smart_variables': template.get('variables', []),
         'tags': ['ai-generated', category],
-        'is_public': False,
+        'is_public': False if user_id else True,  # Private if user owns it, public otherwise
+        'created_by': user_id,  # Required for RLS policy
+        'organization_id': organization_id,  # Required - NOT NULL constraint
         'extraction_rules': [
             {
                 'variable_id': var.get('id', var.get('name')),
@@ -1424,7 +1608,8 @@ async def _save_template_to_database(
             'model': 'ai_template_generator',
             'temperature': 0.3,
             'max_tokens': 1000,
-            'generation_method': 'automatic'
+            'generation_method': 'automatic',
+            'source_document_fingerprint': source_document_fingerprint or ''  # For fingerprint-based matching
         }
     }
     
@@ -1443,8 +1628,16 @@ async def _save_template_to_database(
         
         saved_template = saved_templates[0]
         logger.info(f"Successfully saved template with ID: {saved_template['id']}")
+
+        # Clear template cache to ensure new template is immediately available for matching
+        try:
+            await template_matching_service.clear_cache()
+            logger.info("Template cache cleared after saving new template")
+        except Exception as cache_error:
+            logger.warning(f"Failed to clear template cache: {cache_error}")
+
         return saved_template
-        
+
     except Exception as e:
         logger.error(f"Database save failed: {str(e)}")
         raise RuntimeError(f"Failed to save template to database: {str(e)}")

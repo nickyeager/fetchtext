@@ -1347,12 +1347,16 @@ export class DocumentProcessorEnhanced {
   /**
    * Decide whether to use existing template or generate new one (2-way validation)
    * Calls the /decide-template endpoint which performs real extraction testing
+   *
+   * @param file - The document file to process
+   * @param options - Configuration options including userId to match against user's private templates
    */
   async decideTemplate(file: File, options?: {
     minMatchConfidence?: number;
     allowGeneration?: boolean;
     autoSave?: boolean;
     generationMode?: 'automatic' | 'guided' | 'custom';
+    userId?: string; // User ID to include their private templates in matching
   }): Promise<{
     action: 'use_existing' | 'generate_new';
     chosen_template?: any;
@@ -1372,7 +1376,8 @@ export class DocumentProcessorEnhanced {
       minMatchConfidence = 0.6,
       allowGeneration = true,
       autoSave = false,
-      generationMode = 'automatic'
+      generationMode = 'automatic',
+      userId
     } = options || {};
 
     try {
@@ -1386,6 +1391,12 @@ export class DocumentProcessorEnhanced {
         auto_save: autoSave.toString(),
         generation_mode: generationMode
       });
+
+      // Add user_id to include their private templates in matching
+      if (userId) {
+        params.append('user_id', userId);
+        console.log('🔐 Including user private templates in matching (user_id:', userId, ')');
+      }
 
       console.log('🎯 Calling /decide-template endpoint with 2-way validation...');
 

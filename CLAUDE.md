@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **FetchText** is a document processing and generation platform that:
 1. **Processes documents** - Extracts structured data from PDFs, images, and text files
-2. **Extracts variables** - Uses AI-powered smart templates with regex fallback for reliable data extraction  
+2. **Extracts variables** - Uses AI-powered smart templates with LLM-based entity extraction (NO hardcoded regex)
 3. **Generates new documents** - Automatically creates new documents using extracted data
 
 ## ⚠️ CRITICAL: Feature Completion Verification Rule
@@ -25,6 +25,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NEVER declare a feature complete without running the actual tests** - No assumptions
 - **If tests fail, FIX THE CODE, not the tests** - The tests represent user requirements
 - **Document both passing AND failing tests** - Be transparent about what works and what doesn't
+- **NEVER create fake tests that just return true/false** - All tests must use real local data
+- **NEVER use placeholder data or mocked responses** - Tests must call actual services with real files
+- **Tests must validate actual extracted values** - Compare against expected ground truth data
+
+**⚠️ PRIME DIRECTIVE: TEST EVERY CHANGE**
+
+**After ANY code change, you MUST immediately test it before reporting success:**
+
+1. **Backend Python changes** → Rebuild container → Run test → Verify output
+   ```bash
+   docker compose -p localai up -d --build document-processor
+   # Wait for healthy status
+   docker compose -p localai ps document-processor
+   # Run relevant test
+   python3 test_relevant_feature.py
+   ```
+
+2. **Frontend changes** → Build → Run tests → Verify in browser
+   ```bash
+   cd localai-admin-dashboard && npx pnpm build && npx pnpm test
+   ```
+
+3. **Algorithm/logic changes** → Run before/after comparison tests
+   - Show metrics BEFORE the change
+   - Show metrics AFTER the change
+   - Quantify the improvement with real numbers
+
+**NEVER say "the change is complete" without showing actual test output that proves it works.**
 
 **Example Format:**
 ```
@@ -50,6 +78,77 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 **NEVER skip this verification step.** Feature completion means a real user can successfully use the feature.
+
+## ⚠️ CRITICAL: No Hardcoded Regex for Entity Extraction
+
+**This is a fundamental architectural decision. ALL entity extraction MUST use LLM-based approaches.**
+
+### The Rule
+
+**NEVER use hardcoded regex patterns for entity extraction.** This includes:
+- Named Entity Recognition (NER) - persons, organizations, locations
+- Field extraction - dates, currencies, emails, phone numbers, addresses
+- Document type detection based on content patterns
+- Template field matching
+
+### Why This Matters
+
+1. **Regex is brittle** - Hardcoded patterns break with format variations
+2. **LLMs understand context** - "John Smith" after "Submitted To:" is a person, not after "Street Name:"
+3. **Maintenance burden** - Every new format requires new regex patterns
+4. **LLMs generalize** - Train once, extract from any document format
+
+### Allowed Uses of Regex
+
+Regex is ONLY acceptable for:
+1. **JSON parsing/cleanup** - Fixing malformed LLM responses (trailing commas, etc.)
+2. **HTML/text processing** - Stripping tags, normalizing whitespace
+3. **LLM-generated patterns** - If the LLM creates a regex for a specific field, that can be cached and reused
+4. **Validation (not extraction)** - Confirming an LLM-extracted email has valid format
+
+### Entity Extraction Architecture
+
+```
+Document Text
+    ↓
+[LLM Entity Extractor]
+    ├─ Send text + extraction prompt to LLM
+    ├─ Request structured JSON output with entity types
+    ├─ Parse response and validate
+    └─ Build searchable entity index
+    ↓
+[Entity Index]
+    ├─ Store extracted entities with embeddings
+    ├─ Enable similarity search across documents
+    └─ Support document clustering by entity overlap
+```
+
+### Implementation Pattern
+
+```python
+# ❌ BAD - Hardcoded regex
+def extract_emails(text):
+    return re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', text)
+
+# ✅ GOOD - LLM-based extraction
+async def extract_entities(text: str, llm_service) -> dict:
+    prompt = """Extract all entities from this document.
+    Return JSON with: persons, organizations, dates, currencies, emails, etc.
+    Include confidence scores and source context for each entity."""
+
+    response = await llm_service.generate(prompt + text)
+    return parse_llm_response(response)
+```
+
+### Testing Entity Extraction
+
+Tests for entity extraction MUST:
+1. Use real documents (not synthetic test data)
+2. Call actual LLM services (not mocked responses)
+3. Validate extracted entities against ground truth
+4. Measure extraction accuracy and confidence
+
+See [docs/guides/LLM_ENTITY_EXTRACTION.md](docs/guides/LLM_ENTITY_EXTRACTION.md) for detailed implementation guide.
 
 ## Architecture Overview
 

@@ -14,13 +14,6 @@ import { Main } from '@/components/layout/main'
 import { LearnMore } from '@/components/learn-more'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
-import { columns } from '@/features/users/components/users-columns'
-import { UsersDialogs } from '@/features/users/components/users-dialogs'
-import { UsersPrimaryButtons } from '@/features/users/components/users-primary-buttons'
-import { UsersTable } from '@/features/users/components/users-table'
-import UsersProvider from '@/features/users/context/users-context'
-import { userListSchema } from '@/features/users/data/schema'
-import { users } from '@/features/users/data/users'
 
 export const Route = createFileRoute('/clerk/_authenticated/user-management')({
   component: UserManagement,
@@ -29,6 +22,7 @@ export const Route = createFileRoute('/clerk/_authenticated/user-management')({
 function UserManagement() {
   const [opened, setOpened] = useState(true)
   const { isLoaded, isSignedIn } = useAuth()
+  const navigate = useNavigate()
 
   if (!isLoaded) {
     return (
@@ -42,60 +36,64 @@ function UserManagement() {
     return <Unauthorized />
   }
 
-  // Parse user list
-  const userList = userListSchema.parse(users)
   return (
     <>
       <SignedIn>
-        <UsersProvider>
-          <Header fixed>
-            <Search />
-            <div className='ml-auto flex items-center space-x-4'>
-              <ThemeSwitch />
-              <UserButton />
-            </div>
-          </Header>
+        <Header fixed>
+          <Search />
+          <div className='ml-auto flex items-center space-x-4'>
+            <ThemeSwitch />
+            <UserButton />
+          </div>
+        </Header>
 
-          <Main>
-            <div className='mb-2 flex flex-wrap items-center justify-between space-y-2'>
-              <div>
-                <h2 className='text-2xl font-bold tracking-tight'>User List</h2>
-                <div className='flex gap-1'>
-                  <p className='text-muted-foreground'>
-                    Manage your users and their roles here.
+        <Main>
+          <div className='mb-2 flex flex-wrap items-center justify-between space-y-2'>
+            <div>
+              <h2 className='text-2xl font-bold tracking-tight'>
+                User Management
+              </h2>
+              <div className='flex gap-1'>
+                <p className='text-muted-foreground'>
+                  User management has moved to the Team Members page.
+                </p>
+                <LearnMore
+                  open={opened}
+                  onOpenChange={setOpened}
+                  contentProps={{ side: 'right' }}
+                >
+                  <p>
+                    This demo page used to show mock user data. The main user
+                    management is now at{' '}
+                    <Link
+                      to='/users'
+                      className='text-blue-500 underline decoration-dashed underline-offset-2'
+                    >
+                      '/users'
+                    </Link>{' '}
+                    which manages organization members.
                   </p>
-                  <LearnMore
-                    open={opened}
-                    onOpenChange={setOpened}
-                    contentProps={{ side: 'right' }}
-                  >
-                    <p>
-                      This is the same as{' '}
-                      <Link
-                        to='/users'
-                        className='text-blue-500 underline decoration-dashed underline-offset-2'
-                      >
-                        '/users'
-                      </Link>
-                    </p>
 
-                    <p className='mt-4'>
-                      You can sign out or manage/delete your account via the
-                      User Profile menu in the top-right corner of the page.
-                      <IconArrowUpRight className='inline-block size-4' />
-                    </p>
-                  </LearnMore>
-                </div>
+                  <p className='mt-4'>
+                    You can sign out or manage/delete your account via the User
+                    Profile menu in the top-right corner of the page.
+                    <IconArrowUpRight className='inline-block size-4' />
+                  </p>
+                </LearnMore>
               </div>
-              <UsersPrimaryButtons />
             </div>
-            <div className='-mx-4 flex-1 overflow-auto px-4 py-1 lg:flex-row lg:space-y-0 lg:space-x-12'>
-              <UsersTable data={userList} columns={columns} />
-            </div>
-          </Main>
+          </div>
 
-          <UsersDialogs />
-        </UsersProvider>
+          <div className='mt-8 flex flex-col items-center justify-center gap-4'>
+            <p className='text-muted-foreground'>
+              Team member management is now handled through the organization
+              system.
+            </p>
+            <Button onClick={() => navigate({ to: '/users' })}>
+              Go to Team Members
+            </Button>
+          </div>
+        </Main>
       </SignedIn>
     </>
   )
