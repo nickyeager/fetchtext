@@ -1,4 +1,3 @@
-import React, { useEffect } from 'react';
 import { createFileRoute, useNavigate, Outlet, useMatches } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,14 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TemplateViewer } from '@/components/templates/TemplateViewer';
 import { templateService } from '@/services/template-service';
 
-interface SmartTemplateViewSearch {
-  mode?: 'view' | 'edit';
-}
-
 export const Route = createFileRoute('/_authenticated/templates/$templateId')({
-  validateSearch: (search: Record<string, unknown>): SmartTemplateViewSearch => ({
-    mode: (search.mode as 'view' | 'edit') || 'view',
-  }),
   component: SmartTemplateViewPage,
   errorComponent: ({ error }) => (
     <div className="container mx-auto p-6">
@@ -41,17 +33,19 @@ export const Route = createFileRoute('/_authenticated/templates/$templateId')({
 function SmartTemplateViewPage() {
   const navigate = useNavigate();
   const { templateId } = Route.useParams();
-  const { mode } = Route.useSearch();
   const matches = useMatches();
-  
-  // Render debug: templateId, mode
+
+  // Check if we have an active child route (like /edit)
+  const hasActiveChildRoute = matches.some(match =>
+    match.routeId.includes('/edit') || match.routeId.endsWith('/$templateId/edit')
+  );
 
   // Use React Query for proper caching and invalidation
-  const { 
-    data: template, 
-    isLoading, 
-    error,
-    refetch 
+  // Disable query when child route is active to avoid unnecessary fetches
+  const {
+    data: template,
+    isLoading,
+    error
   } = useQuery({
     queryKey: ['smart-template', templateId],
     queryFn: async () => {
@@ -61,37 +55,17 @@ function SmartTemplateViewPage() {
       }
       return foundTemplate;
     },
-    enabled: !!templateId,
+    enabled: !!templateId && !hasActiveChildRoute,
   });
-
-  // Redirect to edit route if mode=edit
-  useEffect(() => {
-    if (mode === 'edit') {
-      navigate({ 
-        to: '/templates/$templateId/edit', 
-        params: { templateId },
-        replace: true
-      });
-    }
-  }, [mode, templateId, navigate]);
-
-  // Clean up URL when component mounts to remove leftover query params
-  useEffect(() => {
-    if (mode !== 'edit' && window.location.search.includes('mode=view')) {
-      navigate({ 
-        to: '/templates/$templateId', 
-        params: { templateId },
-        replace: true 
-      });
-    }
-  }, [mode, templateId, navigate]);
-
 
   const handleBack = () => {
     navigate({ to: '/templates' });
   };
 
-  // Use template is handled elsewhere via actions; no-op here
+  // If we have an active child route, just render the outlet
+  if (hasActiveChildRoute) {
+    return <Outlet />;
+  }
 
   if (isLoading) {
     return (
@@ -112,7 +86,7 @@ function SmartTemplateViewPage() {
             Back to Templates
           </Button>
         </div>
-        
+
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -123,35 +97,8 @@ function SmartTemplateViewPage() {
     );
   }
 
-  // Don't render if redirecting to edit
-  if (mode === 'edit') {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-          <span className="ml-2">Redirecting to edit mode...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Check if we have an active child route (like /edit)
-  const hasActiveChildRoute = matches.some(match => match.routeId.includes('/edit'));
-
-  // If we have an active child route, just render the outlet
-  if (hasActiveChildRoute) {
-    return <Outlet />;
-  }
-
   return (
     <div className="container mx-auto p-6">
-      {/* Debug header to confirm we're on the view route */}
-      <div className="mb-4 p-3 bg-blue-100 border border-blue-300 rounded">
-        <h2 className="text-blue-800 font-bold">👀 VIEW MODE - Smart Template Viewer</h2>
-        <p className="text-sm text-blue-600">Template ID: {templateId} | Mode: {mode}</p>
-        <p className="text-xs text-blue-500">Active routes: {matches.map(m => m.routeId).join(' > ')}</p>
-      </div>
-
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Button variant="outline" onClick={handleBack}>

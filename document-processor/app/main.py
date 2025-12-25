@@ -7,6 +7,7 @@ from pathlib import Path
 
 # Import routers
 from app.routers import documents, health, enhanced_documents, models, google_docs
+from app.routers import api_v1, api_keys_admin
 
 app = FastAPI(
     title="Document Processor API",
@@ -29,6 +30,10 @@ app.include_router(documents.router)
 app.include_router(enhanced_documents.router)
 app.include_router(models.router)
 app.include_router(google_docs.router)
+
+# Third-party API routers
+app.include_router(api_v1.router)
+app.include_router(api_keys_admin.router)
 
 @app.get("/")
 async def root():

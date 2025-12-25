@@ -29,12 +29,13 @@ class EmbeddingService:
     def __init__(self):
         self.azure_client = None
         self.openai_client = None
+        self.provider = None  # Initialize before _initialize_clients to prevent AttributeError
         # Use deployment name from environment for Azure, model name for OpenAI
         self.default_model = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
         self.fallback_model = os.getenv("AZURE_OPENAI_EMBEDDING_FALLBACK", "text-embedding-ada-002")
         self.max_tokens = 8192  # Max tokens for embedding models
         self.batch_size = 100   # Process embeddings in batches
-        
+
         self._initialize_clients()
     
     def _initialize_clients(self):

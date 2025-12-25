@@ -17,7 +17,8 @@ class LLMService:
         Send a completion request to the specified or active provider
         """
         # Use passed provider or fall back to current provider
-        if provider == "azure":
+        # Accept both "azure" and "azure_openai" for Azure OpenAI
+        if provider in ("azure", "azure_openai"):
             target_provider = AIProvider.AZURE_OPENAI
         elif provider == "ollama":
             target_provider = AIProvider.OLLAMA

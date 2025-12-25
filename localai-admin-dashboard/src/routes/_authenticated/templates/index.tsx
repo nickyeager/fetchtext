@@ -6,6 +6,7 @@ import { Plus, Settings, FileText, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { templateService, SmartTemplate } from '@/services/template-service';
+import { useOrganization } from '@/context/organization-context';
 
 export const Route = createFileRoute('/_authenticated/templates/')({
   component: TemplatesIndexPage,
@@ -13,6 +14,7 @@ export const Route = createFileRoute('/_authenticated/templates/')({
 
 export function TemplatesIndexPage() {
   const navigate = useNavigate();
+  const { activeOrganization } = useOrganization();
   const [selectedTemplate, setSelectedTemplate] = useState<SmartTemplate | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [templates, setTemplates] = useState<SmartTemplate[]>([]);
@@ -59,7 +61,14 @@ export function TemplatesIndexPage() {
         toast.success('Template updated successfully');
       } else {
         // Create new template
-        await templateService.createTemplate(template);
+        if (!activeOrganization) {
+          toast.error('Please select an organization first');
+          return;
+        }
+        await templateService.createTemplate({
+          ...template,
+          organization_id: activeOrganization.id,
+        });
         toast.success('Template created successfully');
       }
       

@@ -60,6 +60,7 @@ class SmartFieldExtractor:
             self.logger.debug(f"LLM response preview: {response[:200]}...")
             
             # Parse and validate the LLM response
+            self.logger.debug(f"Raw LLM response preview: {response[:500]}...")
             extracted_data = self._parse_llm_response(response, template_variables)
             self.logger.info(f"Parsed {len(extracted_data)} fields from LLM response")
             
@@ -192,24 +193,26 @@ Return ONLY this JSON format (no markdown, no explanations):
         }
         
         # Adjust based on document complexity
+        # Each field needs ~100 tokens (value + confidence + reasoning)
+        # Add buffer for JSON structure and edge cases
         if doc_type in ['receipt', 'invoice']:
             # Receipts and invoices are more structured
             params['temperature'] = 0.05  # Very low for structured docs
-            params['max_tokens'] = min(400 + field_count * 50, 800)
+            params['max_tokens'] = min(300 + field_count * 100, 2000)
         elif doc_type == 'report':
             # Reports are more complex
             params['temperature'] = 0.15  # Slightly higher for flexibility
-            params['max_tokens'] = min(600 + field_count * 80, 1200)
+            params['max_tokens'] = min(400 + field_count * 120, 2500)
         else:
             # General documents
             params['temperature'] = 0.1
-            params['max_tokens'] = min(500 + field_count * 60, 1000)
+            params['max_tokens'] = min(350 + field_count * 110, 2200)
         
         # Adjust for text length
         if text_length > 2000:
-            params['max_tokens'] = min(int(params['max_tokens'] * 1.2), 1500)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.2), 3000)
         elif text_length < 500:
-            params['max_tokens'] = max(int(params['max_tokens'] * 0.8), 300)
+            params['max_tokens'] = max(int(params['max_tokens'] * 0.8), 500)
         
         # Provider-specific optimizations
         if provider == 'azure':
@@ -217,7 +220,7 @@ Return ONLY this JSON format (no markdown, no explanations):
             params['temperature'] = min(params['temperature'] + 0.02, 0.2)
         elif provider == 'ollama':
             # Ollama local models might need more tokens
-            params['max_tokens'] = min(int(params['max_tokens'] * 1.1), 1000)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.1), 3000)
         
         self.logger.debug(f"Optimized LLM params for {doc_type} with {field_count} fields: {params}")
         return params
@@ -318,7 +321,8 @@ Return ONLY this JSON format (no markdown, no explanations):
         """Parse clean JSON response"""
         cleaned_response = response.strip()
         parsed_response = json.loads(cleaned_response)
-        return self._format_extracted_fields(parsed_response.get('extracted_fields', {}))
+        extracted_fields = parsed_response.get('extracted_fields', {})
+        return self._format_extracted_fields(extracted_fields)
     
     def _parse_markdown_json(self, response: str, template_variables: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """Parse JSON wrapped in markdown code blocks"""
@@ -566,9 +570,9 @@ Return ONLY this JSON format (no markdown, no explanations):
             # Apply threshold
             if adjusted_confidence >= confidence_threshold:
                 filtered_data[field_name] = field_data
-                self.logger.debug(f"Field {field_name} passed threshold: {adjusted_confidence:.2f}")
+                self.logger.debug(f"Field {field_name} passed: {adjusted_confidence:.2f} >= {confidence_threshold}")
             else:
-                self.logger.debug(f"Field {field_name} filtered out: {adjusted_confidence:.2f} < {confidence_threshold}")
+                self.logger.debug(f"Field {field_name} filtered: {adjusted_confidence:.2f} < {confidence_threshold}")
         
         return filtered_data
     

@@ -2,7 +2,7 @@ import { Cross2Icon } from '@radix-ui/react-icons'
 import { Table } from '@tanstack/react-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { userTypes } from '../data/data'
+import { organizationRoles, memberStatuses } from '../data/data'
 import { DataTableFacetedFilter } from './data-table-faceted-filter'
 import { DataTableViewOptions } from './data-table-view-options'
 
@@ -19,12 +19,10 @@ export function DataTableToolbar<TData>({
     <div className='flex items-center justify-between'>
       <div className='flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2'>
         <Input
-          placeholder='Filter users...'
-          value={
-            (table.getColumn('username')?.getFilterValue() as string) ?? ''
-          }
+          placeholder='Filter by email...'
+          value={(table.getColumn('email')?.getFilterValue() as string) ?? ''}
           onChange={(event) =>
-            table.getColumn('username')?.setFilterValue(event.target.value)
+            table.getColumn('email')?.setFilterValue(event.target.value)
           }
           className='h-8 w-[150px] lg:w-[250px]'
         />
@@ -33,19 +31,20 @@ export function DataTableToolbar<TData>({
             <DataTableFacetedFilter
               column={table.getColumn('status')}
               title='Status'
-              options={[
-                { label: 'Active', value: 'active' },
-                { label: 'Inactive', value: 'inactive' },
-                { label: 'Invited', value: 'invited' },
-                { label: 'Suspended', value: 'suspended' },
-              ]}
+              options={memberStatuses.map((s) => ({
+                label: s.label,
+                value: s.value,
+              }))}
             />
           )}
           {table.getColumn('role') && (
             <DataTableFacetedFilter
               column={table.getColumn('role')}
               title='Role'
-              options={userTypes.map((t) => ({ ...t }))}
+              options={organizationRoles.map((r) => ({
+                label: r.label,
+                value: r.value,
+              }))}
             />
           )}
         </div>

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
+import { useOrganization } from '@/context/organization-context';
 import { useDocumentManager } from '@/hooks/use-document-manager';
 import { UploadSource, DocumentStatus } from '@/services/unified-document-service';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ export function DragDropUpload({
   
   const navigate = useNavigate();
   const { user, session } = useAuth();
+  const { activeOrganization } = useOrganization();
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
 
   // Dev-safe logger to avoid lint errors in production builds
@@ -90,10 +92,17 @@ export function DragDropUpload({
     try {
       devLog('🔵 UPLOAD: Creating document record...');
       
+      // Verify organization is selected
+      if (!activeOrganization) {
+        toast.error('Please select an organization first');
+        return;
+      }
+
       // Create document record
       const documentRecord = await documentManager.createDocument({
         file,
         uploadSource: UploadSource.SMART_UPLOAD,
+        organizationId: activeOrganization.id,
       });
       
       devLog('🔵 UPLOAD: Document record created', {

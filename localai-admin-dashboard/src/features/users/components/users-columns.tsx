@@ -1,14 +1,61 @@
 import { ColumnDef } from '@tanstack/react-table'
+import { Row } from '@tanstack/react-table'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import LongText from '@/components/long-text'
-import { callTypes, userTypes } from '../data/data'
-import { User } from '../data/schema'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useAuth } from '@/context/auth-context'
+import { statusStyles, getRoleConfig } from '../data/data'
+import type { MemberTableRow } from '../data/schema'
 import { DataTableColumnHeader } from './data-table-column-header'
 import { DataTableRowActions } from './data-table-row-actions'
 
-export const columns: ColumnDef<User>[] = [
+/**
+ * Get initials from email or name
+ */
+function getInitials(name: string | null, email: string): string {
+  if (name) {
+    const parts = name.split(' ')
+    return parts
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase()
+  }
+  return email.slice(0, 2).toUpperCase()
+}
+
+/**
+ * Member cell component that shows "(You)" label for the current user
+ */
+function MemberCell({ row }: { row: Row<MemberTableRow> }) {
+  const { user } = useAuth()
+  const { email, name, avatarUrl, userId } = row.original
+  const displayName = name || email.split('@')[0]
+  const initials = getInitials(name, email)
+  const isCurrentUser = user?.id === userId
+
+  return (
+    <div className='flex items-center gap-3'>
+      <Avatar className='h-8 w-8'>
+        <AvatarImage src={avatarUrl || undefined} alt={displayName} />
+        <AvatarFallback className='text-xs'>{initials}</AvatarFallback>
+      </Avatar>
+      <div className='flex flex-col'>
+        <span className='font-medium'>
+          {displayName}
+          {isCurrentUser && (
+            <span className='ml-1.5 text-xs text-muted-foreground'>(You)</span>
+          )}
+        </span>
+        <span className='text-xs text-muted-foreground'>{email}</span>
+      </div>
+    </div>
+  )
+}
+
+export const columns: ColumnDef<MemberTableRow>[] = [
   {
     id: 'select',
     header: ({ table }) => (
@@ -40,13 +87,11 @@ export const columns: ColumnDef<User>[] = [
     enableHiding: false,
   },
   {
-    accessorKey: 'username',
+    id: 'member',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Username' />
+      <DataTableColumnHeader column={column} title='Member' />
     ),
-    cell: ({ row }) => (
-      <LongText className='max-w-36'>{row.getValue('username')}</LongText>
-    ),
+    cell: ({ row }) => <MemberCell row={row} />,
     meta: {
       className: cn(
         'drop-shadow-[0_1px_2px_rgb(0_0_0_/_0.1)] dark:drop-shadow-[0_1px_2px_rgb(255_255_255_/_0.1)] lg:drop-shadow-none',
@@ -57,33 +102,14 @@ export const columns: ColumnDef<User>[] = [
     enableHiding: false,
   },
   {
-    id: 'fullName',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Name' />
-    ),
-    cell: ({ row }) => {
-      const { firstName, lastName } = row.original
-      const fullName = `${firstName} ${lastName}`
-      return <LongText className='max-w-36'>{fullName}</LongText>
-    },
-    meta: { className: 'w-36' },
-  },
-  {
     accessorKey: 'email',
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Email' />
     ),
     cell: ({ row }) => (
-      <div className='w-fit text-nowrap'>{row.getValue('email')}</div>
+      <LongText className='max-w-48'>{row.getValue('email')}</LongText>
     ),
-  },
-  {
-    accessorKey: 'phoneNumber',
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Phone Number' />
-    ),
-    cell: ({ row }) => <div>{row.getValue('phoneNumber')}</div>,
-    enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
   },
   {
     accessorKey: 'status',
@@ -91,12 +117,13 @@ export const columns: ColumnDef<User>[] = [
       <DataTableColumnHeader column={column} title='Status' />
     ),
     cell: ({ row }) => {
-      const { status } = row.original
-      const badgeColor = callTypes.get(status)
+      const status = row.original.status
+      const badgeColor = statusStyles.get(status) || ''
+
       return (
         <div className='flex space-x-2'>
           <Badge variant='outline' className={cn('capitalize', badgeColor)}>
-            {row.getValue('status')}
+            {status}
           </Badge>
         </div>
       )
@@ -113,19 +140,19 @@ export const columns: ColumnDef<User>[] = [
       <DataTableColumnHeader column={column} title='Role' />
     ),
     cell: ({ row }) => {
-      const { role } = row.original
-      const userType = userTypes.find(({ value }) => value === role)
+      const role = row.original.role
+      const roleConfig = getRoleConfig(role)
 
-      if (!userType) {
+      if (!roleConfig) {
         return null
       }
 
       return (
         <div className='flex items-center gap-x-2'>
-          {userType.icon && (
-            <userType.icon size={16} className='text-muted-foreground' />
+          {roleConfig.icon && (
+            <roleConfig.icon size={16} className='text-muted-foreground' />
           )}
-          <span className='text-sm capitalize'>{row.getValue('role')}</span>
+          <span className='text-sm capitalize'>{role}</span>
         </div>
       )
     },
@@ -134,6 +161,21 @@ export const columns: ColumnDef<User>[] = [
     },
     enableSorting: false,
     enableHiding: false,
+  },
+  {
+    accessorKey: 'joinedAt',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title='Joined' />
+    ),
+    cell: ({ row }) => {
+      const date = new Date(row.getValue('joinedAt'))
+      return (
+        <div className='text-sm text-muted-foreground'>
+          {date.toLocaleDateString()}
+        </div>
+      )
+    },
+    meta: { className: 'hidden xl:table-cell' },
   },
   {
     id: 'actions',
