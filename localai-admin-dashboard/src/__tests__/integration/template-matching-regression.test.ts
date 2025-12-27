@@ -131,10 +131,13 @@ describe('Template Matching Regression Tests', () => {
   beforeAll(async () => {
     backendAvailable = await isBackendAvailable();
     if (!backendAvailable) {
-      console.warn('[TEST] Backend not available, tests will be skipped');
-    } else {
-      console.log('[TEST] Backend available, running tests');
+      throw new Error(
+        '[TEST SETUP FAILED] Backend not available at ' + BACKEND_URL + '\n' +
+        'Integration tests REQUIRE running services.\n' +
+        'Start services with: python start_services.py --profile cpu'
+      );
     }
+    console.log('[TEST] Backend available, running tests');
   });
 
   afterAll(async () => {
@@ -149,11 +152,6 @@ describe('Template Matching Regression Tests', () => {
 
   describe('Identical Document Template Matching', () => {
     it('should match an existing template when uploading the same document twice', async () => {
-      if (!backendAvailable) {
-        console.log('[TEST] Skipping - backend not available');
-        return;
-      }
-
       // Step 1: Load the test contract document
       // Using real-test-contract.txt which is more detailed and generates good keyword matches
       console.log('\n=== STEP 1: Loading test contract document ===');
@@ -243,11 +241,6 @@ describe('Template Matching Regression Tests', () => {
     }, TEST_TIMEOUT);
 
     it('should show extraction quality override when match score is low but extraction works', async () => {
-      if (!backendAvailable) {
-        console.log('[TEST] Skipping - backend not available');
-        return;
-      }
-
       // This test verifies the fix specifically:
       // When match_score < 0.60 but extraction_quality >= 0.80,
       // the template should still be used

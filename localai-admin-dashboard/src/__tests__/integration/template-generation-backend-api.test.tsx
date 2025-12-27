@@ -77,14 +77,17 @@ describe('Backend Decide-Template API Integration', () => {
   beforeAll(async () => {
     backendAvailable = await isBackendAvailable();
     if (!backendAvailable) {
-      // Do not fail the suite if backend is down in local dev/CI.
-      // Each test will early-return when not available.
+      throw new Error(
+        '[TEST SETUP FAILED] Backend not available at ' + BACKEND_URL + '\n' +
+        'Integration tests REQUIRE running services.\n' +
+        'Start services with: python start_services.py --profile cpu'
+      );
     }
   });
 
   describe('API Endpoint Functionality', () => {
     it('should successfully decide or generate from a real invoice document', async () => {
-      if (!backendAvailable) return;
+      
       const file = await loadFixture('invoices/simple-invoice.txt');
       const { response, data } = await decideTemplate(file, 'Invoice Template Test', 'invoice');
 
@@ -103,7 +106,7 @@ describe('Backend Decide-Template API Integration', () => {
     }, TEST_TIMEOUT);
 
     it('should include validation/test extraction when generated (receipt)', async () => {
-      if (!backendAvailable) return;
+      
       const file = await loadFixture('receipts/restaurant-receipt.txt');
       const { response, data } = await decideTemplate(file, 'Receipt Template Test', 'receipt');
       expect([true, false]).toContain(response.ok);
@@ -118,14 +121,14 @@ describe('Backend Decide-Template API Integration', () => {
 
   describe('Error Handling', () => {
     it('should handle invalid file types gracefully', async () => {
-      if (!backendAvailable) return;
+      
       const invalidFile = new File(['<html></html>'], 'invalid.html', { type: 'text/html' });
       const { response } = await decideTemplate(invalidFile, 'Invalid File Test', 'test');
       expect([200, 400, 422, 500]).toContain(response.status);
     });
 
     it('should handle empty files', async () => {
-      if (!backendAvailable) return;
+      
       const empty = new File([''], 'empty.txt', { type: 'text/plain' });
       const { response, data } = await decideTemplate(empty, 'Empty File Test', 'document');
       if (response.ok && data && data.generation_metadata) {
@@ -139,7 +142,7 @@ describe('Backend Decide-Template API Integration', () => {
 
   describe('Performance and Reliability', () => {
     it('should complete processing within the configured timeout', async () => {
-      if (!backendAvailable) return;
+      
       const start = Date.now();
       const file = await loadFixture('receipts/restaurant-receipt.txt');
       const { response } = await decideTemplate(file, 'Performance Test', 'receipt');
@@ -149,7 +152,7 @@ describe('Backend Decide-Template API Integration', () => {
     });
 
     it('should handle a few concurrent requests', async () => {
-      if (!backendAvailable) return;
+      
       const invoice = await loadFixture('invoices/simple-invoice.txt');
       const receipt = await loadFixture('receipts/restaurant-receipt.txt');
       const contract = await loadFixture('contracts/employment-contract.txt');
