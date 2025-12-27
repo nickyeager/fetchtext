@@ -427,6 +427,63 @@ npx pnpm setup:cli        # Setup CLI environment
 6. **Document test results with screenshots** - Prove the fix works visually
 7. **Never declare "done" without passing integration tests** - Tests must prove functionality
 
+#### ⚠️ CRITICAL: Integration Test Quality Standards
+
+**Integration tests MUST be real, unmocked, and never skipped.**
+
+| Requirement | Rule | Violation Response |
+|-------------|------|-------------------|
+| **No Mocks** | Integration tests must call real services, APIs, and databases | Remove mock, connect to real backend |
+| **No Skips** | Never use `.skip()`, `it.skip()`, or `describe.skip()` | Delete the test or fix it so it passes |
+| **Only Fails** | If a test cannot pass, it MUST fail loudly with clear error | Never silently pass broken tests |
+| **Real Issues** | Tests must verify actual user-reported bugs or real workflows | No synthetic/hypothetical scenarios |
+| **Real Files** | Use actual fixture files from `tests/fixtures/` | Never use inline fake data |
+
+**Forbidden Patterns in Integration Tests:**
+```typescript
+// ❌ FORBIDDEN - Mocking backend services
+vi.mock('@/lib/document-processor-enhanced');
+vi.mock('@/services/unified-document-service');
+
+// ❌ FORBIDDEN - Skipping tests
+it.skip('should process documents', () => { ... });
+describe.skip('Template Matching', () => { ... });
+
+// ❌ FORBIDDEN - Silent pass when service unavailable
+if (!backendAvailable) {
+  console.log('Skipping - services not available');
+  return; // Silently passes!
+}
+
+// ❌ FORBIDDEN - Fake inline data
+const testFile = new File(['fake content'], 'test.pdf');
+```
+
+**Required Patterns:**
+```typescript
+// ✅ REQUIRED - Fail when services unavailable
+if (!backendAvailable) {
+  throw new Error('Backend not available - cannot run integration test');
+}
+
+// ✅ REQUIRED - Use real fixtures
+const contractFile = await loadFixture('real-test-contract.txt');
+
+// ✅ REQUIRED - Call real APIs
+const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/evaluate`);
+
+// ✅ REQUIRED - Assert on actual extracted values
+expect(result.extracted_fields.vendor_name).toBe('Acme Corp');
+```
+
+**Test Audit Checklist:**
+Before committing any integration test, verify:
+- [ ] No `vi.mock()` or `jest.mock()` for backend services
+- [ ] No `.skip()` annotations anywhere
+- [ ] Tests fail (not silently pass) when services are down
+- [ ] All test data comes from `tests/fixtures/` directory
+- [ ] Assertions check real extracted/processed values
+
 #### Comprehensive Logging Requirements
 **Always include extensive logging for debugging:**
 1. **Log at every major step** - Entry/exit of functions, state changes
