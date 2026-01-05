@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # Import routers
-from app.routers import documents, health, enhanced_documents, models, google_docs
+from app.routers import documents, health, enhanced_documents, models, google_docs, email
 from app.routers import api_v1, api_keys_admin
 
 app = FastAPI(
@@ -30,6 +30,7 @@ app.include_router(documents.router)
 app.include_router(enhanced_documents.router)
 app.include_router(models.router)
 app.include_router(google_docs.router)
+app.include_router(email.router)
 
 # Third-party API routers
 app.include_router(api_v1.router)

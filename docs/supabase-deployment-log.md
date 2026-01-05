@@ -178,3 +178,93 @@ SELECT COUNT(*) FROM organizations; -- Should return user's orgs only
 - This is a major schema change - test thoroughly before production
 - Frontend must be updated to use organization context after this migration
 - Storage bucket paths may need updating to `{org_id}/{user_id}/filename` pattern
+
+---
+
+### 2025-12-27 - Fix Organization Invitations RLS Policies (Migration 016)
+
+**Deployed By:** Claude Code
+**Migration Files Applied:**
+- `supabase/migrations/016_fix_organization_invitations_rls.sql`
+
+**Issue:**
+- Frontend getting 403 Forbidden when inviting members or viewing organization invitations
+- Root cause: RLS policies referenced `auth.users` table directly via subquery
+- Error message: "permission denied for table users"
+
+**Solution:**
+- Changed policies to use `auth.email()` function instead of `auth.users` subquery
+- `auth.email()` reads email from JWT claims without accessing auth.users table
+
+**Changes:**
+- Dropped broken policies: `org_invites_select_policy`, `org_invites_update_policy`,
+  `organization_invitations_select_policy`, `organization_invitations_update_policy`
+- Created new `organization_invitations_select_policy` using `auth.email()`
+- Created new `organization_invitations_update_policy` using `auth.email()`
+
+**SQL to Apply to Production:**
+```sql
+-- Migration: Fix organization_invitations RLS policies
+-- Issue: Policies referenced auth.users directly which causes permission denied errors
+-- Solution: Use auth.email() function instead of subqueries to auth.users
+
+-- Drop existing policies that reference auth.users
+DROP POLICY IF EXISTS org_invites_select_policy ON organization_invitations;
+DROP POLICY IF EXISTS org_invites_update_policy ON organization_invitations;
+DROP POLICY IF EXISTS organization_invitations_select_policy ON organization_invitations;
+DROP POLICY IF EXISTS organization_invitations_update_policy ON organization_invitations;
+
+-- Recreate SELECT policy using auth.email() instead of auth.users subquery
+CREATE POLICY organization_invitations_select_policy ON organization_invitations
+    FOR SELECT TO authenticated
+    USING (
+        -- User is a member of the organization
+        (organization_id IN (
+            SELECT organization_id FROM organization_members
+            WHERE user_id = auth.uid()
+        ))
+        OR
+        -- Or the invitation is for the current user's email
+        (email = auth.email())
+    );
+
+-- Recreate UPDATE policy using auth.email() instead of auth.users subquery
+CREATE POLICY organization_invitations_update_policy ON organization_invitations
+    FOR UPDATE TO authenticated
+    USING (
+        -- Org admins/owners can update
+        (organization_id IN (
+            SELECT organization_id FROM organization_members
+            WHERE user_id = auth.uid()
+            AND role IN ('owner', 'admin')
+        ))
+        OR
+        -- Or the invitation is for the current user's email (to accept/reject)
+        (email = auth.email())
+    );
+```
+
+**Local Docker Verification:**
+- [x] Applied to local Docker Supabase
+- [x] Integration tests pass (3/3)
+- [x] SELECT organization_invitations returns 200
+- [x] INSERT organization_invitations returns 201
+
+**Production Verification:**
+- [ ] SQL script applied in Supabase SQL Editor (https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new)
+- [ ] Verified with frontend invite member flow
+- [ ] No 403 errors in browser console
+
+**Rollback Plan:**
+```sql
+-- Rollback: Recreate original policies (NOTE: these will have auth.users permission issue)
+DROP POLICY IF EXISTS organization_invitations_select_policy ON organization_invitations;
+DROP POLICY IF EXISTS organization_invitations_update_policy ON organization_invitations;
+
+-- WARNING: These policies reference auth.users and will cause 403 errors
+-- Only use for rollback if the new policies cause other issues
+```
+
+**Notes:**
+- The `auth.email()` function already exists in Supabase by default
+- This pattern should be used for any future RLS policies that need user email

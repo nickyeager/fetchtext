@@ -67,10 +67,15 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplateDialog'
 import { CreateTemplateFromFields } from './CreateTemplateFromFields'
 import { DocumentPipelineView } from './DocumentPipelineView'
-import { DualDocumentView } from './DualDocumentView'
+import { UnifiedDocumentView } from './UnifiedDocumentView'
+import { SplitDocumentEditor } from './SplitDocumentEditor'
 import { ExtractedFieldsEditor } from './ExtractedFieldsEditor'
 import { MarkdownViewer } from './MarkdownViewer'
 import { TemplateVariablesPanel } from './TemplateVariablesPanel'
+import {
+  documentOverrideService,
+  type FieldOverride,
+} from '@/services/document-override-service'
 
 interface DocumentDetailViewProps {
   documentId: string
@@ -108,7 +113,7 @@ export function DocumentDetailView({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<
-    'dual' | 'side-by-side' | 'tabs' | 'overlay' | 'pipeline'
+    'dual' | 'side-by-side' | 'tabs' | 'overlay' | 'pipeline' | 'split-editor'
   >('dual')
   const [editMode, setEditMode] = useState(false)
   const [editedContent, setEditedContent] = useState<string>('')
@@ -142,6 +147,11 @@ export function DocumentDetailView({
   const [rawTemplateContent, setRawTemplateContent] = React.useState<
     string | null
   >(null)
+
+  // State for document field overrides
+  const [fieldOverrides, setFieldOverrides] = React.useState<
+    Record<string, FieldOverride>
+  >({})
 
   // Fetch document data with real-time updates
   const {
@@ -245,6 +255,30 @@ export function DocumentDetailView({
 
     fetchDocumentUrl()
   }, [document?.file_path])
+
+  // Load field overrides for this document
+  useEffect(() => {
+    const loadOverrides = async () => {
+      if (!documentId) {
+        setFieldOverrides({})
+        return
+      }
+
+      try {
+        const overrides = await documentOverrideService.getOverrides(documentId)
+        if (overrides?.field_overrides) {
+          setFieldOverrides(overrides.field_overrides)
+        } else {
+          setFieldOverrides({})
+        }
+      } catch (error) {
+        console.error('[DocumentDetailView] Failed to load overrides:', error)
+        setFieldOverrides({})
+      }
+    }
+
+    loadOverrides()
+  }, [documentId])
 
   // Extract templateId for dependency tracking
   const documentTemplateId = (
@@ -1157,6 +1191,46 @@ export function DocumentDetailView({
     if (onSave && editedContent) {
       await onSave(editedContent)
       setEditMode(false)
+    }
+  }
+
+  // Handle field override - save a new value for a field
+  const handleFieldOverride = async (
+    fieldName: string,
+    newValue: string,
+    originalValue: string | null
+  ) => {
+    if (!documentId) return
+
+    try {
+      const overrides = await documentOverrideService.saveFieldOverride(
+        documentId,
+        fieldName,
+        newValue,
+        originalValue
+      )
+      if (overrides.field_overrides) {
+        setFieldOverrides(overrides.field_overrides)
+      }
+    } catch (error) {
+      console.error('[DocumentDetailView] Failed to save field override:', error)
+      throw error
+    }
+  }
+
+  // Handle resetting a single field override
+  const handleResetOverride = async (fieldName: string) => {
+    if (!documentId) return
+
+    try {
+      const overrides = await documentOverrideService.resetFieldOverride(
+        documentId,
+        fieldName
+      )
+      setFieldOverrides(overrides.field_overrides || {})
+    } catch (error) {
+      console.error('[DocumentDetailView] Failed to reset field override:', error)
+      throw error
     }
   }
 
@@ -2218,6 +2292,43 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
     </div>
   )
 
+  // New split editor view with inline editing and override support
+  const renderSplitEditorView = () => {
+    // Get template content and extracted fields
+    const extractedFields = parseExtractedFields(
+      document.metadata?.extracted_fields as Record<string, unknown> | undefined
+    )
+    const metadata = document.metadata as {
+      template_content?: string
+      template_name?: string
+      template_id?: number
+    } | undefined
+    const templateContent = metadata?.template_content || rawTemplateContent || ''
+    const templateName = metadata?.template_name
+    const templateId = metadata?.template_id
+
+    return (
+      <SplitDocumentEditor
+        documentId={documentId}
+        fileUrl={documentFileUrl}
+        fileName={document.name || 'document'}
+        fileType={document.file_type || 'application/pdf'}
+        fileSize={document.file_size}
+        templateContent={templateContent}
+        extractedFields={extractedFields}
+        templateName={templateName}
+        templateId={templateId}
+        editable={true}
+        enableOverrides={true}
+        fieldOverrides={fieldOverrides}
+        onSaveOverride={handleFieldOverride}
+        onResetOverride={handleResetOverride}
+        onExport={() => handleDownload('html')}
+        className="h-[70vh]"
+      />
+    )
+  }
+
   const renderTabsView = () => (
     <>
       <Tabs defaultValue='original' className='w-full'>
@@ -2455,7 +2566,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
     }
 
     return (
-      <DualDocumentView
+      <UnifiedDocumentView
         fileUrl={documentFileUrl}
         fileName={document?.name || 'document'}
         fileType={document?.file_type || 'application/pdf'}
@@ -2469,6 +2580,11 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         }
         onExport={() => handleDownload('html')}
         className='h-[70vh]'
+        documentText={documentContent.original.text}
+        enableOverrides={true}
+        fieldOverrides={fieldOverrides}
+        onFieldOverride={handleFieldOverride}
+        onResetOverride={handleResetOverride}
       />
     )
   }
@@ -2579,10 +2695,10 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               size='sm'
               onClick={() => {
                 const modes: Array<
-                  'dual' | 'side-by-side' | 'tabs' | 'pipeline'
-                > = ['dual', 'side-by-side', 'tabs', 'pipeline']
+                  'dual' | 'side-by-side' | 'tabs' | 'pipeline' | 'split-editor'
+                > = ['dual', 'side-by-side', 'split-editor', 'tabs', 'pipeline']
                 const currentIndex = modes.indexOf(
-                  viewMode as 'dual' | 'side-by-side' | 'tabs' | 'pipeline'
+                  viewMode as 'dual' | 'side-by-side' | 'tabs' | 'pipeline' | 'split-editor'
                 )
                 const nextIndex = (currentIndex + 1) % modes.length
                 setViewMode(modes[nextIndex])
@@ -2603,6 +2719,11 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
                 <>
                   <SplitSquareHorizontal className='mr-2 h-4 w-4' />
                   Split
+                </>
+              ) : viewMode === 'split-editor' ? (
+                <>
+                  <Edit3 className='mr-2 h-4 w-4' />
+                  Editor
                 </>
               ) : (
                 <>
@@ -2686,7 +2807,9 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
             ? renderPipelineView()
             : viewMode === 'side-by-side'
               ? renderSideBySideView()
-              : renderTabsView()}
+              : viewMode === 'split-editor'
+                ? renderSplitEditorView()
+                : renderTabsView()}
       </div>
 
       {/* Consolidated Template Change Functionality */}

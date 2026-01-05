@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useSearch } from '@tanstack/react-router'
 import {
   Card,
   CardContent,
@@ -8,10 +8,15 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Users } from 'lucide-react'
 import AuthLayout from '../auth-layout'
 import { SignUpForm } from './components/sign-up-form'
 
 export default function SignUp() {
+  const { redirect, email } = useSearch({ from: '/(auth)/sign-up' })
+  const isInviteFlow = redirect?.includes('/invite/accept')
+
   return (
     <AuthLayout>
       <Card className='gap-4'>
@@ -24,6 +29,7 @@ export default function SignUp() {
             Already have an account?{' '}
             <Link
               to='/sign-in'
+              search={redirect ? { redirect } : undefined}
               className='hover:text-primary underline underline-offset-4'
             >
               Sign In
@@ -31,7 +37,15 @@ export default function SignUp() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SignUpForm />
+          {isInviteFlow && (
+            <Alert className="mb-4 border-primary/50 bg-primary/5">
+              <Users className="h-4 w-4" />
+              <AlertDescription>
+                You've been invited to join a team! Create an account with the email address that received the invitation to accept.
+              </AlertDescription>
+            </Alert>
+          )}
+          <SignUpForm defaultEmail={email} isInviteFlow={isInviteFlow} />
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <p className='text-muted-foreground px-8 text-center text-sm'>

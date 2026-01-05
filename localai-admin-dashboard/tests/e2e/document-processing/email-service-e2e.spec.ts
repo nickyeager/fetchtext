@@ -220,7 +220,7 @@ describe('Email Service End-to-End Tests', () => {
   describe('Email Service Configuration', () => {
     it('should have correct service configuration', () => {
       expect(N8N_EMAIL_SERVICE_CONFIG.PROVIDER).toBe('N8N Workflows + SendGrid');
-              expect(N8N_EMAIL_SERVICE_CONFIG.VERIFIED_SENDER).toBe('yeag123@gmail.com');
+              expect(N8N_EMAIL_SERVICE_CONFIG.VERIFIED_SENDER).toBe('nick@fetchtext.io');
         expect(N8N_EMAIL_SERVICE_CONFIG.ARCHITECTURE).toBe('Frontend → N8N Webhook → SendGrid API');
         expect(N8N_EMAIL_SERVICE_CONFIG.SUPPORTED_TEMPLATES).toContain('password-reset');
         expect(N8N_EMAIL_SERVICE_CONFIG.SUPPORTED_TEMPLATES).toContain('welcome');

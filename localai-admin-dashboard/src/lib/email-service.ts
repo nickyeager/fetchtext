@@ -218,6 +218,65 @@ export async function sendTwoFactorEmail(
 }
 
 /**
+ * Send organization invitation email via backend API
+ *
+ * Note: This calls the document processor backend which handles SendGrid
+ * to avoid CORS issues with direct browser-to-SendGrid calls.
+ */
+export async function sendInvitationEmail(
+  email: string,
+  organizationName: string,
+  inviterEmail: string,
+  inviteToken: string,
+  role: string
+): Promise<EmailResult> {
+  try {
+    // Call the backend email API endpoint to avoid CORS issues
+    const response = await fetch('http://localhost:8090/api/email/send-invitation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to_email: email,
+        organization_name: organizationName,
+        inviter_email: inviterEmail,
+        invite_token: inviteToken,
+        role: role,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Backend email API error: ${response.status} - ${errorText}`,
+      };
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Backend failed to send email',
+      };
+    }
+
+    return {
+      success: true,
+      messageId: result.message_id,
+    };
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: errorMsg || 'Failed to send invitation email',
+    };
+  }
+}
+
+/**
  * Validate email address format
  */
 export function validateEmail(email: string): boolean {

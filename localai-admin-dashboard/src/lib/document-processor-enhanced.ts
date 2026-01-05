@@ -344,8 +344,9 @@ export class DocumentProcessorEnhanced {
 
   /**
    * Fast template-guided extraction using the optimized text-based endpoint
+   * Public to allow real-time single variable extraction from TemplateOutputView
    */
-  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6): Promise<Record<string, ExtractedField>> {
+  public async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6): Promise<Record<string, ExtractedField>> {
     console.log('=== Starting FAST EXTRACTION ===');
     console.log('Text content length:', textContent.length);
     console.log('Template variables:', template.smart_variables.map(v => v.name));

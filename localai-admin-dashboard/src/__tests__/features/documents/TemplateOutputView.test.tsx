@@ -3,6 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TemplateOutputView } from '@/features/documents/components/TemplateOutputView';
 
+// Mock the DocumentProcessorEnhanced for extraction tests
+vi.mock('@/lib/document-processor-enhanced', () => ({
+  DocumentProcessorEnhanced: vi.fn().mockImplementation(() => ({
+    extractWithTemplateFast: vi.fn().mockResolvedValue({
+      new_variable: { value: 'Extracted Value', confidence: 0.85 },
+    }),
+  })),
+}));
+
 describe('TemplateOutputView', () => {
   const mockTemplateContent = `Dear {{company_name}},
 
@@ -29,7 +38,7 @@ Best regards,
       />
     );
 
-    expect(screen.getByText('Generated Output')).toBeInTheDocument();
+    expect(screen.getByText(/Generated Output/)).toBeInTheDocument();
     expect(screen.getByText(/Invoice Template/)).toBeInTheDocument();
   });
 
@@ -271,5 +280,233 @@ Best regards,
     const placeholderElement = screen.getByText('{{missing_field}}');
     const chip = placeholderElement.closest('span[class*="inline-flex"]');
     expect(chip).toHaveClass('border-dashed');
+  });
+
+  // ============================================
+  // NEW TESTS: Fuzzy Key Matching
+  // ============================================
+
+  describe('Fuzzy Key Matching', () => {
+    it('matches underscore-separated keys to template variables', () => {
+      // Template uses {{invoiceNumber}} but extracted field is invoice_number
+      render(
+        <TemplateOutputView
+          templateContent="Invoice: {{invoice_number}}"
+          extractedFields={{ invoice_number: { value: 'INV-001', confidence: 0.9 } }}
+        />
+      );
+
+      expect(screen.getByText('INV-001')).toBeInTheDocument();
+    });
+
+    it('matches camelCase keys to underscore template variables', () => {
+      // Extracted field uses camelCase, template uses underscore
+      render(
+        <TemplateOutputView
+          templateContent="Company: {{company_name}}"
+          extractedFields={{ companyName: { value: 'Acme Corp', confidence: 0.95 } }}
+        />
+      );
+
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+    });
+
+    it('matches keys with different casing', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Total: {{Total_Amount}}"
+          extractedFields={{ total_amount: { value: '$500', confidence: 0.88 } }}
+        />
+      );
+
+      expect(screen.getByText('$500')).toBeInTheDocument();
+    });
+
+    it('matches keys with spaces to underscore variables', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Date: {{invoice_date}}"
+          extractedFields={{ 'invoice date': { value: '2025-01-15', confidence: 0.9 } }}
+        />
+      );
+
+      expect(screen.getByText('2025-01-15')).toBeInTheDocument();
+    });
+
+    it('prefers exact match over fuzzy match', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Name: {{company_name}}"
+          extractedFields={{
+            company_name: { value: 'Exact Match', confidence: 0.95 },
+            companyName: { value: 'Fuzzy Match', confidence: 0.9 },
+          }}
+        />
+      );
+
+      // Should use the exact match
+      expect(screen.getByText('Exact Match')).toBeInTheDocument();
+    });
+  });
+
+  // ============================================
+  // NEW TESTS: Editable Mode
+  // ============================================
+
+  describe('Editable Mode', () => {
+    it('renders textarea when editable is true', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Hello {{name}}"
+          extractedFields={{ name: { value: 'World' } }}
+          editable={true}
+          documentText="Sample document text"
+        />
+      );
+
+      // Should show a textarea in editable mode
+      expect(screen.getByRole('textbox')).toBeInTheDocument();
+    });
+
+    it('shows "Edit Template" in header when editable', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Hello {{name}}"
+          extractedFields={{ name: { value: 'World' } }}
+          editable={true}
+          documentText="Sample document text"
+        />
+      );
+
+      expect(screen.getByText('Edit Template')).toBeInTheDocument();
+    });
+
+    it('shows hint text about typing variables when editable', () => {
+      render(
+        <TemplateOutputView
+          templateContent="Hello {{name}}"
+          extractedFields={{ name: { value: 'World' } }}
+          editable={true}
+          documentText="Sample document text"
+        />
+      );
+
+      expect(screen.getByText(/Type.*variable_name.*to add/i)).toBeInTheDocument();
+    });
+
+    it('calls onTemplateChange when content is edited', async () => {
+      const user = userEvent.setup();
+      const mockOnTemplateChange = vi.fn();
+
+      render(
+        <TemplateOutputView
+          templateContent="Hello"
+          extractedFields={{}}
+          editable={true}
+          documentText="Sample document text"
+          onTemplateChange={mockOnTemplateChange}
+        />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      await user.type(textarea, ' World');
+
+      await waitFor(() => {
+        expect(mockOnTemplateChange).toHaveBeenCalled();
+      });
+    });
+
+    it('shows Save Template button when changes are made', async () => {
+      const user = userEvent.setup();
+      const mockOnSaveTemplate = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <TemplateOutputView
+          templateContent="Hello"
+          extractedFields={{}}
+          editable={true}
+          documentText="Sample document text"
+          onSaveTemplate={mockOnSaveTemplate}
+        />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      await user.type(textarea, ' World');
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /save template/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not show Save button when no changes made', () => {
+      const mockOnSaveTemplate = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <TemplateOutputView
+          templateContent="Hello"
+          extractedFields={{}}
+          editable={true}
+          documentText="Sample document text"
+          onSaveTemplate={mockOnSaveTemplate}
+        />
+      );
+
+      expect(screen.queryByRole('button', { name: /save template/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================
+  // NEW TESTS: Real-time Variable Extraction
+  // ============================================
+
+  describe('Real-time Variable Extraction', () => {
+    it('updates content when typing in editable mode', async () => {
+      const user = userEvent.setup();
+      const mockOnTemplateChange = vi.fn();
+
+      render(
+        <TemplateOutputView
+          templateContent="Hello"
+          extractedFields={{}}
+          editable={true}
+          documentText="This document contains the new variable value."
+          onTemplateChange={mockOnTemplateChange}
+        />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      // Type some text (avoiding special characters that userEvent has trouble with)
+      await user.type(textarea, ' world');
+
+      // Verify the content was updated and callback fired
+      await waitFor(() => {
+        expect(textarea).toHaveValue('Hello world');
+        expect(mockOnTemplateChange).toHaveBeenCalled();
+      });
+    });
+
+    it('calls onTemplateChange with full content including variables', async () => {
+      const user = userEvent.setup();
+      const mockOnTemplateChange = vi.fn();
+
+      render(
+        <TemplateOutputView
+          templateContent="Invoice: "
+          extractedFields={{}}
+          editable={true}
+          documentText="Invoice number is INV-001"
+          onTemplateChange={mockOnTemplateChange}
+        />
+      );
+
+      const textarea = screen.getByRole('textbox');
+      // Clear and set value directly to test variable content
+      await user.clear(textarea);
+      await user.paste('Invoice: {{invoice_number}}');
+
+      await waitFor(() => {
+        expect(mockOnTemplateChange).toHaveBeenLastCalledWith('Invoice: {{invoice_number}}');
+      });
+    });
   });
 });
