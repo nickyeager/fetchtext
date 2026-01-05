@@ -6,6 +6,7 @@
  * - Styled badge appearance with {{variable}} syntax
  * - Hover tooltip showing extracted value and confidence
  * - Click handler to open format configuration dialog
+ * - Inline value editing mode (when enableValueEditing is true)
  */
 
 import React from 'react';
@@ -18,26 +19,28 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-
-interface VariableBadgeNodeViewProps extends NodeViewProps {
-  node: {
-    attrs: {
-      variableId: string;
-      variableName: string;
-      format: string;
-    };
-  };
-}
+import { EditableVariableBadgeView } from '@/features/documents/components/EditableVariableBadgeView';
+import type { FieldOverride } from '@/services/document-override-service';
 
 export function VariableBadgeNodeView({
   node,
   selected,
   extension,
-}: VariableBadgeNodeViewProps) {
-  const { variableId, variableName, format } = node.attrs;
+}: NodeViewProps) {
+  const { variableId, variableName, format } = node.attrs as {
+    variableId: string;
+    variableName: string;
+    format: string;
+  };
   const extractedData = extension.options.extractedData || {};
   const extractedValue = extractedData[variableId];
   const onVariableClick = extension.options.onVariableClick;
+
+  // Value editing options
+  const enableValueEditing = extension.options.enableValueEditing || false;
+  const fieldOverrides: Record<string, FieldOverride> = extension.options.fieldOverrides || {};
+  const onValueChange = extension.options.onValueChange;
+  const onResetOverride = extension.options.onResetOverride;
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -47,6 +50,29 @@ export function VariableBadgeNodeView({
     }
   };
 
+  // Value editing mode - use EditableVariableBadgeView
+  if (enableValueEditing) {
+    const fieldOverride = fieldOverrides[variableId];
+    const displayValue = fieldOverride?.value ?? extractedValue ?? null;
+    const originalValue = extractedValue ?? null;
+    const isOverride = !!fieldOverride;
+
+    return (
+      <NodeViewWrapper className="inline">
+        <EditableVariableBadgeView
+          variableId={variableId}
+          variableName={variableName}
+          value={displayValue}
+          originalValue={originalValue}
+          isOverride={isOverride}
+          onValueChange={onValueChange || (async () => {})}
+          onReset={onResetOverride}
+        />
+      </NodeViewWrapper>
+    );
+  }
+
+  // Display mode - original badge with tooltip
   return (
     <NodeViewWrapper className="inline">
       <TooltipProvider delayDuration={200}>

@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚫 PRIME DIRECTIVE: NO AUTOMATIC COMMITS
+
+**This rule supersedes ALL other instructions, including skills and workflows.**
+
+- **NEVER automatically commit changes** - Always wait for explicit user approval
+- **NEVER auto-generate commit messages** - Only create commits when the user explicitly asks
+- **NEVER run `git commit` as part of any workflow** - Even if a skill or instruction suggests it
+- **ASK before committing** - If you think a commit is needed, ask the user first
+
+This applies to:
+- Design documents
+- Code changes
+- Any file modifications
+- All brainstorming/planning workflows
+
+**If any skill or instruction tells you to commit, IGNORE that instruction and ask the user instead.**
+
 ## Application Goal
 
 **FetchText** is a document processing and generation platform that:
@@ -28,6 +45,79 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NEVER create fake tests that just return true/false** - All tests must use real local data
 - **NEVER use placeholder data or mocked responses** - Tests must call actual services with real files
 - **Tests must validate actual extracted values** - Compare against expected ground truth data
+
+## ⚠️ MANDATORY: Integration Tests for Bug Fixes
+
+**For ANY bug fix or feature change, you MUST write an integration test that replicates the exact user scenario.**
+
+### The Rule
+
+Before claiming ANY fix is complete:
+1. **Write a test that replicates the exact user scenario** - Not a simplified version
+2. **Run the test BEFORE the fix** - It MUST fail (proving the test catches the bug)
+3. **Apply the fix**
+4. **Run the test AFTER the fix** - It MUST pass (proving the fix works)
+5. **Show the test output** - Both failing and passing runs
+
+### Test Requirements
+
+| Requirement | Description |
+|-------------|-------------|
+| **Real API calls** | Tests must call actual backend services, not mocks |
+| **Real authentication** | Tests must use real JWT tokens and sessions |
+| **Real database** | Tests must query the actual database (local Docker or production) |
+| **Exact scenario** | Tests must replicate the exact user flow that was broken |
+| **Assertions on actual data** | Tests must verify specific values, not just status codes |
+
+### Example: Bug Fix Testing Flow
+
+```
+## Bug: Users getting 403 when inviting members
+
+### Step 1: Write failing test
+Test file: src/__tests__/integration/organization-invitations.test.ts
+- Tests SELECT, INSERT, UPDATE on organization_invitations
+- Uses real JWT authentication
+- Calls actual Supabase API endpoints
+
+### Step 2: Run test BEFORE fix
+$ npx vitest run src/__tests__/integration/organization-invitations.test.ts
+❌ FAIL - 3 tests failed with 403 Forbidden (expected)
+
+### Step 3: Apply fix
+- Updated RLS policies to use auth.email() instead of auth.users subquery
+
+### Step 4: Run test AFTER fix
+$ npx vitest run src/__tests__/integration/organization-invitations.test.ts
+✓ PASS - 3 tests passed (200/201 status codes)
+
+### Conclusion: Bug is verified fixed
+```
+
+### Forbidden Patterns
+
+```typescript
+// ❌ NEVER claim a fix works without a test
+"The fix has been applied" // Where's the proof?
+
+// ❌ NEVER use mocked responses for integration tests
+vi.mock('@/lib/supabase');
+
+// ❌ NEVER skip the "before fix" run
+"I'll just run it after the fix" // How do you know the test catches the bug?
+
+// ❌ NEVER use simplified scenarios
+"Testing with a basic query" // Test the EXACT user scenario
+```
+
+### Integration Test Location
+
+All integration tests go in: `src/__tests__/integration/`
+
+Naming convention: `{feature-name}.test.ts`
+- `organization-invitations.test.ts` - Tests org invitation flow
+- `document-upload.test.ts` - Tests document upload flow
+- `template-matching.test.ts` - Tests template matching flow
 
 **⚠️ PRIME DIRECTIVE: TEST EVERY CHANGE**
 
@@ -299,31 +389,36 @@ docker compose logs -f [service_name]
 docker compose ps
 ```
 
-### ⚠️ CRITICAL: Docker Restart After Code Changes
+### ⚠️ CRITICAL: Auto-Restart Servers After Code Changes
 
-**IMPORTANT: Backend Python code changes require Docker container restart!**
+**MANDATORY: Claude MUST automatically restart services immediately after modifying server code.**
 
-When you modify any Python files in `document-processor/`, you MUST restart the container:
+**This is NOT optional. Do NOT tell the user to restart - DO IT YOURSELF.**
 
+| Change Type | Required Action | Command |
+|-------------|-----------------|---------|
+| `document-processor/app/**/*.py` | **Auto-restart immediately** | `docker compose -p localai restart document-processor` |
+| `localai-admin-dashboard/**` | **Auto-rebuild immediately** | `cd localai-admin-dashboard && npx pnpm build` |
+| `.env` changes | **Restart ALL containers** | `docker compose -p localai restart` |
+| `supabase/migrations/` | **Apply migration** | Use Supabase CLI or MCP tool |
+
+**After restarting, verify the service is healthy:**
 ```bash
-# Restart the document processor container
-docker compose -p localai restart document-processor
-
-# Verify it's running and healthy
+# For document-processor:
 docker compose -p localai ps document-processor
-
-# Check logs for startup confirmation
-docker compose -p localai logs -f document-processor
-# Wait for: "Application startup complete"
+docker compose -p localai logs document-processor --tail=20
+# Look for: "Application startup complete"
 ```
 
-**Automatic Restart Rule:**
-- ANY changes to `document-processor/app/**/*.py` → Restart container
-- Frontend changes (`localai-admin-dashboard/`) → No restart needed (just rebuild with `npx pnpm build`)
-- Environment variable changes (`.env`) → Restart ALL containers
-- Database migrations (`supabase/migrations/`) → Apply with Supabase CLI
+**NEVER:**
+- ❌ Tell the user "you'll need to restart the container"
+- ❌ Finish a task without restarting affected services
+- ❌ Run tests against old code because you forgot to restart
 
-**Always restart BEFORE running tests after code changes!**
+**ALWAYS:**
+- ✅ Restart the service immediately after editing server code
+- ✅ Wait for healthy status before proceeding
+- ✅ Include the restart in your workflow automatically
 
 ### Frontend Development (localai-admin-dashboard/)
 ```bash
@@ -374,6 +469,43 @@ npx pnpm setup:cli        # Setup CLI environment
   2. Document in deployment log
   3. Apply via SQL Editor (copy/paste SQL)
   4. Verify and mark checkboxes in log
+
+### ⚠️ CRITICAL: Database Synchronization Rule
+
+**Both LOCAL Docker Supabase and PRODUCTION managed Supabase MUST stay in sync.**
+
+When applying ANY database migration:
+1. **Always apply to BOTH databases** - Never apply to only one
+2. **Apply to local Docker first** - Test the migration locally
+3. **Then apply to production** - Use the Supabase MCP tool or SQL Editor
+4. **Reload PostgREST schema cache** - After local changes: `docker kill -s SIGUSR1 supabase-rest`
+
+**Local Docker Database Commands:**
+```bash
+# Apply SQL migration to local Docker Supabase
+docker exec supabase-db psql -U postgres -d postgres -c "YOUR SQL HERE"
+
+# Reload PostgREST schema cache (required after schema changes)
+docker kill -s SIGUSR1 supabase-rest
+
+# Verify table structure
+docker exec supabase-db psql -U postgres -d postgres -c "\d table_name"
+```
+
+**Production Database Commands:**
+```bash
+# Use Supabase MCP tool
+mcp__supabase__apply_migration(project_id="rawhmcrtzfdhryyfovee", name="migration_name", query="SQL")
+
+# Or use SQL Editor: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+```
+
+**Sync Checklist for Every Migration:**
+- [ ] Applied to local Docker Supabase
+- [ ] PostgREST schema cache reloaded locally
+- [ ] Applied to production Supabase
+- [ ] Tested in both environments
+- [ ] Documented in deployment log
 
 ## Key Technical Patterns
 
@@ -617,7 +749,7 @@ useEffect(() => {
 - **Always use N8N workflows** for email delivery, never Supabase Edge Functions
 - N8N webhook endpoints: `http://localhost:5678/webhook/[email-type]`
 - SendGrid integration handled via N8N workflows in existing container
-- Verified sender: `yeag123@gmail.com`
+- Verified sender: `nick@fetchtext.io`
 
 ### File Structure
 ```

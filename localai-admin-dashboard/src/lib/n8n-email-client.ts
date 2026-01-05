@@ -133,7 +133,7 @@ function sendEmailDevelopment(options: EmailOptions): EmailResult {
   logInDevelopment(`To: ${options.to}`);
   logInDevelopment(`Subject: ${options.subject}`);
   logInDevelopment(`Template: ${options.template || 'custom'}`);
-  logInDevelopment(`From: FetchText <yeag123@gmail.com>`);
+  logInDevelopment(`From: FetchText <nick@fetchtext.io>`);
   logInDevelopment(`N8N Webhook: ${getN8nBaseUrl()}/webhook/password-reset-email`);
   logInDevelopment('='.repeat(50));
   logInDevelopment('HTML Content:');
@@ -429,7 +429,7 @@ async function loadWorkflowFromBackup(): Promise<N8nWorkflowData | null> {
  */
 export const N8N_EMAIL_SERVICE_CONFIG = {
   PROVIDER: 'N8N Workflows + SendGrid',
-  VERIFIED_SENDER: 'yeag123@gmail.com',
+  VERIFIED_SENDER: 'nick@fetchtext.io',
   ARCHITECTURE: 'Frontend → N8N Webhook → SendGrid API',
   FALLBACK: 'Development mode simulation',
   WEBHOOK_URL: 'http://localhost:5678/webhook/password-reset-email',

@@ -23,7 +23,7 @@ vi.mock('../sendgrid-client', () => ({
   validateEmailAddress: vi.fn(),
   SENDGRID_DOCUMENTATION: {
     PURPOSE: 'Production-ready email delivery for FetchText application',
-    VERIFIED_SENDER: 'yeag123@gmail.com',
+    VERIFIED_SENDER: 'nick@fetchtext.io',
     ARCHITECTURE: 'Frontend → Supabase Edge Function → SendGrid API'
   }
 }));
@@ -36,7 +36,7 @@ describe('SendGrid Email Integration', () => {
   describe('Email Service Configuration', () => {
     it('should have correct configuration', () => {
       expect(EMAIL_SERVICE_CONFIG.PROVIDER).toBe('SendGrid');
-      expect(EMAIL_SERVICE_CONFIG.VERIFIED_SENDER).toBe('yeag123@gmail.com');
+      expect(EMAIL_SERVICE_CONFIG.VERIFIED_SENDER).toBe('nick@fetchtext.io');
       expect(EMAIL_SERVICE_CONFIG.ARCHITECTURE).toBe('Multi-provider with SendGrid primary');
       expect(EMAIL_SERVICE_CONFIG.SUPPORTED_TEMPLATES).toContain('password-reset');
       expect(EMAIL_SERVICE_CONFIG.SUPPORTED_TEMPLATES).toContain('welcome');
@@ -45,7 +45,7 @@ describe('SendGrid Email Integration', () => {
 
     it('should have SendGrid documentation available', () => {
       expect(SENDGRID_DOCUMENTATION.PURPOSE).toBe('Production-ready email delivery for FetchText application');
-      expect(SENDGRID_DOCUMENTATION.VERIFIED_SENDER).toBe('yeag123@gmail.com');
+      expect(SENDGRID_DOCUMENTATION.VERIFIED_SENDER).toBe('nick@fetchtext.io');
       expect(SENDGRID_DOCUMENTATION.ARCHITECTURE).toBe('Frontend → Supabase Edge Function → SendGrid API');
     });
   });

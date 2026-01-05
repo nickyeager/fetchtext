@@ -41,6 +41,20 @@ interface DualDocumentViewProps {
   onExport?: () => void;
   /** Custom class name */
   className?: string;
+  /** Document text content for real-time extraction */
+  documentText?: string;
+  /** Enable inline editing mode */
+  editable?: boolean;
+  /** Callback when template content changes */
+  onTemplateChange?: (content: string) => void;
+  /** Callback when fields are extracted */
+  onFieldsChange?: (fields: Record<string, ExtractedField>) => void;
+  /** Callback to save template */
+  onSaveTemplate?: (
+    content: string,
+    action: 'create' | 'modify',
+    newName?: string
+  ) => Promise<void>;
 }
 
 type LayoutMode = 'side-by-side' | 'stacked' | 'original-only' | 'output-only';
@@ -57,6 +71,11 @@ export function DualDocumentView({
   onEditTemplate,
   onExport,
   className,
+  documentText,
+  editable,
+  onTemplateChange,
+  onFieldsChange,
+  onSaveTemplate,
 }: DualDocumentViewProps) {
   const [layout, setLayout] = useState<LayoutMode>('side-by-side');
   const [splitRatio, setSplitRatio] = useState(50); // Percentage for left panel
@@ -188,6 +207,11 @@ export function DualDocumentView({
               onEditTemplate={onEditTemplate}
               onExport={onExport}
               className="h-full"
+              documentText={documentText}
+              editable={editable}
+              onTemplateChange={onTemplateChange}
+              onFieldsChange={onFieldsChange}
+              onSaveTemplate={onSaveTemplate}
             />
           </div>
         )}

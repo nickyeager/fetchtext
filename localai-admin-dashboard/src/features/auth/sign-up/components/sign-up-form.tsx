@@ -2,8 +2,8 @@ import { HTMLAttributes, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigate } from '@tanstack/react-router'
-import { IconBrandFacebook, IconBrandGithub } from '@tabler/icons-react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { IconBrandGithub } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -18,8 +18,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 import { supabase } from '@/lib/supabase'
+import { OrganizationService } from '@/lib/organization-service'
 
-type SignUpFormProps = HTMLAttributes<HTMLFormElement>
+interface SignUpFormProps extends HTMLAttributes<HTMLFormElement> {
+  defaultEmail?: string
+  isInviteFlow?: boolean
+}
 
 const formSchema = z
   .object({
@@ -42,14 +46,15 @@ const formSchema = z
     path: ['confirmPassword'],
   })
 
-export function SignUpForm({ className, ...props }: SignUpFormProps) {
+export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: SignUpFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
+  const { redirect } = useSearch({ from: '/(auth)/sign-up' })
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: '',
+      email: defaultEmail || '',
       password: '',
       confirmPassword: '',
     },
@@ -68,10 +73,34 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
         form.setError('email', {
           message: error.message,
         })
+      } else if (authData.user && authData.session) {
+        // User is authenticated immediately (email verification disabled or auto-confirmed)
+        const isInviteFlow = redirect?.includes('/invite/accept')
+
+        if (isInviteFlow) {
+          // Extract token from redirect URL and accept the invitation
+          const tokenMatch = redirect.match(/token=([^&]+)/)
+          const inviteToken = tokenMatch?.[1]
+
+          if (inviteToken) {
+            try {
+              await OrganizationService.acceptInvitationByToken(inviteToken)
+              toast.success('Welcome! You\'ve joined the team successfully.')
+              navigate({ to: '/dashboard' })
+              return
+            } catch (inviteError) {
+              console.error('Error accepting invitation:', inviteError)
+              toast.error('Account created, but failed to accept invitation. Please try again from the invite link.')
+            }
+          }
+        }
+
+        toast.success('Account created successfully!')
+        navigate({ to: '/dashboard' })
       } else if (authData.user) {
-        toast.success('Account created successfully! Please check your email for verification.')
-        // Redirect to sign-in page after successful signup
-        navigate({ to: '/sign-in' })
+        // User created but needs email verification
+        toast.success('Account created! Please check your email for verification.')
+        navigate({ to: '/sign-in', search: { redirect: redirect || '' } })
       }
     } finally {
       setIsLoading(false)
@@ -92,8 +121,18 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input
+                  placeholder='name@example.com'
+                  {...field}
+                  readOnly={isInviteFlow && !!defaultEmail}
+                  className={isInviteFlow && defaultEmail ? 'bg-muted' : ''}
+                />
               </FormControl>
+              {isInviteFlow && defaultEmail && (
+                <p className="text-xs text-muted-foreground">
+                  This email is linked to your invitation and cannot be changed.
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -139,24 +178,14 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-2'>
-          <Button
-            variant='outline'
-            className='w-full'
-            type='button'
-            disabled={isLoading}
-          >
-            <IconBrandGithub className='h-4 w-4' /> GitHub
-          </Button>
-          <Button
-            variant='outline'
-            className='w-full'
-            type='button'
-            disabled={isLoading}
-          >
-            <IconBrandFacebook className='h-4 w-4' /> Facebook
-          </Button>
-        </div>
+        <Button
+          variant='outline'
+          className='w-full'
+          type='button'
+          disabled={isLoading}
+        >
+          <IconBrandGithub className='h-4 w-4' /> GitHub
+        </Button>
       </form>
     </Form>
   )

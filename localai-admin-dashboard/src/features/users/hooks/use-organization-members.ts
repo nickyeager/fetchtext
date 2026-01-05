@@ -53,42 +53,56 @@ async function fetchMembersWithUserDetails(
   organizationId: string
 ): Promise<OrganizationMember[]> {
   return withAuthentication(async () => {
-    // Fetch members with a join to get user email from auth.users
-    const { data, error } = await supabase
+    // Fetch members first, then get user details separately
+    // Note: PostgREST can't join to the user_profiles view via FK, so we fetch separately
+    const { data: members, error } = await supabase
       .from('organization_members')
-      .select(
-        `
-        *,
-        user:user_id (
-          id,
-          email,
-          raw_user_meta_data
-        )
-      `
-      )
+      .select('*')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching members with user details:', error);
-      // Fallback to basic member fetch if join fails
-      return OrganizationService.getOrganizationMembers(organizationId);
+      console.error('Error fetching organization members:', error);
+      throw error;
     }
 
-    // Transform the nested user data
-    return (data || []).map((member) => ({
-      ...member,
-      user: member.user
-        ? {
-            id: member.user.id,
-            email: member.user.email,
-            user_metadata: {
-              full_name: member.user.raw_user_meta_data?.full_name,
-              avatar_url: member.user.raw_user_meta_data?.avatar_url,
-            },
-          }
-        : undefined,
-    }));
+    if (!members || members.length === 0) {
+      return [];
+    }
+
+    // Fetch user details for all member user_ids
+    const userIds = members.map((m) => m.user_id);
+    const { data: users, error: usersError } = await supabase
+      .from('user_profiles')
+      .select('id, email, user_metadata')
+      .in('id', userIds);
+
+    if (usersError) {
+      console.warn('Could not fetch user details:', usersError);
+      // Return members without user details as fallback
+      return members.map((member) => ({ ...member, user: undefined }));
+    }
+
+    // Map users by id for quick lookup
+    const userMap = new Map(users?.map((u) => [u.id, u]) || []);
+
+    // Transform and return combined data with user details
+    return members.map((member) => {
+      const userProfile = userMap.get(member.user_id);
+      return {
+        ...member,
+        user: userProfile
+          ? {
+              id: userProfile.id,
+              email: userProfile.email,
+              user_metadata: {
+                full_name: userProfile.user_metadata?.full_name,
+                avatar_url: userProfile.user_metadata?.avatar_url,
+              },
+            }
+          : undefined,
+      };
+    });
   }, 'fetchMembersWithUserDetails');
 }
 
@@ -323,33 +337,59 @@ export function useCancelInvitation() {
 export function useResendInvitation() {
   return useMutation({
     mutationFn: async (invitationId: string) => {
-      return withAuthentication(async () => {
+      return withAuthentication(async (user) => {
+        // Fetch invitation details with organization info
+        const { data: invitation, error: fetchError } = await supabase
+          .from('organization_invitations')
+          .select(`
+            *,
+            organization:organizations(name)
+          `)
+          .eq('id', invitationId)
+          .single();
+
+        if (fetchError || !invitation) {
+          console.error('Error fetching invitation:', fetchError);
+          throw new Error('Invitation not found');
+        }
+
         // Update expires_at to extend invitation validity
         const newExpiresAt = new Date();
         newExpiresAt.setDate(newExpiresAt.getDate() + 7);
 
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('organization_invitations')
           .update({ expires_at: newExpiresAt.toISOString() })
           .eq('id', invitationId);
 
-        if (error) {
-          console.error('Error resending invitation:', error);
-          throw error;
+        if (updateError) {
+          console.error('Error updating invitation expiry:', updateError);
+          throw updateError;
         }
 
-        // TODO: Trigger N8N webhook to send invitation email
-        // await fetch('http://localhost:5678/webhook/organization-invite', {
-        //   method: 'POST',
-        //   body: JSON.stringify({ invitationId }),
-        // });
+        // Send invitation email using SendGrid
+        const { sendInvitationEmail } = await import('@/lib/email-service');
+        const organizationName = invitation.organization?.name || 'your organization';
+
+        const emailResult = await sendInvitationEmail(
+          invitation.email,
+          organizationName,
+          user.email || 'A team member',
+          invitation.token,
+          invitation.role
+        );
+
+        if (!emailResult.success) {
+          // Email failed but invitation was extended - show partial success
+          toast.warning('Invitation extended but email could not be sent');
+        }
       }, 'resendInvitation');
     },
     onSuccess: () => {
       toast.success('Invitation resent successfully');
     },
-    onError: () => {
-      toast.error('Failed to resend invitation');
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to resend invitation');
     },
   });
 }

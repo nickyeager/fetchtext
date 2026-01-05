@@ -51,6 +51,7 @@ export interface OrganizationInvitation {
   organization_id: string;
   email: string;
   role: OrganizationRole;
+  token: string;
   invited_by: string;
   status: InvitationStatus;
   expires_at: string;

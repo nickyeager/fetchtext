@@ -378,7 +378,7 @@ export function sanitizeEmailContent(content: string): string {
 // Export configuration for reference
 export const SENDGRID_DOCUMENTATION = {
   PURPOSE: 'Production-ready email delivery for FetchText application',
-  VERIFIED_SENDER: 'yeag123@gmail.com',
+  VERIFIED_SENDER: 'nick@fetchtext.io',
   ARCHITECTURE: 'Frontend → Supabase Edge Function → SendGrid API',
   FEATURES: [
     'Password reset emails',

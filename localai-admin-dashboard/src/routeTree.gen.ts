@@ -14,6 +14,7 @@ import { Route as rootRoute } from './routes/__root'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
+import { Route as InviteAcceptImport } from './routes/invite/accept'
 import { Route as AuthenticatedDocumentsImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedDashboardImport } from './routes/_authenticated/dashboard'
 import { Route as errors503Import } from './routes/(errors)/503'
@@ -78,6 +79,12 @@ const AuthenticatedRouteRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const InviteAcceptRoute = InviteAcceptImport.update({
+  id: '/invite/accept',
+  path: '/invite/accept',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -532,6 +539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsImport
       parentRoute: typeof AuthenticatedRouteImport
     }
+    '/invite/accept': {
+      id: '/invite/accept'
+      path: '/invite/accept'
+      fullPath: '/invite/accept'
+      preLoaderRoute: typeof InviteAcceptImport
+      parentRoute: typeof rootRoute
+    }
     '/_authenticated/documents/$documentId': {
       id: '/_authenticated/documents/$documentId'
       path: '/$documentId'
@@ -940,6 +954,7 @@ export interface FileRoutesByFullPath {
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRouteWithChildren
+  '/invite/accept': typeof InviteAcceptRoute
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
@@ -989,6 +1004,7 @@ export interface FileRoutesByTo {
   '/500': typeof errors500Route
   '/503': typeof errors503Route
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/invite/accept': typeof InviteAcceptRoute
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
@@ -1043,6 +1059,7 @@ export interface FileRoutesById {
   '/(errors)/503': typeof errors503Route
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/documents': typeof AuthenticatedDocumentsRouteWithChildren
+  '/invite/accept': typeof InviteAcceptRoute
   '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/_authenticated/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
@@ -1097,6 +1114,7 @@ export interface FileRouteTypes {
     | '/503'
     | '/dashboard'
     | '/documents'
+    | '/invite/accept'
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
@@ -1145,6 +1163,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/503'
     | '/dashboard'
+    | '/invite/accept'
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
@@ -1197,6 +1216,7 @@ export interface FileRouteTypes {
     | '/(errors)/503'
     | '/_authenticated/dashboard'
     | '/_authenticated/documents'
+    | '/invite/accept'
     | '/_authenticated/documents/$documentId'
     | '/_authenticated/documents/gallery'
     | '/_authenticated/documents/process-document'
@@ -1246,6 +1266,7 @@ export interface RootRouteChildren {
   errors404Route: typeof errors404Route
   errors500Route: typeof errors500Route
   errors503Route: typeof errors503Route
+  InviteAcceptRoute: typeof InviteAcceptRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -1264,6 +1285,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors404Route: errors404Route,
   errors500Route: errors500Route,
   errors503Route: errors503Route,
+  InviteAcceptRoute: InviteAcceptRoute,
 }
 
 export const routeTree = rootRoute
@@ -1290,7 +1312,8 @@ export const routeTree = rootRoute
         "/(errors)/403",
         "/(errors)/404",
         "/(errors)/500",
-        "/(errors)/503"
+        "/(errors)/503",
+        "/invite/accept"
       ]
     },
     "/": {
@@ -1398,6 +1421,9 @@ export const routeTree = rootRoute
         "/_authenticated/documents/",
         "/_authenticated/documents/templates/"
       ]
+    },
+    "/invite/accept": {
+      "filePath": "invite/accept.tsx"
     },
     "/_authenticated/documents/$documentId": {
       "filePath": "_authenticated/documents/$documentId.tsx",

@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { withAuthentication } from '@/lib/supabase-auth-utils';
+import { sendInvitationEmail } from '@/lib/email-service';
 import type {
   Organization,
   OrganizationMember,
@@ -323,6 +324,35 @@ export class OrganizationService {
         throw error;
       }
 
+      // Send invitation email (non-blocking - don't fail if email fails)
+      try {
+        // Fetch organization name for the email
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', organizationId)
+          .single();
+
+        const organizationName = org?.name || 'an organization';
+
+        const emailResult = await sendInvitationEmail(
+          input.email.toLowerCase(),
+          organizationName,
+          user.email || 'A team member',
+          data.token,
+          input.role
+        );
+
+        if (!emailResult.success) {
+          console.warn('Failed to send invitation email:', emailResult.error);
+        } else {
+          console.log('Invitation email sent:', emailResult.messageId);
+        }
+      } catch (emailError) {
+        // Log but don't fail the invitation
+        console.warn('Error sending invitation email:', emailError);
+      }
+
       return data;
     }, 'inviteMember');
   }
@@ -462,6 +492,120 @@ export class OrganizationService {
         throw error;
       }
     }, 'cancelInvitation');
+  }
+
+  /**
+   * Get an invitation by token (public - no auth required)
+   * Used for invitation acceptance flow from email links
+   */
+  static async getInvitationByToken(
+    token: string
+  ): Promise<OrganizationInvitation | null> {
+    // This query doesn't require authentication
+    // The RLS policy allows select if email = auth.email() OR user is org member
+    // But for anonymous access, we need to use a more permissive query
+    const { data, error } = await supabase
+      .from('organization_invitations')
+      .select(`
+        *,
+        organization:organizations(id, name, slug, logo_url),
+        inviter:auth_user_view(id, email)
+      `)
+      .eq('token', token)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      console.error('Error fetching invitation by token:', error);
+      // If we get permission denied, try without joins
+      const { data: basicData, error: basicError } = await supabase
+        .from('organization_invitations')
+        .select('*')
+        .eq('token', token)
+        .single();
+
+      if (basicError) {
+        if (basicError.code === 'PGRST116') return null;
+        throw basicError;
+      }
+
+      return basicData;
+    }
+
+    return data;
+  }
+
+  /**
+   * Accept an invitation by token
+   */
+  static async acceptInvitationByToken(token: string): Promise<void> {
+    return withAuthentication(async (user) => {
+      // Get the invitation by token
+      const { data: invitation, error: inviteError } = await supabase
+        .from('organization_invitations')
+        .select('*')
+        .eq('token', token)
+        .eq('status', 'pending')
+        .single();
+
+      if (inviteError || !invitation) {
+        throw new Error('Invitation not found or already processed');
+      }
+
+      // Verify email matches
+      if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+        throw new Error(
+          `This invitation was sent to ${invitation.email}. You are signed in as ${user.email}.`
+        );
+      }
+
+      // Check if expired
+      if (new Date(invitation.expires_at) < new Date()) {
+        await supabase
+          .from('organization_invitations')
+          .update({ status: 'expired' })
+          .eq('id', invitation.id);
+        throw new Error('Invitation has expired');
+      }
+
+      // Check if already a member
+      const { data: existingMember } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', invitation.organization_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingMember) {
+        // Already a member, just mark invitation as accepted
+        await supabase
+          .from('organization_invitations')
+          .update({ status: 'accepted' })
+          .eq('id', invitation.id);
+        return;
+      }
+
+      // Create membership
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert({
+          organization_id: invitation.organization_id,
+          user_id: user.id,
+          role: invitation.role,
+          invited_by: invitation.invited_by,
+        });
+
+      if (memberError) {
+        console.error('Error creating membership:', memberError);
+        throw memberError;
+      }
+
+      // Update invitation status
+      await supabase
+        .from('organization_invitations')
+        .update({ status: 'accepted' })
+        .eq('id', invitation.id);
+    }, 'acceptInvitationByToken');
   }
 
   // ============================================================================
