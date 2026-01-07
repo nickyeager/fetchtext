@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import {
   FileOutput,
   Check,
@@ -20,6 +20,9 @@ import {
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,6 +35,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { VariableBadge } from '@/lib/tiptap/extensions/VariableBadge'
 import { VariableAutocomplete } from '@/lib/tiptap/extensions/VariableAutocomplete'
 import { getVariableSuggestionOptions } from '@/lib/tiptap/suggestion-renderer'
@@ -94,6 +107,10 @@ interface TemplateOutputViewProps {
   onResetOverride?: (fieldName: string) => Promise<void>
   /** Whether the view is read-only (no edits allowed) */
   readOnly?: boolean
+  /** Whether save is in progress */
+  isSaving?: boolean
+  /** Last saved timestamp */
+  lastSavedAt?: Date | null
 }
 
 // Normalize a key for fuzzy matching (remove spaces, underscores, dashes, lowercase)
@@ -129,35 +146,131 @@ function extractVariablesFromContent(content: string): string[] {
   return Array.from(matches, (m) => m[1])
 }
 
-// Convert {{variable}} syntax to HTML with variable badge nodes
+// Convert {{variable}} syntax and Markdown to HTML for TipTap editor
 function templateToHtml(template: string): string {
-  // Escape HTML entities first
-  let html = template
+  // First strip any existing HTML tags (TipTap may have wrapped content before)
+  let text = template.replace(/<[^>]+>/g, '')
+
+  // Convert escaped newlines to actual newlines
+  text = text.replace(/\\n/g, '\n')
+
+  // Escape HTML entities
+  text = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Convert {{variable}} to variable badge spans
-  html = html.replace(
+  // Convert {{variable}} to variable badge spans (preserve for later)
+  text = text.replace(
     /\{\{(\w+)\}\}/g,
     '<span data-variable-badge data-variable-id="$1" data-variable-name="$1">{{$1}}</span>'
   )
 
-  // Convert newlines to paragraphs
-  const paragraphs = html.split(/\n\n+/)
-  if (paragraphs.length > 1) {
-    html = paragraphs.map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
-  } else {
-    html = `<p>${html.replace(/\n/g, '<br>')}</p>`
+  // Process line by line for block-level Markdown
+  const lines = text.split('\n')
+  const htmlLines: string[] = []
+  let inList = false
+  let listType: 'ul' | 'ol' | null = null
+  let listItems: string[] = []
+
+  const closeList = () => {
+    if (inList && listItems.length > 0) {
+      const listHtml = listItems.map(item => `<li>${item}</li>`).join('')
+      htmlLines.push(`<${listType}>${listHtml}</${listType}>`)
+      listItems = []
+      inList = false
+      listType = null
+    }
   }
 
-  return html
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Headings: # Heading 1, ## Heading 2, ### Heading 3
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
+    if (headingMatch) {
+      closeList()
+      const level = headingMatch[1].length
+      const content = processInlineMarkdown(headingMatch[2])
+      htmlLines.push(`<h${level}>${content}</h${level}>`)
+      continue
+    }
+
+    // Horizontal rule: --- or ***
+    if (/^[-*]{3,}$/.test(line.trim())) {
+      closeList()
+      htmlLines.push('<hr>')
+      continue
+    }
+
+    // Blockquote: > text
+    const blockquoteMatch = line.match(/^>\s*(.*)$/)
+    if (blockquoteMatch) {
+      closeList()
+      const content = processInlineMarkdown(blockquoteMatch[1])
+      htmlLines.push(`<blockquote><p>${content}</p></blockquote>`)
+      continue
+    }
+
+    // Bullet list: - item or * item
+    const bulletMatch = line.match(/^[-*]\s+(.+)$/)
+    if (bulletMatch) {
+      if (!inList || listType !== 'ul') {
+        closeList()
+        inList = true
+        listType = 'ul'
+      }
+      listItems.push(processInlineMarkdown(bulletMatch[1]))
+      continue
+    }
+
+    // Numbered list: 1. item
+    const numberedMatch = line.match(/^\d+\.\s+(.+)$/)
+    if (numberedMatch) {
+      if (!inList || listType !== 'ol') {
+        closeList()
+        inList = true
+        listType = 'ol'
+      }
+      listItems.push(processInlineMarkdown(numberedMatch[1]))
+      continue
+    }
+
+    // Empty line - close list and add empty paragraph
+    if (line.trim() === '') {
+      closeList()
+      // Skip consecutive empty lines
+      continue
+    }
+
+    // Regular paragraph
+    closeList()
+    const content = processInlineMarkdown(line)
+    htmlLines.push(`<p>${content}</p>`)
+  }
+
+  // Close any remaining list
+  closeList()
+
+  return htmlLines.join('')
 }
 
-// Convert HTML with variable badges back to {{variable}} syntax
+// Process inline Markdown: **bold**, *italic*, `code`
+function processInlineMarkdown(text: string): string {
+  return text
+    // Bold: **text** or __text__
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_ (but not inside words)
+    .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<em>$1</em>')
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>')
+    // Inline code: `code`
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+// Convert HTML with variable badges back to {{variable}} syntax and Markdown
 function htmlToTemplate(html: string): string {
-  // Remove wrapping tags and convert back
-  const template = html
+  let template = html
     // Remove variable badge spans, keep just {{variable}}
     .replace(
       /<span[^>]*data-variable-badge[^>]*data-variable-name="(\w+)"[^>]*>[^<]*<\/span>/g,
@@ -168,22 +281,159 @@ function htmlToTemplate(html: string): string {
       /<span[^>]*data-variable-name="(\w+)"[^>]*data-variable-badge[^>]*>[^<]*<\/span>/g,
       '{{$1}}'
     )
-    // Convert paragraphs to double newlines
+
+  // Convert headings to Markdown
+  template = template
+    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+
+  // Convert inline formatting to Markdown
+  template = template
+    .replace(/<strong>(.*?)<\/strong>/gi, '**$1**')
+    .replace(/<b>(.*?)<\/b>/gi, '**$1**')
+    .replace(/<em>(.*?)<\/em>/gi, '*$1*')
+    .replace(/<i>(.*?)<\/i>/gi, '*$1*')
+    .replace(/<code>(.*?)<\/code>/gi, '`$1`')
+
+  // Convert lists to Markdown
+  template = template
+    .replace(/<ul[^>]*>(.*?)<\/ul>/gis, (_, content) => {
+      return content.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n') + '\n'
+    })
+    .replace(/<ol[^>]*>(.*?)<\/ol>/gis, (_, content) => {
+      let index = 0
+      return content.replace(/<li[^>]*>(.*?)<\/li>/gi, () => {
+        index++
+        return `${index}. $1\n`
+      }) + '\n'
+    })
+
+  // Convert blockquotes to Markdown
+  template = template.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, content) => {
+    // Remove nested p tags and add > prefix
+    const text = content.replace(/<\/?p[^>]*>/gi, '').trim()
+    return `> ${text}\n\n`
+  })
+
+  // Convert horizontal rules
+  template = template.replace(/<hr\s*\/?>/gi, '---\n\n')
+
+  // Convert paragraphs to double newlines
+  template = template
     .replace(/<\/p>\s*<p>/g, '\n\n')
-    // Remove remaining p tags
-    .replace(/<\/?p>/g, '')
-    // Convert br to newlines
-    .replace(/<br\s*\/?>/g, '\n')
-    // Decode HTML entities
+    .replace(/<p[^>]*>/g, '')
+    .replace(/<\/p>/g, '\n\n')
+
+  // Convert br to newlines
+  template = template.replace(/<br\s*\/?>/gi, '\n')
+
+  // Decode HTML entities
+  template = template
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
-    // Remove any other HTML tags
-    .replace(/<[^>]+>/g, '')
-    // Trim extra whitespace
+    .replace(/&nbsp;/g, ' ')
+
+  // Remove any remaining HTML tags
+  template = template.replace(/<[^>]+>/g, '')
+
+  // Clean up extra whitespace
+  template = template
+    .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
     .trim()
 
   return template
+}
+
+/**
+ * RichContentRenderer - Renders content that may be HTML (from TipTap) or Markdown
+ * Detects the format and renders appropriately with variable badge support
+ */
+interface RichContentRendererProps {
+  content: string
+  processChildrenWithBadges: (children: React.ReactNode) => React.ReactNode
+}
+
+function RichContentRenderer({ content, processChildrenWithBadges }: RichContentRendererProps) {
+  // Always process content as Markdown - strip HTML tags and convert to clean Markdown
+  const processedContent = useMemo(() => {
+    if (!content) return ''
+
+    return content
+      // Strip HTML tags (TipTap wraps content in <p>, etc.)
+      .replace(/<[^>]+>/g, '')
+      // Convert escaped newlines to actual newlines
+      .replace(/\\n/g, '\n')
+      // Clean up any extra whitespace
+      .trim()
+  }, [content])
+
+  // Always use ReactMarkdown for rendering
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
+      components={{
+        h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6 first:mt-0">{processChildrenWithBadges(children)}</h1>,
+        h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{processChildrenWithBadges(children)}</h2>,
+        h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{processChildrenWithBadges(children)}</h3>,
+        p: ({ children }) => <p className="mb-4 leading-relaxed">{processChildrenWithBadges(children)}</p>,
+        li: ({ children }) => <li className="mb-1">{processChildrenWithBadges(children)}</li>,
+        strong: ({ children }) => <strong className="font-semibold">{processChildrenWithBadges(children)}</strong>,
+        em: ({ children }) => <em>{processChildrenWithBadges(children)}</em>,
+        ul: ({ children }) => <ul className="list-disc pl-6 mb-4 space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-6 mb-4 space-y-1">{children}</ol>,
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-4 border-primary/30 pl-4 italic my-4 text-muted-foreground">
+            {children}
+          </blockquote>
+        ),
+        code: ({ className, children, ...props }) => {
+          const match = /language-(\w+)/.exec(className || '')
+          const isInline = !match
+          if (isInline) {
+            return (
+              <code className="bg-muted rounded px-1 py-0.5 text-sm font-mono" {...props}>
+                {children}
+              </code>
+            )
+          }
+          return (
+            <pre className="bg-muted rounded-md p-4 overflow-x-auto my-4">
+              <code className={`text-sm font-mono ${className}`} {...props}>
+                {children}
+              </code>
+            </pre>
+          )
+        },
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-4">
+            <table className="min-w-full divide-y divide-border">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-muted">{children}</thead>,
+        th: ({ children }) => (
+          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="px-4 py-2 whitespace-nowrap text-sm">
+            {processChildrenWithBadges(children)}
+          </td>
+        ),
+        hr: () => <hr className="my-6 border-border" />,
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {processedContent}
+    </ReactMarkdown>
+  )
 }
 
 export function TemplateOutputView({
@@ -205,6 +455,8 @@ export function TemplateOutputView({
   onFieldOverride,
   onResetOverride,
   readOnly = false,
+  isSaving = false,
+  lastSavedAt = null,
 }: TemplateOutputViewProps) {
   // Internal edit mode state (allows inline toggle without parent control)
   const [isInlineEditing, setIsInlineEditing] = useState(false)
@@ -222,6 +474,7 @@ export function TemplateOutputView({
   >({})
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
 
   // Field editing state for inline override editing
   const [editingFieldName, setEditingFieldName] = useState<string | null>(null)
@@ -231,6 +484,13 @@ export function TemplateOutputView({
   const previousVariablesRef = useRef<Set<string>>(new Set())
   const processorRef = useRef<DocumentProcessorEnhanced | null>(null)
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Ref to store latest onTemplateChange callback - prevents stale closure in TipTap's onUpdate
+  const onTemplateChangeRef = useRef(onTemplateChange)
+
+  // Keep the ref updated with latest callback
+  useEffect(() => {
+    onTemplateChangeRef.current = onTemplateChange
+  }, [onTemplateChange])
 
   // Initialize processor
   useEffect(() => {
@@ -414,7 +674,14 @@ export function TemplateOutputView({
         const newContent = htmlToTemplate(html)
         setEditableContent(newContent)
         setHasChanges(newContent !== templateContent)
-        onTemplateChange?.(newContent)
+        // Use ref to avoid stale closure - always calls latest callback
+        // eslint-disable-next-line no-console
+        console.log('[TemplateOutputView] onUpdate fired', {
+          hasCallback: !!onTemplateChangeRef.current,
+          contentLength: newContent.length,
+          contentPreview: newContent.substring(0, 100),
+        })
+        onTemplateChangeRef.current?.(newContent)
 
         // Debounced variable detection
         if (debounceTimerRef.current) {
@@ -442,14 +709,23 @@ export function TemplateOutputView({
   )
 
   // Sync editor content when template changes externally
+  // Always sync on initial mount, and when NOT actively editing with unsaved changes
   useEffect(() => {
-    if (editor && !isEditing) {
+    if (editor) {
       const newHtml = templateToHtml(templateContent)
-      if (editor.getHTML() !== newHtml) {
+      // Only skip sync if user has made unsaved changes (hasChanges)
+      // This allows initial content to load while preserving user edits
+      if (!hasChanges && editor.getHTML() !== newHtml) {
+        // eslint-disable-next-line no-console
+        console.log('[TemplateOutputView] Syncing editor content from templateContent', {
+          templateContentLength: templateContent.length,
+          hasChanges,
+          isEditing,
+        })
         editor.commands.setContent(newHtml)
       }
     }
-  }, [templateContent, editor, isEditing])
+  }, [templateContent, editor, hasChanges, isEditing])
 
   // Update editor extracted data when fields change
   useEffect(() => {
@@ -528,10 +804,64 @@ export function TemplateOutputView({
     setIsInlineEditing(true)
   }, [readOnly])
 
-  // Handle exiting inline edit mode
-  const handleExitEditMode = useCallback(() => {
+  // Handle exiting inline edit mode - save changes first
+  const handleExitEditMode = useCallback(async () => {
+    // Save changes before exiting if there are any
+    if (hasChanges && onSaveTemplate) {
+      try {
+        await onSaveTemplate(editableContent, 'modify')
+        // Only exit and clear changes if save succeeded
+        setIsInlineEditing(false)
+        setHasChanges(false)
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[TemplateOutputView] Failed to save on exit:', error)
+        // Keep edit mode open so user doesn't lose work
+        return
+      }
+    } else {
+      // No changes to save, safe to exit
+      setIsInlineEditing(false)
+      setHasChanges(false)
+    }
+  }, [hasChanges, onSaveTemplate, editableContent])
+
+  // Handle attempting to exit edit mode - show confirmation if changes exist
+  const handleAttemptExit = useCallback(() => {
+    if (hasChanges) {
+      setShowExitConfirm(true)
+    } else {
+      setIsInlineEditing(false)
+    }
+  }, [hasChanges])
+
+  // Handle confirmed exit (discard changes)
+  const handleConfirmDiscard = useCallback(() => {
+    setShowExitConfirm(false)
     setIsInlineEditing(false)
-  }, [])
+    setHasChanges(false)
+    // Reset content to original
+    setEditableContent(templateContent)
+  }, [templateContent])
+
+  // Handle save and exit - inline the save logic to avoid double saves
+  const handleSaveAndExit = useCallback(async () => {
+    setShowExitConfirm(false)
+    if (hasChanges && onSaveTemplate) {
+      try {
+        await onSaveTemplate(editableContent, 'modify')
+        setIsInlineEditing(false)
+        setHasChanges(false)
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[TemplateOutputView] Save & exit failed:', error)
+        // Stay in edit mode on error so user doesn't lose work
+      }
+    } else {
+      setIsInlineEditing(false)
+      setHasChanges(false)
+    }
+  }, [hasChanges, onSaveTemplate, editableContent])
 
   // Handle keyboard shortcuts in edit mode
   const handleEditKeyDown = useCallback(
@@ -546,67 +876,178 @@ export function TemplateOutputView({
   // Count overrides
   const overrideCount = Object.keys(fieldOverrides).length
 
-  // Parse template content for display mode
-  const renderedContent = useMemo(() => {
-    const contentToRender = isEditing ? editableContent : templateContent
-    if (!contentToRender) return null
+  // Helper function to process children and render variable badges inline
+  const processChildrenWithBadges = useCallback(
+    (children: React.ReactNode): React.ReactNode => {
+      return React.Children.map(children, (child) => {
+        if (typeof child !== 'string') {
+          return child
+        }
 
-    const parts: Array<{
-      type: 'text' | 'variable'
-      content: string
-      field?: ExtractedField
-      isLoading?: boolean
-    }> = []
-    const regex = /\{\{(\w+)\}\}/g
-    let lastIndex = 0
-    let match
+        // Split by {{variable}} pattern
+        const parts = child.split(/(\{\{\w+\}\})/g)
+        if (parts.length === 1) {
+          return child
+        }
 
-    while ((match = regex.exec(contentToRender)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: 'text',
-          content: contentToRender.slice(lastIndex, match.index),
+        return parts.map((part, partIndex) => {
+          const varMatch = part.match(/^\{\{(\w+)\}\}$/)
+          if (!varMatch) {
+            return part
+          }
+
+          const fieldName = varMatch[1]
+          const field = findMatchingField(normalizedFields, fieldName) || {
+            value: null,
+          }
+          const isLoading = loadingVariables.has(fieldName)
+          const hasValue = field.value !== null && field.value !== ''
+          const confidencePercent = field.confidence
+            ? Math.round(field.confidence * 100)
+            : null
+
+          // Check if this field has an override
+          const override = fieldOverrides[fieldName]
+          const isOverride = !!override
+          const displayValue = isOverride
+            ? String(override.value ?? '')
+            : field.value
+
+          // If we're editing this field, show the inline editor
+          if (editingFieldName === fieldName) {
+            return (
+              <span key={partIndex} className="mx-0.5 inline-block">
+                <InlineFieldEditor
+                  fieldName={fieldName}
+                  currentValue={displayValue || ''}
+                  onSave={handleSaveFieldOverride}
+                  onCancel={handleCancelFieldEdit}
+                />
+              </span>
+            )
+          }
+
+          // When overrides are enabled, use FieldOverrideIndicator
+          if (enableOverrides && hasValue) {
+            return (
+              <span key={partIndex} className="mx-0.5 inline-block">
+                <FieldOverrideIndicator
+                  fieldName={fieldName}
+                  value={displayValue}
+                  originalValue={isOverride ? override.original_value : undefined}
+                  isOverride={isOverride}
+                  confidence={field.confidence}
+                  modifiedBy={override?.modified_by_name}
+                  modifiedAt={override?.modified_at}
+                  onReset={isOverride ? handleResetFieldOverride : undefined}
+                  onEdit={handleFieldEdit}
+                  readOnly={readOnly}
+                />
+              </span>
+            )
+          }
+
+          // Standard badge rendering
+          return (
+            <Tooltip key={partIndex}>
+              <TooltipTrigger asChild>
+                <span
+                  className={cn(
+                    'mx-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+                    'cursor-help transition-colors',
+                    isLoading
+                      ? 'border border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
+                      : hasValue
+                        ? 'border border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200'
+                        : 'border border-dashed border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
+                  )}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Extracting...</span>
+                    </>
+                  ) : showRaw ? (
+                    <span>{`{{${fieldName}}}`}</span>
+                  ) : hasValue ? (
+                    <>
+                      <Check className="h-3 w-3" />
+                      <span>{field.value}</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-3 w-3" />
+                      <span className="italic">{`{{${fieldName}}}`}</span>
+                    </>
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-sm space-y-2 p-3">
+                <div className="text-muted-foreground font-mono text-xs">
+                  {fieldName}
+                </div>
+                {isLoading ? (
+                  <div className="text-blue-600 text-sm flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Extracting from document...
+                  </div>
+                ) : hasValue ? (
+                  <>
+                    <div className="border-primary border-l-2 pl-2 text-sm font-medium">
+                      {field.value}
+                    </div>
+                    {confidencePercent !== null && (
+                      <div
+                        className={cn(
+                          'text-xs',
+                          field.confidence && field.confidence >= 0.9
+                            ? 'text-green-600 dark:text-green-400'
+                            : field.confidence && field.confidence >= 0.7
+                              ? 'text-yellow-600 dark:text-yellow-400'
+                              : 'text-red-600 dark:text-red-400'
+                        )}
+                      >
+                        {confidencePercent}% confidence
+                      </div>
+                    )}
+                    {field.sourceText && (
+                      <div className="text-muted-foreground border-t pt-2 text-xs">
+                        Source: "{field.sourceText}"
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-muted-foreground text-sm italic">
+                    No value extracted
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )
         })
-      }
-
-      const varName = match[1]
-      const field = findMatchingField(normalizedFields, varName) || {
-        value: null,
-      }
-      const isLoading = loadingVariables.has(varName)
-
-      parts.push({
-        type: 'variable',
-        content: varName,
-        field,
-        isLoading,
       })
-
-      lastIndex = match.index + match[0].length
-    }
-
-    if (lastIndex < contentToRender.length) {
-      parts.push({
-        type: 'text',
-        content: contentToRender.slice(lastIndex),
-      })
-    }
-
-    return parts
-  }, [
-    templateContent,
-    editableContent,
-    isEditing,
-    normalizedFields,
-    loadingVariables,
-  ])
+    },
+    [
+      normalizedFields,
+      loadingVariables,
+      fieldOverrides,
+      editingFieldName,
+      enableOverrides,
+      readOnly,
+      showRaw,
+      handleSaveFieldOverride,
+      handleCancelFieldEdit,
+      handleResetFieldOverride,
+      handleFieldEdit,
+    ]
+  )
 
   const filledCount = Object.values(normalizedFields).filter(
     (f) => f.value
   ).length
   const totalCount = Object.keys(normalizedFields).length
 
-  const getConfidenceColor = (conf?: number) => {
+  const _getConfidenceColor = (conf?: number) => {
     if (!conf) return 'text-muted-foreground'
     if (conf >= 0.9) return 'text-green-600 dark:text-green-400'
     if (conf >= 0.7) return 'text-yellow-600 dark:text-yellow-400'
@@ -652,6 +1093,24 @@ export function TemplateOutputView({
                   Extracting...
                 </Badge>
               )}
+              {/* Save status indicator */}
+              {isInlineEditing && (
+                isSaving ? (
+                  <Badge variant="outline" className="gap-1 text-blue-600">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Saving...
+                  </Badge>
+                ) : hasChanges ? (
+                  <Badge variant="outline" className="gap-1 text-amber-600">
+                    Unsaved changes
+                  </Badge>
+                ) : lastSavedAt ? (
+                  <Badge variant="outline" className="gap-1 text-green-600">
+                    <Check className="h-3 w-3" />
+                    Saved
+                  </Badge>
+                ) : null
+              )}
               {isEditing && hasChanges && onSaveTemplate && (
                 <Button
                   variant="default"
@@ -664,7 +1123,7 @@ export function TemplateOutputView({
               )}
               {/* Done button to exit inline edit mode */}
               {isInlineEditing && (
-                <Button variant="outline" size="sm" onClick={handleExitEditMode}>
+                <Button variant="outline" size="sm" onClick={handleAttemptExit}>
                   Done
                 </Button>
               )}
@@ -852,10 +1311,52 @@ export function TemplateOutputView({
                 .template-output-editor .ProseMirror p {
                   margin: 0.5em 0;
                 }
-                .template-output-editor .ProseMirror ul,
+                .template-output-editor .ProseMirror ul {
+                  margin: 0.5em 0;
+                  padding-left: 1.5em;
+                  list-style-type: disc;
+                }
                 .template-output-editor .ProseMirror ol {
                   margin: 0.5em 0;
                   padding-left: 1.5em;
+                  list-style-type: decimal;
+                }
+                .template-output-editor .ProseMirror li {
+                  margin: 0.25em 0;
+                }
+                .template-output-editor .ProseMirror blockquote {
+                  border-left: 4px solid var(--border, #e5e7eb);
+                  margin: 1em 0;
+                  padding-left: 1em;
+                  font-style: italic;
+                  color: var(--muted-foreground, #6b7280);
+                }
+                .template-output-editor .ProseMirror code {
+                  background-color: var(--muted, #f3f4f6);
+                  border: 1px solid var(--border, #e5e7eb);
+                  padding: 2px 4px;
+                  border-radius: 3px;
+                  font-family: monospace;
+                  font-size: 0.9em;
+                }
+                .template-output-editor .ProseMirror pre {
+                  background-color: var(--muted, #f3f4f6);
+                  border: 1px solid var(--border, #e5e7eb);
+                  padding: 10px;
+                  border-radius: 5px;
+                  overflow-x: auto;
+                  font-family: monospace;
+                }
+                .template-output-editor .ProseMirror hr {
+                  border: none;
+                  border-top: 2px solid var(--border, #e5e7eb);
+                  margin: 1em 0;
+                }
+                .template-output-editor .ProseMirror strong {
+                  font-weight: bold;
+                }
+                .template-output-editor .ProseMirror em {
+                  font-style: italic;
                 }
               `}</style>
               <EditorContent
@@ -868,11 +1369,11 @@ export function TemplateOutputView({
               />
             </div>
           ) : (
-            // Read-only display mode with variable badges - click to edit
+            // Read-only display mode with rich content and variable badges
             <ScrollArea className="h-full">
               <div
                 className={cn(
-                  'prose prose-sm dark:prose-invert bg-muted/30 max-w-none rounded-lg p-4 font-mono text-sm whitespace-pre-wrap',
+                  'prose prose-sm dark:prose-invert bg-muted/30 max-w-none rounded-lg p-4',
                   !readOnly && 'cursor-text hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
                 )}
                 onClick={handleEnterEditMode}
@@ -889,137 +1390,10 @@ export function TemplateOutputView({
                 })}
               >
                 <TooltipProvider delayDuration={200}>
-                  {renderedContent?.map((part, index) => {
-                    if (part.type === 'text') {
-                      return <span key={index}>{part.content}</span>
-                    }
-
-                    const field = part.field!
-                    const fieldName = part.content
-                    const isLoading = part.isLoading
-                    const hasValue = field.value !== null && field.value !== ''
-                    const confidencePercent = field.confidence
-                      ? Math.round(field.confidence * 100)
-                      : null
-
-                    // Check if this field has an override
-                    const override = fieldOverrides[fieldName]
-                    const isOverride = !!override
-                    const displayValue = isOverride
-                      ? String(override.value ?? '')
-                      : field.value
-
-                    // If we're editing this field, show the inline editor
-                    if (editingFieldName === fieldName) {
-                      return (
-                        <span key={index} className="mx-0.5 inline-block">
-                          <InlineFieldEditor
-                            fieldName={fieldName}
-                            currentValue={displayValue || ''}
-                            onSave={handleSaveFieldOverride}
-                            onCancel={handleCancelFieldEdit}
-                          />
-                        </span>
-                      )
-                    }
-
-                    // When overrides are enabled, use FieldOverrideIndicator
-                    if (enableOverrides && hasValue) {
-                      return (
-                        <span key={index} className="mx-0.5 inline-block">
-                          <FieldOverrideIndicator
-                            fieldName={fieldName}
-                            value={displayValue}
-                            originalValue={isOverride ? override.original_value : undefined}
-                            isOverride={isOverride}
-                            confidence={field.confidence}
-                            modifiedBy={override?.modified_by_name}
-                            modifiedAt={override?.modified_at}
-                            onReset={isOverride ? handleResetFieldOverride : undefined}
-                            onEdit={handleFieldEdit}
-                            readOnly={readOnly}
-                          />
-                        </span>
-                      )
-                    }
-
-                    // Standard rendering (no overrides enabled or loading state)
-                    return (
-                      <Tooltip key={index}>
-                        <TooltipTrigger asChild>
-                          <span
-                            className={cn(
-                              'mx-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-                              'cursor-help transition-colors',
-                              isLoading
-                                ? 'border border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                                : hasValue
-                                  ? 'border border-green-200 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200'
-                                  : 'border border-dashed border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200'
-                            )}
-                          >
-                            {isLoading ? (
-                              <>
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                <span>Extracting...</span>
-                              </>
-                            ) : showRaw ? (
-                              <span>{`{{${part.content}}}`}</span>
-                            ) : hasValue ? (
-                              <>
-                                <Check className="h-3 w-3" />
-                                <span>{field.value}</span>
-                              </>
-                            ) : (
-                              <>
-                                <AlertCircle className="h-3 w-3" />
-                                <span className="italic">{`{{${part.content}}}`}</span>
-                              </>
-                            )}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent
-                          side="top"
-                          className="max-w-sm space-y-2 p-3"
-                        >
-                          <div className="text-muted-foreground font-mono text-xs">
-                            {part.content}
-                          </div>
-                          {isLoading ? (
-                            <div className="text-blue-600 text-sm flex items-center gap-2">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Extracting from document...
-                            </div>
-                          ) : hasValue ? (
-                            <>
-                              <div className="border-primary border-l-2 pl-2 text-sm font-medium">
-                                {field.value}
-                              </div>
-                              {confidencePercent !== null && (
-                                <div
-                                  className={cn(
-                                    'text-xs',
-                                    getConfidenceColor(field.confidence)
-                                  )}
-                                >
-                                  {confidencePercent}% confidence
-                                </div>
-                              )}
-                              {field.sourceText && (
-                                <div className="text-muted-foreground border-t pt-2 text-xs">
-                                  Source: "{field.sourceText}"
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="text-muted-foreground text-sm italic">
-                              No value extracted
-                            </div>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    )
-                  })}
+                  <RichContentRenderer
+                    content={templateContent || '*No content available*'}
+                    processChildrenWithBadges={processChildrenWithBadges}
+                  />
                 </TooltipProvider>
               </div>
             </ScrollArea>
@@ -1035,6 +1409,32 @@ export function TemplateOutputView({
         templateId={templateId}
         onSave={handleSaveTemplate}
       />
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes to this template output. What would you like to do?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowExitConfirm(false)}>
+              Keep Editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              onClick={handleConfirmDiscard}
+            >
+              Discard Changes
+            </AlertDialogAction>
+            <AlertDialogAction onClick={handleSaveAndExit}>
+              Save & Exit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

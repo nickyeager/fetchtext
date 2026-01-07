@@ -64,6 +64,10 @@ interface UnifiedDocumentViewProps {
   onResetOverride?: (fieldName: string) => Promise<void>
   /** Whether the view is read-only (no edits allowed) */
   readOnly?: boolean
+  /** Whether save is in progress */
+  isSaving?: boolean
+  /** Last saved timestamp */
+  lastSavedAt?: Date | null
 }
 
 export function UnifiedDocumentView({
@@ -88,6 +92,8 @@ export function UnifiedDocumentView({
   onFieldOverride,
   onResetOverride,
   readOnly,
+  isSaving,
+  lastSavedAt,
 }: UnifiedDocumentViewProps) {
   // Default to Output view (true = Output, false = Original)
   const [showOutput, setShowOutput] = useState(true)
@@ -143,6 +149,8 @@ export function UnifiedDocumentView({
             onFieldOverride={onFieldOverride}
             onResetOverride={onResetOverride}
             readOnly={readOnly}
+            isSaving={isSaving}
+            lastSavedAt={lastSavedAt}
           />
         ) : (
           <DocumentPreviewPanel
