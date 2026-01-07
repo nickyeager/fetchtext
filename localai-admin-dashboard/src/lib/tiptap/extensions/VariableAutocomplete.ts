@@ -8,7 +8,12 @@
 
 import { Extension } from '@tiptap/core';
 import Suggestion, { SuggestionOptions } from '@tiptap/suggestion';
+import { PluginKey } from '@tiptap/pm/state';
 import type { SmartVariable } from '@/types/unified-template';
+
+// Create a proper PluginKey for the suggestion plugin
+// This fixes "getState is not a function" error when editor loses focus
+const variableAutocompletePluginKey = new PluginKey('variableAutocomplete');
 
 export interface VariableAutocompleteOptions {
   variables: SmartVariable[];
@@ -25,7 +30,7 @@ export const VariableAutocomplete = Extension.create<VariableAutocompleteOptions
         char: '{{',
         allowSpaces: false,
         startOfLine: false,
-        pluginKey: 'variableAutocomplete',
+        pluginKey: variableAutocompletePluginKey,
         command: ({ editor, range, props }) => {
           // Delete the trigger characters and insert the badge
           editor

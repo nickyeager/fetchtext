@@ -3,6 +3,7 @@
  * Shows document content with processing capabilities
  */
 import React, { useState, useEffect, useMemo } from 'react'
+import { debounce } from 'lodash'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { templateService } from '@/services/template-service'
@@ -148,6 +149,13 @@ export function DocumentDetailView({
     string | null
   >(null)
 
+  // State for document-specific template content override
+  const [customTemplateContent, setCustomTemplateContent] = React.useState<
+    string | null
+  >(null)
+  const [isSavingTemplate, setIsSavingTemplate] = React.useState(false)
+  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
+
   // State for document field overrides
   const [fieldOverrides, setFieldOverrides] = React.useState<
     Record<string, FieldOverride>
@@ -279,6 +287,26 @@ export function DocumentDetailView({
 
     loadOverrides()
   }, [documentId])
+
+  // Load custom template content from document metadata
+  useEffect(() => {
+    if (!document) {
+      setCustomTemplateContent(null)
+      return
+    }
+
+    const savedCustomContent = (document.metadata as any)?.custom_template_content
+    if (savedCustomContent) {
+      console.log('[DocumentDetailView] Loaded custom template content from metadata', {
+        contentLength: savedCustomContent.length,
+        contentPreview: savedCustomContent.substring(0, 200),
+        hasTestMarker: savedCustomContent.includes('[TEST-')
+      })
+      setCustomTemplateContent(savedCustomContent)
+    } else {
+      setCustomTemplateContent(null)
+    }
+  }, [document?.id, (document?.metadata as any)?.custom_template_content])
 
   // Extract templateId for dependency tracking
   const documentTemplateId = (
@@ -1233,6 +1261,102 @@ export function DocumentDetailView({
       throw error
     }
   }
+
+  // Save custom template content to document metadata
+  const saveCustomTemplateContent = React.useCallback(
+    async (content: string) => {
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] saveCustomTemplateContent ENTRY', {
+        documentId,
+        contentLength: content.length,
+      })
+      if (!documentId) {
+        console.warn('[DocumentDetailView] saveCustomTemplateContent called without documentId - skipping save')
+        return
+      }
+
+      setIsSavingTemplate(true)
+      try {
+        // Get fresh document data from Supabase directly to avoid stale closure
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Fetching document from Supabase...')
+        const { data: currentDoc, error: fetchError } = await supabase
+          .from('documents')
+          .select('processing_status, metadata')
+          .eq('id', documentId)
+          .single()
+
+        if (fetchError || !currentDoc) {
+          console.error('[DocumentDetailView] Could not fetch current document:', fetchError)
+          return
+        }
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Fetched document, calling updateDocumentStatus...')
+
+        const currentStatus = (currentDoc.processing_status as DocumentStatus) || DocumentStatus.COMPLETED
+        await UnifiedDocumentService.updateDocumentStatus(documentId, {
+          status: currentStatus,
+          metadata: {
+            ...(currentDoc.metadata as Record<string, unknown>),
+            custom_template_content: content,
+            custom_template_updated_at: new Date().toISOString(),
+          },
+        })
+        setLastSavedAt(new Date())
+        setCustomTemplateContent(content)
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Saved custom template content SUCCESSFULLY')
+      } catch (error) {
+        console.error('[DocumentDetailView] Failed to save custom template content:', error)
+      } finally {
+        setIsSavingTemplate(false)
+      }
+    },
+    [documentId]  // Only stable primitive dependency
+  )
+
+  // Debounced save for template content changes using lodash debounce
+  const saveTemplateContentDebounced = React.useMemo(
+    () => debounce(saveCustomTemplateContent, 1000),
+    [saveCustomTemplateContent]
+  )
+
+  // Cleanup: cancel pending debounced saves on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      saveTemplateContentDebounced.cancel()
+    }
+  }, [saveTemplateContentDebounced])
+
+  // Handle template content changes (for auto-save)
+  const handleTemplateContentChange = React.useCallback(
+    (content: string) => {
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] handleTemplateContentChange called', {
+        contentLength: content.length,
+        contentPreview: content.substring(0, 100),
+        documentId,
+      })
+      setCustomTemplateContent(content)
+      saveTemplateContentDebounced(content)
+    },
+    [saveTemplateContentDebounced, documentId]
+  )
+
+  // Handle explicit save (for Done button)
+  const handleSaveTemplate = React.useCallback(
+    async (
+      content: string,
+      _action: 'create' | 'modify',
+      _newName?: string
+    ) => {
+      // Cancel any pending debounced saves to prevent race condition
+      saveTemplateContentDebounced.cancel()
+      // Then save immediately
+      await saveCustomTemplateContent(content)
+    },
+    [saveCustomTemplateContent, saveTemplateContentDebounced]
+  )
 
   const handleDownload = async (
     format: 'json' | 'txt' | 'csv' | 'html' | 'docx' | 'md' | 'pdf'
@@ -2553,8 +2677,12 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
     const templateId = metadata?.template_id as number | undefined
 
     // Determine which content to show based on toggle
+    // Priority: customTemplateContent > rawTemplateContent > formattedOutput > original text
     let templateContent: string
-    if (showTemplateView && rawTemplateContent) {
+    if (customTemplateContent) {
+      // Prefer document-specific custom content (user edits)
+      templateContent = customTemplateContent
+    } else if (showTemplateView && rawTemplateContent) {
       // Show raw template with {{variable}} placeholders
       templateContent = rawTemplateContent
     } else if (formattedOutput) {
@@ -2581,10 +2709,15 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         onExport={() => handleDownload('html')}
         className='h-[70vh]'
         documentText={documentContent.original.text}
+        editable={true}
+        onTemplateChange={handleTemplateContentChange}
+        onSaveTemplate={handleSaveTemplate}
         enableOverrides={true}
         fieldOverrides={fieldOverrides}
         onFieldOverride={handleFieldOverride}
         onResetOverride={handleResetOverride}
+        isSaving={isSavingTemplate}
+        lastSavedAt={lastSavedAt}
       />
     )
   }

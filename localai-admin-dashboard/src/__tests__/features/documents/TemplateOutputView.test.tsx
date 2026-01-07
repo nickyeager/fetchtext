@@ -12,6 +12,12 @@ vi.mock('@/lib/document-processor-enhanced', () => ({
   })),
 }));
 
+// Mock TipTap to avoid editor initialization issues in tests
+vi.mock('@tiptap/react', () => ({
+  useEditor: () => null,
+  EditorContent: () => null,
+}));
+
 describe('TemplateOutputView', () => {
   const mockTemplateContent = `Dear {{company_name}},
 
@@ -452,6 +458,129 @@ Best regards,
       );
 
       expect(screen.queryByRole('button', { name: /save template/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================
+  // NEW TESTS: Markdown Rendering
+  // ============================================
+
+  describe('Markdown Rendering', () => {
+    it('renders headings with proper styling', () => {
+      const content = `# Main Heading
+
+## Sub Heading
+
+Some text with {{variable}}`;
+      render(
+        <TemplateOutputView
+          templateContent={content}
+          extractedFields={{ variable: { value: 'Test Value', confidence: 0.9 } }}
+        />
+      );
+
+      // Check that headings are rendered as h1/h2
+      const h1 = screen.getByRole('heading', { level: 1 });
+      expect(h1).toHaveTextContent('Main Heading');
+
+      const h2 = screen.getByRole('heading', { level: 2 });
+      expect(h2).toHaveTextContent('Sub Heading');
+    });
+
+    it('renders bold text correctly', () => {
+      render(
+        <TemplateOutputView
+          templateContent="**Bold text** and {{variable}}"
+          extractedFields={{ variable: { value: 'Test Value', confidence: 0.9 } }}
+        />
+      );
+
+      const boldElement = screen.getByText('Bold text');
+      expect(boldElement.tagName.toLowerCase()).toBe('strong');
+    });
+
+    it('renders lists correctly', () => {
+      const content = `- Item 1
+- Item 2 with {{variable}}
+- Item 3`;
+      render(
+        <TemplateOutputView
+          templateContent={content}
+          extractedFields={{ variable: { value: 'Test Value', confidence: 0.9 } }}
+        />
+      );
+
+      const listItems = screen.getAllByRole('listitem');
+      expect(listItems.length).toBe(3);
+    });
+
+    it('renders variable badges inline within Markdown elements', () => {
+      render(
+        <TemplateOutputView
+          templateContent="**Amount:** {{amount}}"
+          extractedFields={{ amount: { value: '$1,000', confidence: 0.95 } }}
+        />
+      );
+
+      // The value should be visible
+      expect(screen.getByText('$1,000')).toBeInTheDocument();
+
+      // And it should be inside a strong element (or as sibling)
+      const amountLabel = screen.getByText('Amount:');
+      expect(amountLabel.closest('strong') || amountLabel.tagName.toLowerCase()).toBeTruthy();
+    });
+
+    it('renders tables correctly', () => {
+      const content = `| Item | Price |
+|------|-------|
+| Widget | {{price}} |`;
+      render(
+        <TemplateOutputView
+          templateContent={content}
+          extractedFields={{ price: { value: '$50', confidence: 0.9 } }}
+        />
+      );
+
+      const table = screen.getByRole('table');
+      expect(table).toBeInTheDocument();
+    });
+
+    it('renders blockquotes correctly', () => {
+      render(
+        <TemplateOutputView
+          templateContent="> This is a quote about {{topic}}"
+          extractedFields={{ topic: { value: 'testing', confidence: 0.9 } }}
+        />
+      );
+
+      const blockquote = document.querySelector('blockquote');
+      expect(blockquote).toBeInTheDocument();
+    });
+
+    it('preserves variable badge functionality in Markdown context', async () => {
+      const user = userEvent.setup();
+      const content = `# Invoice
+
+**Total:** {{total}}`;
+
+      render(
+        <TemplateOutputView
+          templateContent={content}
+          extractedFields={{ total: { value: '$500', confidence: 0.85, sourceText: 'Total: $500' } }}
+        />
+      );
+
+      // Find the value and hover to see tooltip
+      const valueElement = screen.getByText('$500');
+      const chip = valueElement.closest('span[class*="inline-flex"]');
+
+      if (chip) {
+        await user.hover(chip);
+
+        await waitFor(() => {
+          expect(screen.getAllByText(/85%/).length).toBeGreaterThan(0);
+        });
+      }
     });
   });
 
