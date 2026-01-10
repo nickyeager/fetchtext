@@ -388,10 +388,6 @@ services:
       - SUPABASE_URL=http://supabase-kong:8000
       - SUPABASE_ANON_KEY=${ANON_KEY}
       - SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
-      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
-      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-nick@fetchtext.io}
-      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-FetchText}
-      - APP_URL=${APP_URL:-http://localhost:5173}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s
@@ -493,18 +489,19 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_EXP: 3600
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      # Email: Using SendGrid SMTP for confirmation emails
       GOTRUE_EXTERNAL_EMAIL_ENABLED: true
       GOTRUE_MAILER_AUTOCONFIRM: false
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SENDGRID_FROM_EMAIL:-nick@fetchtext.io}
-      GOTRUE_SMTP_HOST: smtp.sendgrid.net
-      GOTRUE_SMTP_PORT: 587
-      GOTRUE_SMTP_USER: apikey
-      GOTRUE_SMTP_PASS: ${SENDGRID_API_KEY}
-      GOTRUE_SMTP_SENDER_NAME: ${SENDGRID_FROM_NAME:-FetchText}
-      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+      GOTRUE_SMTP_ADMIN_EMAIL: admin@example.com
+      GOTRUE_SMTP_HOST: supabase-inbucket
+      GOTRUE_SMTP_PORT: 2500
+      GOTRUE_SMTP_USER: fake_mail_user
+      GOTRUE_SMTP_PASS: fake_mail_password
+      GOTRUE_SMTP_SENDER_NAME: fake_sender
+      # GitHub OAuth Provider
+      GOTRUE_EXTERNAL_GITHUB_ENABLED: ${GOTRUE_EXTERNAL_GITHUB_ENABLED:-false}
+      GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${GOTRUE_EXTERNAL_GITHUB_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GITHUB_SECRET: ${GOTRUE_EXTERNAL_GITHUB_CLIENT_SECRET:-}
+      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: ${GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI:-}
 
   supabase-rest:
     image: postgrest/postgrest:v12.2.12

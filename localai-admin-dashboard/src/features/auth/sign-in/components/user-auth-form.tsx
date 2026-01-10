@@ -73,6 +73,27 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
     }
   }
 
+  async function handleGitHubLogin() {
+    setIsLoading(true)
+    try {
+      const redirectTo = (search as any)?.redirect || '/dashboard'
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}${redirectTo}`,
+        },
+      })
+
+      if (error) {
+        toast.error('GitHub login failed: ' + error.message)
+      }
+    } catch {
+      toast.error('GitHub login failed')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <Form {...form}>
       <form
@@ -127,7 +148,13 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
           </div>
         </div>
 
-        <Button variant='outline' className='w-full' type='button' disabled={isLoading}>
+        <Button
+          variant='outline'
+          className='w-full'
+          type='button'
+          disabled={isLoading}
+          onClick={handleGitHubLogin}
+        >
           <IconBrandGithub className='h-4 w-4' /> GitHub
         </Button>
       </form>

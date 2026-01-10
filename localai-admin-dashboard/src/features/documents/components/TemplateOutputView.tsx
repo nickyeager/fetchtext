@@ -118,6 +118,17 @@ function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[\s_-]/g, '')
 }
 
+// Convert a key to snake_case for template variable matching
+// "Contract Type" -> "contract_type", "Invoice Number" -> "invoice_number"
+function toSnakeCase(key: string): string {
+  return key
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_') // spaces to underscores
+    .replace(/-+/g, '_') // dashes to underscores
+    .replace(/_+/g, '_') // collapse multiple underscores
+}
+
 // Find a matching field using fuzzy key matching
 function findMatchingField(
   fields: Record<string, ExtractedField>,
@@ -161,9 +172,10 @@ function templateToHtml(template: string): string {
     .replace(/>/g, '&gt;')
 
   // Convert {{variable}} to variable badge spans (preserve for later)
+  // Use data-variable-badge="" (with value) to ensure TipTap parses it correctly
   text = text.replace(
     /\{\{(\w+)\}\}/g,
-    '<span data-variable-badge data-variable-id="$1" data-variable-name="$1">{{$1}}</span>'
+    '<span data-variable-badge="" data-variable-id="$1" data-variable-name="$1">{{$1}}</span>'
   )
 
   // Process line by line for block-level Markdown
@@ -521,23 +533,37 @@ export function TemplateOutputView({
   }, [extractedFields, localExtractedFields])
 
   // Normalize fields to consistent structure
+  // Also add snake_case key mappings so template variables like {{contract_type}}
+  // can find fields stored as "Contract Type" in the database
   const normalizedFields = useMemo(() => {
     const result: Record<string, ExtractedField> = {}
     for (const [key, value] of Object.entries(mergedExtractedFields)) {
+      let normalizedValue: ExtractedField
       if (value === null || value === undefined) {
-        result[key] = { value: null }
+        normalizedValue = { value: null }
       } else if (typeof value === 'string') {
-        result[key] = { value }
+        normalizedValue = { value }
       } else if (typeof value === 'object' && 'value' in value) {
-        result[key] = value as ExtractedField
+        normalizedValue = value as ExtractedField
       } else {
-        result[key] = { value: JSON.stringify(value) }
+        normalizedValue = { value: JSON.stringify(value) }
+      }
+
+      // Store with original key
+      result[key] = normalizedValue
+
+      // Also store with snake_case key for template variable matching
+      // e.g., "Contract Type" -> also accessible via "contract_type"
+      const snakeCaseKey = toSnakeCase(key)
+      if (snakeCaseKey !== key && !result[snakeCaseKey]) {
+        result[snakeCaseKey] = normalizedValue
       }
     }
     // eslint-disable-next-line no-console
     console.log('[TemplateOutputView] normalizedFields:', {
       keys: Object.keys(result),
       fieldCount: Object.keys(result).length,
+      sampleMappings: Object.entries(result).slice(0, 5).map(([k, v]) => ({ key: k, value: v?.value })),
     })
     return result
   }, [mergedExtractedFields])
@@ -674,6 +700,12 @@ export function TemplateOutputView({
         const newContent = htmlToTemplate(html)
         setEditableContent(newContent)
         setHasChanges(newContent !== templateContent)
+
+        // Capture previous variables BEFORE notifying parent (which may trigger prop updates)
+        // This prevents race condition where previousVariablesRef gets updated by useEffect
+        // before our debounced extraction check runs
+        const previousVariablesSnapshot = new Set(previousVariablesRef.current)
+
         // Use ref to avoid stale closure - always calls latest callback
         // eslint-disable-next-line no-console
         console.log('[TemplateOutputView] onUpdate fired', {
@@ -683,20 +715,21 @@ export function TemplateOutputView({
         })
         onTemplateChangeRef.current?.(newContent)
 
-        // Debounced variable detection
+        // Debounced variable detection - uses captured snapshot to avoid race condition
         if (debounceTimerRef.current) {
           clearTimeout(debounceTimerRef.current)
         }
         debounceTimerRef.current = setTimeout(() => {
           const currentVariables = new Set(extractVariablesFromContent(newContent))
-          const previousVariables = previousVariablesRef.current
 
           for (const varName of currentVariables) {
             if (
-              !previousVariables.has(varName) &&
+              !previousVariablesSnapshot.has(varName) &&
               !normalizedFields[varName] &&
               !loadingVariables.has(varName)
             ) {
+              // eslint-disable-next-line no-console
+              console.log(`[TemplateOutputView] New variable detected, triggering extraction: ${varName}`)
               extractSingleVariable(varName)
             }
           }
@@ -1042,10 +1075,30 @@ export function TemplateOutputView({
     ]
   )
 
-  const filledCount = Object.values(normalizedFields).filter(
-    (f) => f.value
-  ).length
-  const totalCount = Object.keys(normalizedFields).length
+  // Count based on extractedFields prop (unified fields from DocumentDetailView)
+  // This ensures the count matches ExtractedFieldsEditor which uses the same data source
+  // Helper to check if a value is empty
+  const isValueEmpty = (value: unknown): boolean => {
+    if (value === null || value === undefined) return true
+    if (typeof value === 'string') {
+      const trimmed = value.trim().toLowerCase()
+      if (trimmed.length === 0) return true
+      const emptyPatterns = ['null', 'undefined', 'n/a', 'none', 'not found', 'not available', '[]', '{}']
+      if (emptyPatterns.includes(trimmed)) return true
+    }
+    return false
+  }
+
+  // Get unique field keys from extractedFields prop (no snake_case duplicates)
+  const uniqueFieldKeys = useMemo(() => {
+    return Object.keys(extractedFields)
+  }, [extractedFields])
+
+  const totalCount = uniqueFieldKeys.length
+  const filledCount = uniqueFieldKeys.filter((key) => {
+    const field = normalizedFields[key]
+    return field && !isValueEmpty(field.value)
+  }).length
 
   const _getConfidenceColor = (conf?: number) => {
     if (!conf) return 'text-muted-foreground'
@@ -1070,7 +1123,7 @@ export function TemplateOutputView({
   return (
     <>
       <Card className={cn('flex h-full flex-col', className)}>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
               <FileOutput className="h-5 w-5" />
@@ -1160,12 +1213,12 @@ export function TemplateOutputView({
             )}
           </p>
         </CardHeader>
-        <CardContent className="flex-1 overflow-hidden">
+        <CardContent className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {isEditing ? (
             // WYSIWYG TipTap editor mode
-            <div className="template-output-editor flex flex-col h-full" onKeyDown={handleEditKeyDown}>
+            <div className="template-output-editor flex flex-col h-full min-h-0" onKeyDown={handleEditKeyDown}>
               {/* Minimal Toolbar */}
-              <div className="flex flex-wrap items-center gap-1 pb-2 border-b mb-2">
+              <div className="flex flex-wrap items-center gap-1 pb-2 border-b mb-2 flex-shrink-0">
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1282,8 +1335,6 @@ export function TemplateOutputView({
               <style>{`
                 .template-output-editor .ProseMirror {
                   min-height: 250px;
-                  max-height: 500px;
-                  overflow-y: auto;
                   outline: none;
                 }
                 .template-output-editor .ProseMirror p.is-editor-empty:first-child::before {
@@ -1359,14 +1410,17 @@ export function TemplateOutputView({
                   font-style: italic;
                 }
               `}</style>
-              <EditorContent
-                editor={editor}
-                className={cn(
-                  'prose prose-sm dark:prose-invert max-w-none flex-1',
-                  'rounded-lg border p-4',
-                  'focus-within:ring-ring focus-within:ring-2 focus-within:ring-offset-2'
-                )}
-              />
+              {/* Scrollable editor wrapper */}
+              <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border">
+                <EditorContent
+                  editor={editor}
+                  className={cn(
+                    'prose prose-sm dark:prose-invert max-w-none',
+                    'p-4',
+                    'focus-within:ring-ring focus-within:ring-2 focus-within:ring-offset-2'
+                  )}
+                />
+              </div>
             </div>
           ) : (
             // Read-only display mode with rich content and variable badges
