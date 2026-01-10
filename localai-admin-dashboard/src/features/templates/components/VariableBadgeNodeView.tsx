@@ -22,6 +22,18 @@ import { cn } from '@/lib/utils';
 import { EditableVariableBadgeView } from '@/features/documents/components/EditableVariableBadgeView';
 import type { FieldOverride } from '@/services/document-override-service';
 
+// Helper to extract display value from field data
+// Field can be: string, { value: string, ... }, or null/undefined
+function getDisplayValue(field: unknown): string | null {
+  if (field === null || field === undefined) return null;
+  if (typeof field === 'string') return field;
+  if (typeof field === 'object' && 'value' in field) {
+    const val = (field as { value: unknown }).value;
+    return val === null || val === undefined ? null : String(val);
+  }
+  return String(field);
+}
+
 export function VariableBadgeNodeView({
   node,
   selected,
@@ -33,7 +45,8 @@ export function VariableBadgeNodeView({
     format: string;
   };
   const extractedData = extension.options.extractedData || {};
-  const extractedValue = extractedData[variableId];
+  const rawFieldData = extractedData[variableId];
+  const extractedValue = getDisplayValue(rawFieldData);
   const onVariableClick = extension.options.onVariableClick;
 
   // Value editing options

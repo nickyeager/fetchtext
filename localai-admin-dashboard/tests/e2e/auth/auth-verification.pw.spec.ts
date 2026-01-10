@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { preflight } from './utils/preflight';
+import { preflight } from '../utils/preflight';
 
 test.describe('Authentication Verification', () => {
   test.beforeEach(async () => {

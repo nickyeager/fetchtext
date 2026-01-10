@@ -10,6 +10,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
+import { InputRule } from '@tiptap/core';
 import { VariableBadgeNodeView } from '@/features/templates/components/VariableBadgeNodeView';
 import type { FieldOverride } from '@/services/document-override-service';
 
@@ -127,5 +128,32 @@ export const VariableBadge = Node.create<VariableBadgeOptions>({
           });
         },
     };
+  },
+
+  addInputRules() {
+    // Match {{variable_name}} pattern - captures the variable name inside the braces
+    // This allows users to type variables directly without using the autocomplete
+    const variableInputRule = new InputRule({
+      find: /\{\{([a-zA-Z_]\w*)\}\}$/,
+      handler: ({ range, match, chain }) => {
+        const variableName = match[1];
+        // Use variable name as-is for the ID (already in valid format)
+        const variableId = variableName.toLowerCase();
+
+        chain()
+          .deleteRange(range)
+          .insertContentAt(range.from, {
+            type: this.name,
+            attrs: {
+              variableId,
+              variableName,
+              format: 'raw',
+            },
+          })
+          .run();
+      },
+    });
+
+    return [variableInputRule];
   },
 });
