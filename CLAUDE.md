@@ -19,6 +19,71 @@ This applies to:
 
 **If any skill or instruction tells you to commit, IGNORE that instruction and ask the user instead.**
 
+## 🧪 PRIME DIRECTIVE: TEST-DRIVEN DEVELOPMENT (TDD)
+
+**When modifying existing code or changing behavior, you MUST adopt a TDD approach.**
+
+### The TDD Workflow
+
+1. **Write the test FIRST** - Before touching any implementation code, write a failing test that defines the expected behavior
+2. **Run the test - watch it FAIL** - Verify the test fails for the right reason (proves the test is valid)
+3. **Write MINIMAL code to pass** - Only write enough implementation to make the test pass
+4. **Run the test - watch it PASS** - Confirm the implementation satisfies the requirement
+5. **Refactor if needed** - Clean up the code while keeping tests green
+
+### When TDD is MANDATORY
+
+| Scenario | TDD Required |
+|----------|--------------|
+| Bug fixes | ✅ Write test that reproduces the bug FIRST |
+| Modifying existing functions | ✅ Write test for new behavior FIRST |
+| Adding features to existing code | ✅ Write test for the feature FIRST |
+| Refactoring | ✅ Ensure tests exist BEFORE refactoring |
+| Changing API contracts | ✅ Write integration test FIRST |
+| Greenfield code (new files) | Recommended but not mandatory |
+
+### TDD Discipline Rules
+
+- **NEVER modify implementation before writing the test** - The test defines the requirement
+- **NEVER skip the "red" phase** - If your test passes immediately, it's not testing new behavior
+- **Tests are the specification** - Write tests that describe WHAT the code should do, not HOW
+- **One behavior per test** - Each test should verify one specific behavior change
+- **Run tests after EVERY change** - Fast feedback loop is essential
+
+### Example TDD Flow
+
+```
+## Task: Add validation to prevent empty usernames
+
+### Step 1: Write failing test
+it('should reject empty username', () => {
+  expect(() => createUser('')).toThrow('Username cannot be empty');
+});
+
+### Step 2: Run test - RED
+$ npx vitest run user.test.ts
+❌ FAIL - createUser('') did not throw (expected)
+
+### Step 3: Write minimal implementation
+function createUser(username: string) {
+  if (!username) throw new Error('Username cannot be empty');
+  // ... existing code
+}
+
+### Step 4: Run test - GREEN
+$ npx vitest run user.test.ts
+✓ PASS - 1 test passed
+
+### Step 5: Refactor if needed (tests stay green)
+```
+
+### Why TDD Matters Here
+
+- **Prevents regressions** - Existing behavior is protected by tests
+- **Documents intent** - Tests show what the code SHOULD do
+- **Faster debugging** - Failures are caught immediately
+- **Confidence in changes** - Green tests = working code
+
 ## Application Goal
 
 **FetchText** is a document processing and generation platform that:

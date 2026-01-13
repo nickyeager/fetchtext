@@ -34,7 +34,6 @@ export interface SmartTemplate extends Omit<Template, 'id'> {
   regex_fallback?: Record<string, string>; // Field name -> regex pattern mapping
   smart_variables: SmartVariableWithFallback[]; // Enhanced with regex fallback
   created_by?: string | null;
-  organization_id?: string; // Organization this template belongs to
   created_at?: string;
   updated_at?: string;
 }
@@ -124,18 +123,13 @@ class TemplateService {
 
   /**
    * Create a new smart template
-   * @param templateData Template data including required organization_id
    */
-  async createTemplate(templateData: Omit<SmartTemplate, 'id' | 'uuid' | 'created_at' | 'updated_at'> & { organization_id: string }): Promise<SmartTemplate> {
+  async createTemplate(templateData: Omit<SmartTemplate, 'id' | 'uuid' | 'created_at' | 'updated_at'>): Promise<SmartTemplate> {
     return withAuthentication(async (user) => {
 
       // Validate template data
       if (!templateData.name || !templateData.category || !templateData.smart_variables) {
         throw new Error('Missing required template fields');
-      }
-
-      if (!templateData.organization_id) {
-        throw new Error('organization_id is required to create a template');
       }
 
       const { data, error } = await supabase
@@ -153,7 +147,6 @@ class TemplateService {
             extraction_rules: templateData.extraction_rules || [],
             generation_settings: templateData.generation_settings || {},
             created_by: user.id,
-            organization_id: templateData.organization_id,
             usage_count: 0,
             rating: 0.0
           }
@@ -236,18 +229,11 @@ class TemplateService {
 
   /**
    * Duplicate a smart template
-   * @param id Template ID to duplicate
-   * @param organizationId Organization to create the duplicate in (required)
-   * @param newName Optional new name for the duplicate
    */
-  async duplicateTemplate(id: number, organizationId: string, newName?: string): Promise<SmartTemplate> {
+  async duplicateTemplate(id: number, newName?: string): Promise<SmartTemplate> {
     const originalTemplate = await this.getTemplate(id);
     if (!originalTemplate) {
       throw new Error('Template not found');
-    }
-
-    if (!organizationId) {
-      throw new Error('organization_id is required to duplicate a template');
     }
 
     const duplicateData = {
@@ -255,8 +241,7 @@ class TemplateService {
       name: newName || `${originalTemplate.name} (Copy)`,
       is_public: false, // Always make duplicates private
       usage_count: 0,
-      rating: 0,
-      organization_id: organizationId
+      rating: 0
     };
 
     // Remove readonly fields
@@ -266,7 +251,7 @@ class TemplateService {
     delete duplicateData.updated_at;
     delete duplicateData.created_by;
 
-    return this.createTemplate(duplicateData as Omit<SmartTemplate, 'id' | 'uuid' | 'created_at' | 'updated_at'> & { organization_id: string });
+    return this.createTemplate(duplicateData);
   }
 
   /**

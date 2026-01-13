@@ -51,6 +51,7 @@ interface ExtractedField {
 }
 
 interface TemplateField {
+  id: string;  // Required for TemplateEditor compatibility
   name: string;
   type: string;
   description: string;
@@ -117,6 +118,7 @@ export function CreateTemplateFromFields({
   const [fieldConfigs, setFieldConfigs] = useState<Record<string, TemplateField>>(() => {
     return fields.reduce((acc, field) => {
       acc[field.id] = {
+        id: field.id,  // Include id for TemplateEditor compatibility
         name: field.name,
         type: field.type || 'text',
         description: `Extracted ${field.name.replace(/_/g, ' ')} field`,
@@ -154,6 +156,7 @@ export function CreateTemplateFromFields({
         fields.forEach(field => {
           if (!updated[field.id]) {
             updated[field.id] = {
+              id: field.id,  // Include id for TemplateEditor compatibility
               name: field.name,
               type: field.type || 'text',
               description: `Extracted ${field.name.replace(/_/g, ' ')} field`,

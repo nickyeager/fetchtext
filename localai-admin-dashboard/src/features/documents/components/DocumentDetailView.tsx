@@ -3,7 +3,7 @@
  * Shows document content with processing capabilities
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
@@ -226,8 +226,21 @@ export function DocumentDetailView({
   const documentTemplateId = (document?.metadata as Record<string, unknown> | undefined)?.template_id as number | undefined;
 
   // Fetch raw template content when template_id is available
+  // Also check for custom_template_content in document metadata (document-specific override)
   useEffect(() => {
     const fetchTemplateContent = async () => {
+      // First check for document-specific custom template content
+      const metadata = document?.metadata as Record<string, unknown> | undefined;
+      const customContent = metadata?.custom_template_content as string | undefined;
+
+      if (customContent) {
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Using custom template content from document metadata');
+        setRawTemplateContent(customContent);
+        return;
+      }
+
+      // Fall back to the global template content
       if (!documentTemplateId) {
         setRawTemplateContent(null);
         return;
@@ -248,7 +261,7 @@ export function DocumentDetailView({
     };
 
     fetchTemplateContent();
-  }, [documentTemplateId]);
+  }, [documentTemplateId, document?.metadata]);
 
   // Derive evaluation data from document metadata
   const evaluation = useMemo<DocumentEvaluation | null>(() => {
@@ -860,13 +873,163 @@ export function DocumentDetailView({
   // Handler for saving generated template
   const handleSaveGeneratedTemplate = async (_templateData: unknown) => {
     if (!document) return;
-    
+
     try {
       // Save template through the dialog's mutation
       // After saving, the dialog will navigate to the template editor
     } catch (error) {
       console.error('Failed to save generated template:', error);
       setProcessingError(error instanceof Error ? error.message : 'Failed to save template');
+    }
+  };
+
+  // Ref for debouncing auto-save
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handler for auto-saving template content changes (debounced)
+  const handleTemplateContentChange = useCallback(
+    (content: string) => {
+      if (!documentId) {
+        console.warn('[DocumentDetailView] handleTemplateContentChange: No documentId');
+        return;
+      }
+
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] handleTemplateContentChange called:', {
+        documentId,
+        contentLength: content.length,
+      });
+
+      // Clear existing timer
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+
+      // Debounce the save - wait 1 second after user stops typing
+      autoSaveTimerRef.current = setTimeout(async () => {
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[DocumentDetailView] Auto-saving custom template content...');
+
+          const currentDoc = document;
+          if (!currentDoc) return;
+
+          const metadata = currentDoc.metadata as Record<string, unknown> | undefined;
+          const updatedMetadata = {
+            ...metadata,
+            custom_template_content: content,
+            custom_template_updated_at: new Date().toISOString(),
+          };
+
+          // Keep current status (default to COMPLETED if not set)
+          // Map string status to DocumentStatus enum
+          const statusMap: Record<string, DocumentStatus> = {
+            'uploaded': DocumentStatus.UPLOADED,
+            'analyzing': DocumentStatus.ANALYZING,
+            'processing': DocumentStatus.PROCESSING,
+            'completed': DocumentStatus.COMPLETED,
+            'failed': DocumentStatus.FAILED,
+          };
+          const currentStatus = statusMap[currentDoc.processing_status || 'completed'] || DocumentStatus.COMPLETED;
+
+          await UnifiedDocumentService.updateDocumentStatus(documentId, {
+            status: currentStatus,
+            metadata: updatedMetadata,
+          });
+
+          // eslint-disable-next-line no-console
+          console.log('[DocumentDetailView] Auto-save SUCCESSFUL');
+        } catch (error) {
+          console.error('[DocumentDetailView] Auto-save failed:', error);
+        }
+      }, 1000);
+    },
+    [documentId, document]
+  );
+
+  // Cleanup auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Handler for saving template content edits from TemplateOutputView
+  const handleSaveTemplateContent = async (
+    content: string,
+    action: 'create' | 'modify',
+    newName?: string
+  ): Promise<void> => {
+    if (!document) {
+      console.warn('[DocumentDetailView] handleSaveTemplateContent: No document available');
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[DocumentDetailView] handleSaveTemplateContent called:', {
+      documentId,
+      action,
+      contentLength: content.length,
+      newName,
+    });
+
+    try {
+      if (action === 'modify') {
+        // Save as document-specific custom template content
+        // This overrides the template output for THIS document only
+        const metadata = document.metadata as Record<string, unknown> | undefined;
+        const updatedMetadata = {
+          ...metadata,
+          custom_template_content: content,
+          custom_template_updated_at: new Date().toISOString(),
+        };
+
+        // Keep current status (default to COMPLETED if not set)
+        // Map string status to DocumentStatus enum
+        const statusMap: Record<string, DocumentStatus> = {
+          'uploaded': DocumentStatus.UPLOADED,
+          'analyzing': DocumentStatus.ANALYZING,
+          'processing': DocumentStatus.PROCESSING,
+          'completed': DocumentStatus.COMPLETED,
+          'failed': DocumentStatus.FAILED,
+        };
+        const currentStatus = statusMap[document.processing_status || 'completed'] || DocumentStatus.COMPLETED;
+
+        await UnifiedDocumentService.updateDocumentStatus(documentId, {
+          status: currentStatus,
+          metadata: updatedMetadata,
+        });
+
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Saved custom template content SUCCESSFULLY');
+
+        // Refresh document data to reflect the save
+        await refetch();
+      } else if (action === 'create' && newName) {
+        // Create a new template with this content
+        const templateData = {
+          name: newName,
+          template_content: content,
+          description: `Template created from document: ${document.name}`,
+          category: 'custom',
+          is_public: false,
+        };
+
+        const result = await templateService.createTemplate(templateData);
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Created new template:', result);
+
+        // Optionally navigate to the new template
+        if (result?.id) {
+          navigate({ to: '/templates/$templateId', params: { templateId: String(result.id) } });
+        }
+      }
+    } catch (error) {
+      console.error('[DocumentDetailView] Failed to save template content:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to save template');
+      throw error; // Re-throw so TemplateOutputView can handle UI feedback
     }
   };
 
@@ -1943,6 +2106,10 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         onEditTemplate={templateId ? () => navigateToTemplateEdit(templateId) : undefined}
         onExport={() => handleDownload('html')}
         className="h-[70vh]"
+        documentText={documentContent.original.text}
+        editable={true}
+        onTemplateChange={handleTemplateContentChange}
+        onSaveTemplate={handleSaveTemplateContent}
       />
     );
   };

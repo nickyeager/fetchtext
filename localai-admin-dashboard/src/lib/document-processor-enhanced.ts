@@ -94,6 +94,11 @@ interface SmartVariable {
   default_value?: string | number;
 }
 
+interface ExtractionOptions {
+  useTwoPass?: boolean;
+  confidenceThreshold?: number;
+}
+
 interface SmartTemplate {
   id: number;
   name: string;
@@ -344,12 +349,12 @@ export class DocumentProcessorEnhanced {
 
   /**
    * Fast template-guided extraction using the optimized text-based endpoint
-   * Public to allow real-time single variable extraction from TemplateOutputView
    */
-  public async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6): Promise<Record<string, ExtractedField>> {
+  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6, useTwoPass: boolean = false): Promise<Record<string, ExtractedField>> {
     console.log('=== Starting FAST EXTRACTION ===');
     console.log('Text content length:', textContent.length);
     console.log('Template variables:', template.smart_variables.map(v => v.name));
+    console.log('Use two-pass extraction:', useTwoPass);
 
     try {
       const templateData = JSON.stringify({
@@ -366,6 +371,11 @@ export class DocumentProcessorEnhanced {
         template_data: templateData,
         confidence_threshold: confidenceThreshold.toString()
       });
+
+      // Add two-pass parameter if enabled
+      if (useTwoPass) {
+        params.append('use_two_pass', 'true');
+      }
 
       const extractUrl = `${this.enhancedBaseUrl}/extract-with-text?${params.toString()}`;
       console.log('Calling fast extraction endpoint:', extractUrl.substring(0, 100) + '...');
@@ -424,6 +434,36 @@ export class DocumentProcessorEnhanced {
     }
   }
 
+  /**
+   * Public API: Extract text with template variables
+   * Supports two-pass extraction for improved accuracy
+   */
+  async extractWithText(
+    textContent: string,
+    templateVariables: SmartVariable[],
+    options: ExtractionOptions = {}
+  ): Promise<Record<string, ExtractedField>> {
+    const { useTwoPass = false, confidenceThreshold = 0.6 } = options;
+
+    console.log('=== extractWithText API called ===');
+    console.log('Text content length:', textContent.length);
+    console.log('Variables count:', templateVariables.length);
+    console.log('Options:', { useTwoPass, confidenceThreshold });
+
+    // Create a temporary template structure for extraction
+    const tempTemplate: SmartTemplate = {
+      id: 0,
+      name: 'Temporary Extraction Template',
+      description: 'Auto-generated template for text extraction',
+      template_content: '',
+      smart_variables: templateVariables,
+      category: 'general',
+      tags: []
+    };
+
+    return this.extractWithTemplateFast(textContent, tempTemplate, confidenceThreshold, useTwoPass);
+  }
+
   // Removed unused delay helper
 
 
@@ -469,8 +509,8 @@ export class DocumentProcessorEnhanced {
           try {
             console.log('Using client-side text extraction + fast backend extraction for smart template');
             const textContent = await this.extractTextFromFile(file);
-            const extractedFields = await this.extractWithTemplateFast(textContent, template);
-            
+            const extractedFields = await this.extractWithTemplateFast(textContent, template, 0.6, false);
+
             // Create a complete result structure with actual content
             return {
               content: textContent,
@@ -1348,16 +1388,12 @@ export class DocumentProcessorEnhanced {
   /**
    * Decide whether to use existing template or generate new one (2-way validation)
    * Calls the /decide-template endpoint which performs real extraction testing
-   *
-   * @param file - The document file to process
-   * @param options - Configuration options including userId to match against user's private templates
    */
   async decideTemplate(file: File, options?: {
     minMatchConfidence?: number;
     allowGeneration?: boolean;
     autoSave?: boolean;
     generationMode?: 'automatic' | 'guided' | 'custom';
-    userId?: string; // User ID to include their private templates in matching
   }): Promise<{
     action: 'use_existing' | 'generate_new';
     chosen_template?: any;
@@ -1377,8 +1413,7 @@ export class DocumentProcessorEnhanced {
       minMatchConfidence = 0.6,
       allowGeneration = true,
       autoSave = false,
-      generationMode = 'automatic',
-      userId
+      generationMode = 'automatic'
     } = options || {};
 
     try {
@@ -1392,12 +1427,6 @@ export class DocumentProcessorEnhanced {
         auto_save: autoSave.toString(),
         generation_mode: generationMode
       });
-
-      // Add user_id to include their private templates in matching
-      if (userId) {
-        params.append('user_id', userId);
-        console.log('🔐 Including user private templates in matching (user_id:', userId, ')');
-      }
 
       console.log('🎯 Calling /decide-template endpoint with 2-way validation...');
 
