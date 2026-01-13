@@ -13,7 +13,6 @@ import * as path from 'path';
 const EXCLUDED_FILES = [
   'supabase.ts',           // The Supabase client itself
   'supabase-auth-utils.ts', // The auth utilities themselves
-  'sendgrid-client.ts',     // Email client - no Supabase DB calls
   'storage-cleanup.ts',     // Utility scripts
   'document-processing-monitor.ts', // Monitoring - may use service role
   'document-processing-queue.ts',   // Queue processing - may use service role
