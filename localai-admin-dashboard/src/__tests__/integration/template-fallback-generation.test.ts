@@ -45,10 +45,10 @@ if (fsSync.existsSync(parentEnvPath)) {
   }
 }
 
-// Configuration - real services only
-const BACKEND_URL = 'http://localhost:8090';
+// Configuration - real services only (use environment variables with fallbacks)
+const BACKEND_URL = process.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
 // Use Kong gateway URL directly (not the frontend proxy)
-const SUPABASE_URL = 'http://localhost:8000';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000';
 const SUPABASE_ANON_KEY = REAL_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 // Service role key bypasses RLS - use for test setup/cleanup only
 const SUPABASE_SERVICE_KEY = REAL_SERVICE_ROLE_KEY || '';

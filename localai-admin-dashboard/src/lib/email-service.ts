@@ -1,5 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { EMAIL_CONFIG } from '@/config/email';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 // Initialize SendGrid with API key
 sgMail.setApiKey(EMAIL_CONFIG.SENDGRID_API_KEY);
@@ -232,7 +233,7 @@ export async function sendInvitationEmail(
 ): Promise<EmailResult> {
   try {
     // Call the backend email API endpoint to avoid CORS issues
-    const response = await fetch('http://localhost:8090/api/email/send-invitation', {
+    const response = await fetch(API_ENDPOINTS.emailSendInvitation, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

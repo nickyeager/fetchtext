@@ -43,6 +43,8 @@ interface DualDocumentViewProps {
   className?: string;
   /** Document text content for real-time extraction */
   documentText?: string;
+  /** Document ID for saving extracted fields */
+  documentId?: string;
   /** Enable inline editing mode */
   editable?: boolean;
   /** Callback when template content changes */
@@ -72,6 +74,7 @@ export function DualDocumentView({
   onExport,
   className,
   documentText,
+  documentId,
   editable,
   onTemplateChange,
   onFieldsChange,
@@ -208,6 +211,7 @@ export function DualDocumentView({
               onExport={onExport}
               className="h-full"
               documentText={documentText}
+              documentId={documentId}
               editable={editable}
               onTemplateChange={onTemplateChange}
               onFieldsChange={onFieldsChange}

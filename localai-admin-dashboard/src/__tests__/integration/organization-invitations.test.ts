@@ -12,7 +12,8 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 
-const SUPABASE_URL = 'http://localhost:8000';
+// Use environment variable with fallback
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000';
 
 // Service role key bypasses RLS
 const SERVICE_ROLE_KEY =

@@ -82,7 +82,8 @@ describe('Template Save - Stale Closure Fix', () => {
 })
 
 describe('Template Save - Database Persistence', () => {
-  const SUPABASE_URL = 'http://localhost:8000'
+  // Use environment variable with fallback
+  const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000'
 
   // Skip if services not available
   const checkServices = async () => {

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Form
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Safe logger initialization for Docker environment
 try:
@@ -1081,49 +1082,50 @@ async def extract_with_smart_template(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
+class SmartExtractRequest(BaseModel):
+    """Request model for smart field extraction"""
+    text_content: str
+    template_data: Dict[str, Any]
+    confidence_threshold: float = 0.6
+    provider: str = "azure"
+
 @router.post("/smart-extract")
-async def smart_field_extraction(
-    text_content: str = Query(..., description="Text content to extract from"),
-    template_data: str = Query(..., description="JSON string containing template smart variables"),
-    confidence_threshold: float = Query(0.6, description="Minimum confidence threshold for extraction"),
-    provider: str = Query("azure", description="AI provider to use (azure or ollama)")
-):
+async def smart_field_extraction(request: SmartExtractRequest):
     """
     NEW: Smart LLM-based field extraction endpoint
-    
+
     This endpoint uses Azure OpenAI or Ollama to intelligently extract field values
     from text content based on field descriptions rather than regex patterns.
-    
-    Template data format:
+
+    Request body format:
     {
-        "smart_variables": [
-            {
-                "name": "field_name",
-                "type": "text|currency|date|email",
-                "description": "Description of what this field contains"
-            }
-        ]
+        "text_content": "document text here...",
+        "template_data": {
+            "smart_variables": [
+                {
+                    "name": "field_name",
+                    "type": "text|currency|date|email",
+                    "description": "Description of what this field contains"
+                }
+            ]
+        },
+        "confidence_threshold": 0.6,
+        "provider": "azure"
     }
     """
     try:
-        # Parse template data
-        template_variables = []
-        if template_data:
-            try:
-                parsed_template = json.loads(template_data)
-                template_variables = parsed_template.get('smart_variables', [])
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
+        # Extract template variables from request
+        template_variables = request.template_data.get('smart_variables', [])
         
         if not template_variables:
             raise HTTPException(status_code=400, detail="No template variables provided")
         
         # Use the smart field extractor directly
         extracted_data = await smart_field_extractor.extract_fields_intelligently(
-            text_content,
+            request.text_content,
             template_variables,
-            confidence_threshold,
-            provider=provider
+            request.confidence_threshold,
+            provider=request.provider
         )
         
         return JSONResponse(content={
@@ -1131,11 +1133,11 @@ async def smart_field_extraction(
             "status": "completed",
             "endpoint": "smart-extract",
             "filename": "text_input",
-            "content": {"text": text_content[:200] + "..." if len(text_content) > 200 else text_content},
-            "metadata": {"format": "text", "source": "smart_extraction", "provider_used": provider},
+            "content": {"text": request.text_content[:200] + "..." if len(request.text_content) > 200 else request.text_content},
+            "metadata": {"format": "text", "source": "smart_extraction", "provider_used": request.provider},
             "extracted_data": extracted_data,
             "template_variables": template_variables,
-            "confidence_threshold": confidence_threshold,
+            "confidence_threshold": request.confidence_threshold,
             "created_at": datetime.utcnow().isoformat(),
             "completed_at": datetime.utcnow().isoformat(),
             "processing_time": extracted_data.get("processing_time_ms", 100) / 1000.0,

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DocumentProcessorEnhanced } from '../document-processor-enhanced';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -95,7 +96,7 @@ describe('DocumentProcessorEnhanced Template Integration', () => {
 
       // Verify the API call includes template information
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:8090/documents/upload',
+        `${API_ENDPOINTS.documentsUpload}`,
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),

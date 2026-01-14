@@ -13,7 +13,8 @@
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 
-const SUPABASE_URL = 'http://localhost:8000';
+// Use environment variable with fallback
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000';
 const SERVICE_ROLE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3NTUyNDQ1MjMsImV4cCI6MTc4Njc4MDUyM30.ZqVkrssfyf7SCS077wBdEJLOuCgXgkSTJmhyH8JoePM';
 

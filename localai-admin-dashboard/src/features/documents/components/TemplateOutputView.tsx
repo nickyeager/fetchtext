@@ -54,6 +54,9 @@ import { FieldOverrideIndicator } from './FieldOverrideIndicator'
 import { InlineFieldEditor } from './InlineFieldEditor'
 import { DocumentOverrideBadge } from './DocumentOverrideBadge'
 import type { FieldOverride } from '@/services/document-override-service'
+import { useFieldExtraction } from '@/hooks/use-field-extraction'
+import type { ExtractedFieldUpdate } from '@/types/extraction'
+import { getExtractingFields } from '@/lib/field-extraction-state'
 
 interface ExtractedField {
   value: string | null
@@ -81,6 +84,8 @@ interface TemplateOutputViewProps {
   className?: string
   /** Document text content for real-time extraction */
   documentText?: string
+  /** Document ID for saving extracted fields */
+  documentId?: string
   /** Enable inline editing mode */
   editable?: boolean
   /** Callback when template content changes (with new variables) */
@@ -458,6 +463,7 @@ export function TemplateOutputView({
   onExport,
   className,
   documentText,
+  documentId,
   editable = false,
   onTemplateChange,
   onFieldsChange,
@@ -478,9 +484,6 @@ export function TemplateOutputView({
 
   // Editing state
   const [editableContent, setEditableContent] = useState(templateContent)
-  const [loadingVariables, setLoadingVariables] = useState<Set<string>>(
-    new Set()
-  )
   const [localExtractedFields, setLocalExtractedFields] = useState<
     Record<string, ExtractedField>
   >({})
@@ -508,6 +511,44 @@ export function TemplateOutputView({
   useEffect(() => {
     processorRef.current = new DocumentProcessorEnhanced()
   }, [])
+
+  // Initialize field extraction hook for real-time extraction with toast notifications
+  const {
+    extractField,
+    retryField,
+    fieldStates,
+    isExtracting: isFieldExtracting,
+  } = useFieldExtraction({
+    documentId,
+    documentText,
+    onFieldExtracted: (fieldUpdate: ExtractedFieldUpdate) => {
+      // Update local state with extracted field
+      const newField: ExtractedField = {
+        value: String(fieldUpdate.value ?? ''),
+        confidence: fieldUpdate.confidence,
+        sourceText: fieldUpdate.sourceText,
+      }
+      setLocalExtractedFields((prev) => ({
+        ...prev,
+        [fieldUpdate.fieldName]: newField,
+      }))
+
+      // Notify parent
+      onFieldsChange?.({
+        ...localExtractedFields,
+        [fieldUpdate.fieldName]: newField,
+      })
+    },
+    onFieldFailed: (fieldName: string, error: string) => {
+      // eslint-disable-next-line no-console
+      console.error(`[TemplateOutputView] Field extraction failed for ${fieldName}:`, error)
+      // Mark as failed in local state
+      setLocalExtractedFields((prev) => ({
+        ...prev,
+        [fieldName]: { value: null, confidence: 0 },
+      }))
+    },
+  })
 
   // Sync with prop changes
   useEffect(() => {
@@ -568,91 +609,31 @@ export function TemplateOutputView({
     return result
   }, [mergedExtractedFields])
 
-  // Extract a single variable using the backend
+  // Extract a single variable using the new extraction hook
   const extractSingleVariable = useCallback(
     async (variableName: string) => {
-      if (!documentText || !processorRef.current) {
+      if (!documentText) {
         // eslint-disable-next-line no-console
-        console.warn(
-          '[TemplateOutputView] Cannot extract - no documentText or processor'
-        )
+        console.warn('[TemplateOutputView] Cannot extract - no documentText')
         return
       }
 
       // eslint-disable-next-line no-console
       console.log(`[TemplateOutputView] Extracting variable: ${variableName}`)
 
-      // Mark as loading
-      setLoadingVariables((prev) => new Set(prev).add(variableName))
-
-      try {
-        // Create a minimal template structure for single variable extraction
-        // Satisfies SmartTemplate interface from document-processor-enhanced.ts
-        const singleVarTemplate = {
-          id: 0,
-          name: 'temp',
-          description: 'Temporary template for single variable extraction',
-          template_content: `{{${variableName}}}`,
-          category: 'temp',
-          tags: [] as string[],
-          smart_variables: [
-            {
-              id: variableName,
-              name: variableName,
-              type: 'text' as const,
-              description: `Extract ${variableName} from the document`,
-              extraction_hints: [variableName.replace(/_/g, ' ')],
-            },
-          ],
-        }
-
-        const result = await processorRef.current.extractWithTemplateFast(
-          documentText,
-          singleVarTemplate,
-          0.6
-        )
-
-        // eslint-disable-next-line no-console
-        console.log(
-          `[TemplateOutputView] Extraction result for ${variableName}:`,
-          result
-        )
-
-        // Update local extracted fields
-        if (result[variableName]) {
-          const newField = result[variableName]
-          setLocalExtractedFields((prev) => ({
-            ...prev,
-            [variableName]: newField,
-          }))
-
-          // Notify parent
-          onFieldsChange?.({
-            ...localExtractedFields,
-            [variableName]: newField,
-          })
-        }
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[TemplateOutputView] Failed to extract ${variableName}:`,
-          error
-        )
-        // Mark as failed extraction (null value)
-        setLocalExtractedFields((prev) => ({
-          ...prev,
-          [variableName]: { value: null, confidence: 0 },
-        }))
-      } finally {
-        // Remove loading state
-        setLoadingVariables((prev) => {
-          const next = new Set(prev)
-          next.delete(variableName)
-          return next
-        })
+      // Create SmartVariable for extraction
+      const variable = {
+        id: variableName,
+        name: variableName,
+        type: 'text' as const,
+        description: `Extract ${variableName} from the document`,
+        extraction_hints: [variableName.replace(/_/g, ' ')],
       }
+
+      // Use the hook's extractField which handles toast notifications and persistence
+      await extractField(variable)
     },
-    [documentText, localExtractedFields, onFieldsChange]
+    [documentText, extractField]
   )
 
   // Convert template variables to SmartVariable format for autocomplete
@@ -726,7 +707,7 @@ export function TemplateOutputView({
             if (
               !previousVariablesSnapshot.has(varName) &&
               !normalizedFields[varName] &&
-              !loadingVariables.has(varName)
+              !isFieldExtracting(varName)
             ) {
               // eslint-disable-next-line no-console
               console.log(`[TemplateOutputView] New variable detected, triggering extraction: ${varName}`)
@@ -933,7 +914,7 @@ export function TemplateOutputView({
           const field = findMatchingField(normalizedFields, fieldName) || {
             value: null,
           }
-          const isLoading = loadingVariables.has(fieldName)
+          const isLoading = isFieldExtracting(fieldName)
           const hasValue = field.value !== null && field.value !== ''
           const confidencePercent = field.confidence
             ? Math.round(field.confidence * 100)
@@ -1062,7 +1043,7 @@ export function TemplateOutputView({
     },
     [
       normalizedFields,
-      loadingVariables,
+      isFieldExtracting,
       fieldOverrides,
       editingFieldName,
       enableOverrides,
@@ -1140,7 +1121,7 @@ export function TemplateOutputView({
                   fieldOverrideCount={overrideCount}
                 />
               )}
-              {loadingVariables.size > 0 && (
+              {getExtractingFields(fieldStates).length > 0 && (
                 <Badge variant="outline" className="gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Extracting...

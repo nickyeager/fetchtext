@@ -419,6 +419,7 @@ export function DocumentDetailView({
     // Try each source in priority order
     for (const source of sources) {
       const rawData = source.getter();
+      console.log('rawData sources', rawData);
       if (!rawData) continue;
 
       // Parse the data (handles JSON strings and objects)
@@ -1275,13 +1276,58 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
 
       // Invalidate queries to refresh the document data
       queryClient.invalidateQueries({ queryKey: ['processedDocument', documentId] });
-      
+
       console.log('✅ Extracted fields updated successfully');
     } catch (error) {
       console.error('❌ Failed to update extracted fields:', error);
       throw error;
     }
   };
+
+  // Handler for when TemplateOutputView extracts new fields in real-time
+  const handleFieldsChange = useCallback(async (newFields: Record<string, { value: string | null; confidence?: number; sourceText?: string; type?: string }>) => {
+    if (!document) return;
+
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] handleFieldsChange: New fields extracted', {
+        fieldCount: Object.keys(newFields).length,
+        fields: newFields,
+      });
+
+      // Merge new fields with existing fields
+      const existingExtraction = (document.metadata as Record<string, unknown>)?.extraction_result as Record<string, unknown> | undefined || {};
+      const existingFields = parseExtractedFields(
+        (existingExtraction.extracted_values as Record<string, unknown>) || document.extracted_fields || {}
+      );
+
+      const mergedFields = {
+        ...existingFields,
+        ...newFields,
+      };
+
+      // Update document metadata with merged fields
+      await UnifiedDocumentService.updateDocumentStatus(documentId, {
+        status: DocumentStatus.COMPLETED,
+        metadata: {
+          ...(document.metadata as Record<string, unknown>),
+          extracted_fields: mergedFields,
+          extraction_result: {
+            ...existingExtraction,
+            extracted_values: mergedFields,
+          },
+        } as Record<string, unknown>,
+      });
+
+      // Invalidate queries to refresh the document data
+      await queryClient.invalidateQueries({ queryKey: ['processedDocument', documentId] });
+
+      // eslint-disable-next-line no-console
+      console.log('✅ New fields saved and document refreshed');
+    } catch (error) {
+      console.error('❌ Failed to save new extracted fields:', error);
+    }
+  }, [document, documentId, queryClient]);
 
   const handleCreateTemplateFromFields = async (templateData: {
     name: string;
@@ -1892,7 +1938,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
           <span className="sm:hidden">Original</span>
         </TabsTrigger>
         <TabsTrigger value="processed" className="text-xs sm:text-sm px-2 py-2">
-          <span className="hidden sm:inline">Extracted Fields</span>
+          <span className="hidden sm:inline">Extracted Fieldssss</span>
           <span className="sm:hidden">Extracted</span>
         </TabsTrigger>
       </TabsList>
@@ -2107,8 +2153,10 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         onExport={() => handleDownload('html')}
         className="h-[70vh]"
         documentText={documentContent.original.text}
+        documentId={documentId}
         editable={true}
         onTemplateChange={handleTemplateContentChange}
+        onFieldsChange={handleFieldsChange}
         onSaveTemplate={handleSaveTemplateContent}
       />
     );
@@ -2476,11 +2524,11 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               for (const source of sources) {
                 const rawData = source.getter();
                 if (!rawData) continue;
-
+console.log('rawData', rawData);
                 // Parse the data (handles JSON strings and objects)
                 const parsed = parseExtractedFields(rawData);
                 if (Object.keys(parsed).length === 0) continue;
-
+               
                 // Check if this source has extracted_values structure
                 if (source.hasConfidence && 'extracted_values' in parsed) {
                   const data = parsed as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };

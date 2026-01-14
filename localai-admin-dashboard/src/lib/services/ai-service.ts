@@ -2,6 +2,8 @@
  * AI service for managing models across multiple providers
  */
 
+import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config';
+
 export interface AIModel {
   name: string;
   size: string | number;
@@ -60,7 +62,7 @@ export interface TestConnectionResponse {
 }
 
 class AIService {
-  private baseUrl = 'http://localhost:8090'; // Document processor URL
+  private baseUrl = DOCUMENT_PROCESSOR_URL;
 
   /**
    * Fetch available AI providers
