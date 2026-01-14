@@ -4,6 +4,7 @@ import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { WorkflowClient } from '@/lib/workflow-client';
 import { templateService } from '@/services/template-service';
 import { UnifiedTemplate, isSmartTemplate } from '@/types/unified-template';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 // Define TemplateSource type
 type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery';
@@ -228,7 +229,7 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
   // Backend health probe
   const checkBackendHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch('http://localhost:8090/health', { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const res = await fetch(API_ENDPOINTS.health, { method: 'GET', signal: AbortSignal.timeout(3000) });
       return res.ok;
     } catch {
       return false;

@@ -4,6 +4,8 @@
  * Integrates with the document-processor backend service for advanced document processing
  */
 
+import { API_ENDPOINTS } from '@/lib/api-config';
+
 interface DocumentMetadata {
   title?: string;
   author?: string;
@@ -195,8 +197,8 @@ interface BackendResponse {
 }
 
 export class DocumentProcessorEnhanced {
-  private readonly baseUrl = 'http://localhost:8090/documents';
-  private readonly enhancedBaseUrl = 'http://localhost:8090/api/enhanced-documents';
+  private readonly baseUrl = API_ENDPOINTS.documents;
+  private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments;
   
   private readonly supportedFormats = [
     'application/pdf',

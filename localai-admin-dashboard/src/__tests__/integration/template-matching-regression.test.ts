@@ -13,8 +13,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 
-// Test configuration
-const BACKEND_URL = 'http://localhost:8090';
+// Test configuration - use environment variables with fallbacks
+const BACKEND_URL = process.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000';
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
 const TEST_TIMEOUT = 180000; // 3 minutes for AI processing (need time for 2 uploads)

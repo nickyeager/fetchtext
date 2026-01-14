@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ollamaService } from '../ollama-service'
+import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
@@ -44,7 +45,7 @@ describe('OllamaService', () => {
 
       const result = await ollamaService.getAvailableModels()
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8090/models/')
+      expect(mockFetch).toHaveBeenCalledWith(`${DOCUMENT_PROCESSOR_URL}/models/`)
       expect(result).toEqual(mockResponse)
     })
 
@@ -83,7 +84,7 @@ describe('OllamaService', () => {
 
       const result = await ollamaService.setActiveModel('llama2:7b')
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8090/models/select', {
+      expect(mockFetch).toHaveBeenCalledWith(`${DOCUMENT_PROCESSOR_URL}/models/select`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +136,7 @@ describe('OllamaService', () => {
 
       const result = await ollamaService.getCurrentModel()
 
-      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8090/models/current')
+      expect(mockFetch).toHaveBeenCalledWith(`${DOCUMENT_PROCESSOR_URL}/models/current`)
       expect(result).toEqual(mockResponse)
     })
 

@@ -15,8 +15,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 
 // Test configuration - Integration tests use direct URLs to running services
 // These are the local Docker Supabase URLs, not the frontend proxy URLs
-const BACKEND_URL = 'http://localhost:8090'
-const SUPABASE_URL = 'http://localhost:8000' // Direct Kong gateway URL
+const BACKEND_URL = process.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090'
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://localhost:8000' // Direct Kong gateway URL
 // Anon key from root .env file - required for integration tests
 // Falls back to local Docker anon key if vitest placeholder is detected
 const getAnonKey = (): string => {

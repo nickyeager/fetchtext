@@ -84,6 +84,93 @@ $ npx vitest run user.test.ts
 - **Faster debugging** - Failures are caught immediately
 - **Confidence in changes** - Green tests = working code
 
+## 🚫 PRIME DIRECTIVE: NO MOCKS OR SKIPS IN TESTS
+
+**ALL tests MUST test real systems. Mocked tests are FORBIDDEN.**
+
+### Absolute Rules
+
+| Rule | Enforcement |
+|------|-------------|
+| **NO vi.mock()** | Tests must call real backend APIs, real databases, real services |
+| **NO .skip()** | Every test must run. If a test can't pass, it must FAIL loudly, not skip |
+| **NO mocked responses** | Tests must verify actual extracted values from real data |
+| **NO synthetic data** | Use real fixture files from `tests/fixtures/` directory |
+| **Playwright REQUIRED** | All UI tests must run in real browser with real user interactions |
+| **Console errors = FAIL** | Tests must verify browser console has ZERO errors |
+
+### Forbidden Patterns
+
+```typescript
+// ❌ FORBIDDEN - Mocking backend services
+vi.mock('@/lib/document-processor-enhanced');
+vi.mock('@/services/unified-document-service');
+vi.mock('@/lib/supabase');
+
+// ❌ FORBIDDEN - Skipping tests
+it.skip('should process documents', () => { ... });
+describe.skip('Template Matching', () => { ... });
+
+// ❌ FORBIDDEN - Silent pass when service unavailable
+if (!backendAvailable) {
+  console.log('Skipping - services not available');
+  return; // Silently passes!
+}
+
+// ❌ FORBIDDEN - Fake inline data
+const testFile = new File(['fake content'], 'test.pdf');
+```
+
+### Required Patterns
+
+```typescript
+// ✅ REQUIRED - Fail when services unavailable
+if (!backendAvailable) {
+  throw new Error('Backend not available - cannot run integration test');
+}
+
+// ✅ REQUIRED - Use real fixtures
+const contractFile = await loadFixture('real-test-contract.txt');
+
+// ✅ REQUIRED - Call real APIs
+const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/evaluate`);
+
+// ✅ REQUIRED - Assert on actual extracted values
+expect(result.extracted_fields.vendor_name).toBe('Acme Corp');
+
+// ✅ REQUIRED - Check for console errors in Playwright
+page.on('console', msg => {
+  if (msg.type() === 'error') {
+    throw new Error(`Console error: ${msg.text()}`);
+  }
+});
+```
+
+### Test Structure Requirements
+
+1. **Backend Health Check** - Verify services are running before test execution
+2. **Real Data Upload** - Upload actual fixture files to test document processing
+3. **UI Verification** - Use Playwright to verify toast notifications, extracted values, UI updates
+4. **Console Monitoring** - Fail test if ANY console errors appear
+5. **Database Verification** - Query real database to verify persistence
+6. **Complete Workflows** - Test from upload → extract → display → save (end-to-end)
+
+### Why This Matters
+
+Mocked tests give **false confidence**. They test:
+- ❌ That your mocks work correctly
+- ❌ That the test framework works
+- ❌ Nothing about whether the real code works
+
+Real integration tests prove:
+- ✅ Backend API accepts requests correctly
+- ✅ Database schema matches code expectations
+- ✅ UI updates reflect actual extraction results
+- ✅ Error handling works in production scenarios
+- ✅ No console errors appear during user workflows
+
+**If a test uses mocks, it's not a test - it's a lie.**
+
 ## Application Goal
 
 **FetchText** is a document processing and generation platform that:
