@@ -2169,4 +2169,80 @@ Template Version: 1.0`;
       confidence: adjustedConfidence
     };
   }
+
+  /**
+   * Find positions of extracted field values in a document.
+   * Returns bounding box coordinates for highlighting extracted values.
+   *
+   * @param fileUrl - URL to fetch the document from (e.g., Supabase signed URL)
+   * @param fieldValues - Array of field values to search for in the document
+   * @returns Object mapping field values to their positions with bounding boxes
+   */
+  async getFieldPositions(
+    fileUrl: string,
+    fieldValues: Array<{ fieldName: string; value: string }>
+  ): Promise<{
+    positions: Array<{
+      text: string;
+      fieldName: string;
+      found_in: string;
+      page: number;
+      bbox: { x: number; y: number; width: number; height: number } | null;
+      element_type: string;
+    }>;
+    total_found: number;
+  }> {
+    try {
+      // Fetch the document from the URL
+      const fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to fetch document: ${fileResponse.status}`);
+      }
+
+      const blob = await fileResponse.blob();
+
+      // Extract filename from URL or use default
+      const urlPath = new URL(fileUrl).pathname;
+      const filename = urlPath.split('/').pop() || 'document';
+
+      // Create FormData with file and field values
+      const formData = new FormData();
+      formData.append('file', blob, filename);
+      formData.append('field_values', JSON.stringify(fieldValues.map(f => f.value)));
+
+      // Call the backend endpoint
+      const response = await fetch(API_ENDPOINTS.fieldPositions, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to get field positions: ${error}`);
+      }
+
+      const data = await response.json();
+
+      // Map the positions back to field names
+      const positionsWithFieldNames = data.positions.map((pos: { text: string; found_in: string; page: number; bbox: { x: number; y: number; width: number; height: number } | null; element_type: string }) => {
+        // Find the field that matches this position's text
+        const field = fieldValues.find(f => f.value === pos.text);
+        return {
+          ...pos,
+          fieldName: field?.fieldName || pos.text,
+        };
+      });
+
+      return {
+        positions: positionsWithFieldNames,
+        total_found: data.total_found,
+      };
+    } catch (error) {
+      console.error('Error getting field positions:', error);
+      return {
+        positions: [],
+        total_found: 0,
+      };
+    }
+  }
 }

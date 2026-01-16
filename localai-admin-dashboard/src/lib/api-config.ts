@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
   enhancedDocuments: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents`,
   smartExtract: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/smart-extract`,
   evaluate: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/evaluate`,
+  fieldPositions: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/field-positions`,
 
   // Model management
   models: `${DOCUMENT_PROCESSOR_URL}/models`,

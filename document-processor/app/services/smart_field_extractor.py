@@ -453,18 +453,29 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         return extracted_fields
     
-    def _format_extracted_fields(self, extracted_fields: Dict) -> Dict[str, Dict[str, Any]]:
-        """Format extracted fields to standard format"""
+    def _format_extracted_fields(self, extracted_fields: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Format extracted fields to standard format with location data"""
         formatted_fields = {}
         for field_name, field_data in extracted_fields.items():
             if isinstance(field_data, dict) and field_data.get('value') is not None:
                 value = str(field_data['value']).strip()
                 if value and value.lower() not in ['null', 'none', '']:
+                    # Safe confidence conversion with error handling
+                    try:
+                        confidence = float(field_data.get('confidence', 0.5))
+                    except (ValueError, TypeError):
+                        confidence = 0.5
                     formatted_fields[field_name] = {
                         'value': value,
-                        'confidence': float(field_data.get('confidence', 0.5)),
+                        'confidence': confidence,
                         'source_text': field_data.get('reasoning', 'AI extracted'),
-                        'location': 'llm_intelligent'
+                        'location': {
+                            'page': field_data.get('page', 1),
+                            'bbox': field_data.get('bbox'),
+                            'char_start': field_data.get('char_start'),
+                            'char_end': field_data.get('char_end'),
+                            'extraction_method': 'llm_intelligent'
+                        }
                     }
         return formatted_fields
     

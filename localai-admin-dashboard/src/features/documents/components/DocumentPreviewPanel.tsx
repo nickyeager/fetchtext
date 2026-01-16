@@ -1,8 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, FileText, Image, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Download, FileText, Image, Loader2, ExternalLink, AlertCircle, Highlighter } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PDFViewerWithHighlights } from '@/components/documents/PDFViewerWithHighlights';
+import { ImageViewerWithHighlights } from '@/components/documents/ImageViewerWithHighlights';
+import { FieldHighlight, createFieldHighlight } from '@/types/highlights';
+
+/**
+ * Extracted field structure from document processing
+ */
+interface ExtractedFieldData {
+  value: unknown;
+  confidence?: number;
+  sourceText?: string;
+  location?: {
+    page?: number;
+    position?: number;
+    bbox?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+  };
+}
 
 interface DocumentPreviewPanelProps {
   /** Document file URL (signed URL from Supabase storage) */
@@ -15,6 +37,14 @@ interface DocumentPreviewPanelProps {
   fileSize?: number;
   /** Custom class name */
   className?: string;
+  /** Extracted fields for highlighting (optional) */
+  extractedFields?: Record<string, ExtractedFieldData | string | null>;
+  /** Currently active/selected field name (optional) */
+  activeField?: string | null;
+  /** Callback when a highlight is clicked (optional) */
+  onHighlightClick?: (fieldName: string, value: string) => void;
+  /** Whether to show highlights by default (optional, defaults to true if extractedFields provided) */
+  showHighlights?: boolean;
 }
 
 export function DocumentPreviewPanel({
@@ -23,9 +53,81 @@ export function DocumentPreviewPanel({
   fileType,
   fileSize,
   className,
+  extractedFields,
+  activeField = null,
+  onHighlightClick,
+  showHighlights: showHighlightsProp,
 }: DocumentPreviewPanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+
+  // Reset loading state when fileUrl changes
+  React.useEffect(() => {
+    if (fileUrl) {
+      setIsLoading(true);
+      setHasError(false);
+    } else {
+      // No file URL means nothing to load
+      setIsLoading(false);
+    }
+  }, [fileUrl]);
+
+  // Fallback timeout to prevent infinite loading
+  React.useEffect(() => {
+    if (!isLoading || !fileUrl) return;
+
+    const timeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 10000); // 10 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [isLoading, fileUrl]);
+
+  // Determine if we have highlights available and if they should be shown
+  const hasExtractedFields = extractedFields && Object.keys(extractedFields).length > 0;
+  const [highlightsEnabled, setHighlightsEnabled] = useState(
+    showHighlightsProp ?? hasExtractedFields ?? false
+  );
+
+  /**
+   * Convert extracted fields to FieldHighlight array for the viewers
+   */
+  const highlights = useMemo((): FieldHighlight[] => {
+    if (!extractedFields || !highlightsEnabled) return [];
+
+    return Object.entries(extractedFields)
+      .filter(([, field]) => field !== null)
+      .map(([fieldName, field]) => {
+        // Handle both structured fields and simple string values
+        if (typeof field === 'string') {
+          return createFieldHighlight(fieldName, field, 0.5, 1, null);
+        }
+
+        const extractedField = field as ExtractedFieldData;
+        const value = String(extractedField.value ?? '');
+        const confidence = extractedField.confidence ?? 0.5;
+        const page = extractedField.location?.page ?? 1;
+
+        // Convert bbox to BoundingBox format if available
+        const rawBbox = extractedField.location?.bbox;
+        const bbox = rawBbox ? {
+          x: rawBbox.x,
+          y: rawBbox.y,
+          width: rawBbox.width,
+          height: rawBbox.height,
+          coordinateType: 'pixel' as const, // Backend returns pixel coordinates
+        } : null;
+
+        return createFieldHighlight(fieldName, value, confidence, page, bbox);
+      });
+  }, [extractedFields, highlightsEnabled]);
+
+  /**
+   * Handle highlight click from the viewers
+   */
+  const handleHighlightClick = (highlight: FieldHighlight) => {
+    onHighlightClick?.(highlight.fieldName, highlight.value);
+  };
 
   const isPdf = fileType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
   const isImage = fileType.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|bmp|tiff?)$/i.test(fileName);
@@ -74,6 +176,18 @@ export function DocumentPreviewPanel({
             Original Document
           </CardTitle>
           <div className="flex gap-2">
+            {/* Highlights toggle - only show if we have extracted fields */}
+            {hasExtractedFields && (
+              <Button
+                variant={highlightsEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHighlightsEnabled(!highlightsEnabled)}
+                title={highlightsEnabled ? "Hide highlights" : "Show highlights"}
+              >
+                <Highlighter className="h-4 w-4 mr-1" />
+                {highlightsEnabled ? "Highlights On" : "Highlights Off"}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -138,30 +252,65 @@ export function DocumentPreviewPanel({
             )}
 
             {isPdf ? (
-              <iframe
-                src={`${fileUrl}#view=FitH&toolbar=1`}
-                className="w-full h-full min-h-[500px]"
-                onLoad={() => setIsLoading(false)}
-                onError={() => {
-                  setIsLoading(false);
-                  setHasError(true);
-                }}
-                title={`Preview of ${fileName}`}
-                style={{ border: 'none' }}
-              />
-            ) : isImage ? (
-              <div className="w-full h-full min-h-[500px] flex items-center justify-center p-4">
-                <img
-                  src={fileUrl}
-                  alt={fileName}
-                  className="max-w-full max-h-full object-contain rounded shadow-sm"
+              highlightsEnabled && highlights.length > 0 ? (
+                // Use the highlight-enabled PDF viewer
+                <PDFViewerWithHighlights
+                  file={fileUrl}
+                  highlights={highlights}
+                  activeHighlight={activeField}
+                  onHighlightClick={handleHighlightClick}
+                  onLoadComplete={() => setIsLoading(false)}
+                  onLoadError={() => {
+                    setIsLoading(false);
+                    setHasError(true);
+                  }}
+                  className="w-full h-full min-h-[500px]"
+                />
+              ) : (
+                // Fallback to simple iframe viewer
+                <iframe
+                  src={`${fileUrl}#view=FitH&toolbar=1`}
+                  className="w-full h-full min-h-[500px]"
                   onLoad={() => setIsLoading(false)}
                   onError={() => {
                     setIsLoading(false);
                     setHasError(true);
                   }}
+                  title={`Preview of ${fileName}`}
+                  style={{ border: 'none' }}
                 />
-              </div>
+              )
+            ) : isImage ? (
+              highlightsEnabled && highlights.length > 0 ? (
+                // Use the highlight-enabled image viewer
+                <ImageViewerWithHighlights
+                  src={fileUrl}
+                  alt={fileName}
+                  highlights={highlights}
+                  activeHighlight={activeField}
+                  onHighlightClick={handleHighlightClick}
+                  onLoadComplete={() => setIsLoading(false)}
+                  onLoadError={() => {
+                    setIsLoading(false);
+                    setHasError(true);
+                  }}
+                  className="w-full h-full min-h-[500px]"
+                />
+              ) : (
+                // Fallback to simple image viewer
+                <div className="w-full h-full min-h-[500px] flex items-center justify-center p-4">
+                  <img
+                    src={fileUrl}
+                    alt={fileName}
+                    className="max-w-full max-h-full object-contain rounded shadow-sm"
+                    onLoad={() => setIsLoading(false)}
+                    onError={() => {
+                      setIsLoading(false);
+                      setHasError(true);
+                    }}
+                  />
+                </div>
+              )
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center p-8">

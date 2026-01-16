@@ -126,6 +126,13 @@ export function DocumentDetailView({
   const [showTemplateView, setShowTemplateView] = React.useState(true);
   const [rawTemplateContent, setRawTemplateContent] = React.useState<string | null>(null);
 
+  // State for field highlighting in document preview
+  const [activeHighlightField, setActiveHighlightField] = React.useState<string | null>(null);
+
+  // State for field positions (bounding boxes) fetched from backend
+  const [fieldPositions, setFieldPositions] = React.useState<Map<string, { page: number; bbox: { x: number; y: number; width: number; height: number } | null }>>(new Map());
+  const [isLoadingPositions, setIsLoadingPositions] = React.useState(false);
+
   // Fetch document data with real-time updates
   const {
     data: document,
@@ -221,6 +228,70 @@ export function DocumentDetailView({
 
     fetchDocumentUrl();
   }, [document?.file_path]);
+
+  // Fetch field positions (bounding boxes) for highlighting
+  // This runs after we have the document URL and extracted fields
+  useEffect(() => {
+    const fetchFieldPositions = async () => {
+      // Need both document URL and extracted fields to fetch positions
+      if (!documentFileUrl || !document?.metadata) {
+        return;
+      }
+
+      // Get extracted fields from metadata
+      const metadata = document.metadata as Record<string, unknown>;
+      const extractedData = metadata.extracted_data as Record<string, unknown> | undefined;
+      const extractedValues = extractedData?.extracted_values as Record<string, unknown> | undefined;
+
+      if (!extractedValues || Object.keys(extractedValues).length === 0) {
+        return;
+      }
+
+      // Prepare field values for position lookup
+      const fieldValuesToFind: Array<{ fieldName: string; value: string }> = [];
+      for (const [fieldName, fieldData] of Object.entries(extractedValues)) {
+        let value: string | null = null;
+        if (typeof fieldData === 'string') {
+          value = fieldData;
+        } else if (fieldData && typeof fieldData === 'object') {
+          const fd = fieldData as Record<string, unknown>;
+          value = fd.value ? String(fd.value) : null;
+        }
+        if (value && value.trim().length > 0) {
+          fieldValuesToFind.push({ fieldName, value: value.trim() });
+        }
+      }
+
+      if (fieldValuesToFind.length === 0) {
+        return;
+      }
+
+      setIsLoadingPositions(true);
+      try {
+        const result = await documentProcessor.getFieldPositions(documentFileUrl, fieldValuesToFind);
+
+        // Convert positions array to a Map for efficient lookup
+        const positionsMap = new Map<string, { page: number; bbox: { x: number; y: number; width: number; height: number } | null }>();
+        for (const pos of result.positions) {
+          if (pos.fieldName && !positionsMap.has(pos.fieldName)) {
+            positionsMap.set(pos.fieldName, {
+              page: pos.page,
+              bbox: pos.bbox,
+            });
+          }
+        }
+
+        setFieldPositions(positionsMap);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[DocumentDetailView] Error fetching field positions:', error);
+      } finally {
+        setIsLoadingPositions(false);
+      }
+    };
+
+    fetchFieldPositions();
+  }, [documentFileUrl, document?.metadata, documentProcessor]);
 
   // Extract templateId for dependency tracking
   const documentTemplateId = (document?.metadata as Record<string, unknown> | undefined)?.template_id as number | undefined;
@@ -2121,7 +2192,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
   };
 
   const renderDualView = () => {
-    const { extractedFields } = comprehensiveFieldDetection;
+    const { extractedFields, confidenceScores } = comprehensiveFieldDetection;
     const metadata = document?.metadata as Record<string, unknown> | undefined;
     const templateName = metadata?.template_name as string | undefined;
     const templateId = metadata?.template_id as number | undefined;
@@ -2138,6 +2209,48 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
       // Fallback to original text
       templateContent = documentContent.original.text || '';
     }
+
+    // Prepare highlight fields with location data for document preview
+    // This maps extractedFields to the format expected by DocumentPreviewPanel
+    // Includes bbox data from fieldPositions state (fetched from backend)
+    const highlightFields = Object.entries(extractedFields).reduce((acc, [fieldName, fieldData]) => {
+      if (fieldData === null || fieldData === undefined) return acc;
+
+      // Get position data (including bbox) for this field from the fetched positions
+      const positionData = fieldPositions.get(fieldName);
+
+      // Handle both simple string values and structured field objects
+      if (typeof fieldData === 'string') {
+        acc[fieldName] = {
+          value: fieldData,
+          confidence: confidenceScores[fieldName] ?? 0.5,
+          location: positionData ? {
+            page: positionData.page,
+            bbox: positionData.bbox ?? undefined,
+          } : undefined,
+        };
+      } else if (typeof fieldData === 'object') {
+        const field = fieldData as Record<string, unknown>;
+        const existingLocation = field.location as { page?: number; position?: number } | undefined;
+        acc[fieldName] = {
+          value: field.value ?? field,
+          confidence: (field.confidence as number) ?? confidenceScores[fieldName] ?? 0.5,
+          sourceText: field.sourceText as string | undefined,
+          location: {
+            page: positionData?.page ?? existingLocation?.page,
+            position: existingLocation?.position,
+            bbox: positionData?.bbox ?? undefined,
+          },
+        };
+      }
+      return acc;
+    }, {} as Record<string, { value: unknown; confidence?: number; sourceText?: string; location?: { page?: number; position?: number; bbox?: { x: number; y: number; width: number; height: number } } }>);
+
+    // Handler for when a highlight is clicked in the document preview
+    const handleFieldHighlightClick = (fieldName: string, _value: string) => {
+      setActiveHighlightField(fieldName);
+      // Could also scroll to the field in the template output view
+    };
 
     return (
       <DualDocumentView
@@ -2158,6 +2271,10 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         onTemplateChange={handleTemplateContentChange}
         onFieldsChange={handleFieldsChange}
         onSaveTemplate={handleSaveTemplateContent}
+        highlightFields={highlightFields}
+        activeField={activeHighlightField}
+        onFieldHighlightClick={handleFieldHighlightClick}
+        showHighlights={true}
       />
     );
   };

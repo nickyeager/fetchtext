@@ -18,6 +18,20 @@ interface ExtractedField {
   type?: string;
 }
 
+/**
+ * Extracted field data structure for highlighting in document preview
+ * Contains position/location data for rendering overlays on the document
+ */
+interface ExtractedFieldHighlightData {
+  value: unknown;
+  confidence?: number;
+  sourceText?: string;
+  location?: {
+    page?: number;
+    position?: number;
+  };
+}
+
 interface DualDocumentViewProps {
   /** Original document file URL */
   fileUrl: string | null;
@@ -57,6 +71,14 @@ interface DualDocumentViewProps {
     action: 'create' | 'modify',
     newName?: string
   ) => Promise<void>;
+  /** Extracted field values with position data for highlighting in document preview */
+  highlightFields?: Record<string, ExtractedFieldHighlightData | string | null>;
+  /** Active field being edited/viewed - used for highlighting active field in preview */
+  activeField?: string | null;
+  /** Callback when a highlighted field is clicked in the document preview */
+  onFieldHighlightClick?: (fieldName: string, value: string) => void;
+  /** Whether to show highlights in the document preview (defaults to true if highlightFields provided) */
+  showHighlights?: boolean;
 }
 
 type LayoutMode = 'side-by-side' | 'stacked' | 'original-only' | 'output-only';
@@ -79,6 +101,10 @@ export function DualDocumentView({
   onTemplateChange,
   onFieldsChange,
   onSaveTemplate,
+  highlightFields,
+  activeField,
+  onFieldHighlightClick,
+  showHighlights,
 }: DualDocumentViewProps) {
   const [layout, setLayout] = useState<LayoutMode>('side-by-side');
   const [splitRatio, setSplitRatio] = useState(50); // Percentage for left panel
@@ -174,6 +200,10 @@ export function DualDocumentView({
               fileType={fileType}
               fileSize={fileSize}
               className="h-full"
+              extractedFields={highlightFields}
+              activeField={activeField}
+              onHighlightClick={onFieldHighlightClick}
+              showHighlights={showHighlights}
             />
           </div>
         )}
