@@ -306,7 +306,7 @@ class DoclingService:
                 with open(file_path, 'rb') as f:
                     raw_data = f.read()
                     detected = chardet.detect(raw_data)
-                    encoding = detected['encoding'] or 'utf-8'
+                    encoding = detected.get('encoding') or 'utf-8'
             except (ImportError, Exception):
                 encoding = 'utf-8'
             
@@ -1292,6 +1292,185 @@ class DoclingService:
         except Exception as e:
             logger.error(f"Error creating simple chunks: {e}")
             return []
+
+
+    async def find_text_positions(
+        self,
+        file_path: Path,
+        search_texts: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Find positions of specific text strings in a document.
+
+        This method processes a document and finds where specific text strings
+        appear, returning position data including bounding boxes when available.
+
+        Args:
+            file_path: Path to the document
+            search_texts: List of text strings to find
+
+        Returns:
+            List of position data for found texts, each containing:
+            - text: The search text that was found
+            - found_in: Context where the text was found (truncated to 100 chars)
+            - page: Page number where found (1-indexed)
+            - bbox: Bounding box dict with x, y, width, height (may be None)
+            - element_type: Type of document element (e.g., 'TextItem', 'paragraph')
+        """
+        positions = []
+
+        # Return empty list for empty search
+        if not search_texts:
+            return positions
+
+        try:
+            # Determine file type and processing method
+            file_suffix = file_path.suffix.lower()
+
+            # For text files, use enhanced text extraction
+            if file_suffix in ['.txt', '.text']:
+                return await self._find_text_positions_in_text_file(file_path, search_texts)
+
+            # For PDFs and other formats, use Docling if available
+            if not self.use_real_docling or not self.converter:
+                logger.warning("Docling not available for position extraction, falling back to text search")
+                return await self._find_text_positions_in_text_file(file_path, search_texts)
+
+            # Convert document using Docling
+            result = self.converter.convert(str(file_path))
+            doc = result.document
+
+            # Build page height lookup for coordinate conversion
+            # PDF coordinates have origin at bottom-left, screen coords at top-left
+            page_heights: Dict[int, float] = {}
+            if hasattr(doc, 'pages') and doc.pages:
+                for page_id, page_data in doc.pages.items():
+                    if hasattr(page_data, 'size') and page_data.size:
+                        page_heights[page_id] = float(page_data.size.height)
+
+            # Extract text with positions from texts list (correct Docling API)
+            # doc.texts is a list of text items (TextItem, SectionHeaderItem, etc.)
+            if hasattr(doc, 'texts') and doc.texts:
+                for item in doc.texts:
+                    # Get text content from the item
+                    item_text = getattr(item, 'text', '') or ''
+                    if not item_text:
+                        continue
+
+                    # Check if any search text is in this item (case-insensitive)
+                    for search_text in search_texts:
+                        if search_text.lower() in item_text.lower():
+                            # Extract provenance/position data
+                            prov = getattr(item, 'prov', None)
+                            bbox_data = None
+                            page_num = 1
+
+                            if prov:
+                                # Docling prov is a list of provenance entries
+                                for p in prov:
+                                    # Get page number
+                                    if hasattr(p, 'page_no'):
+                                        page_num = p.page_no
+
+                                    # Get bounding box
+                                    if hasattr(p, 'bbox') and p.bbox:
+                                        bbox = p.bbox
+                                        # Docling uses l, t, r, b for left, top, right, bottom
+                                        # PDF coordinates: origin at bottom-left, y increases upward
+                                        # Screen coordinates: origin at top-left, y increases downward
+                                        # Convert: screen_y = page_height - pdf_top
+                                        page_height = page_heights.get(page_num, 792.0)  # Default to US Letter
+
+                                        x = float(bbox.l) if hasattr(bbox, 'l') else 0
+                                        # bbox.t is top (higher y in PDF), bbox.b is bottom (lower y in PDF)
+                                        # For screen coords, we want y from top of page
+                                        pdf_top = float(max(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
+                                        pdf_bottom = float(min(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
+                                        height = abs(pdf_top - pdf_bottom)
+                                        # Convert to screen coordinates (flip y-axis)
+                                        screen_y = page_height - pdf_top
+                                        width = abs(float(bbox.r - bbox.l)) if hasattr(bbox, 'r') and hasattr(bbox, 'l') else 0
+
+                                        bbox_data = {
+                                            "x": x,
+                                            "y": screen_y,
+                                            "width": width,
+                                            "height": height,
+                                            "page_height": page_height,  # Include for debugging
+                                        }
+                                    # Use first provenance entry with bbox
+                                    if bbox_data:
+                                        break
+
+                            positions.append({
+                                "text": search_text,
+                                "found_in": item_text[:100],
+                                "page": page_num,
+                                "bbox": bbox_data,
+                                "element_type": item.__class__.__name__ if hasattr(item, '__class__') else 'unknown'
+                            })
+
+            return positions
+
+        except Exception as e:
+            logger.error(f"Error finding text positions: {e}")
+            return positions
+
+    async def _find_text_positions_in_text_file(
+        self,
+        file_path: Path,
+        search_texts: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Find text positions in a plain text file.
+
+        For text files, we can still provide position data based on line numbers
+        even though we don't have precise bounding boxes.
+
+        Args:
+            file_path: Path to the text file
+            search_texts: List of text strings to find
+
+        Returns:
+            List of position data for found texts
+        """
+        positions = []
+
+        try:
+            # Read file with encoding detection
+            try:
+                import chardet
+                with open(file_path, 'rb') as f:
+                    raw_data = f.read()
+                    detected = chardet.detect(raw_data)
+                    encoding = detected.get('encoding') or 'utf-8'
+            except (ImportError, Exception):
+                encoding = 'utf-8'
+
+            # Read text content
+            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+                lines = f.readlines()
+
+            # Search for each text in each line (case-insensitive)
+            for search_text in search_texts:
+                search_lower = search_text.lower()
+                for line_num, line in enumerate(lines, start=1):
+                    if search_lower in line.lower():
+                        # Found the text, create position entry
+                        positions.append({
+                            "text": search_text,
+                            "found_in": line.strip()[:100],
+                            "page": 1,  # Text files are treated as single page
+                            "bbox": None,  # No bbox for text files
+                            "element_type": "text_line",
+                            "line_number": line_num
+                        })
+
+            return positions
+
+        except Exception as e:
+            logger.error(f"Error finding text positions in text file: {e}")
+            return positions
 
 
 # Global service instance

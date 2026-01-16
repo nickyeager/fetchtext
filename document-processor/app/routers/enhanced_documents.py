@@ -1476,9 +1476,77 @@ async def _save_template_to_database(
         logger.error(f"Database save failed: {str(e)}")
         raise RuntimeError(f"Failed to save template to database: {str(e)}")
 
+@router.post("/field-positions")
+async def get_field_positions(
+    file: UploadFile = File(...),
+    field_values: str = Form(..., description="JSON array of field values to locate")
+):
+    """
+    Find positions of extracted field values in the document.
+
+    Returns bounding box coordinates for each field value found.
+    Used for highlighting extracted values in document preview.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    temp_file_path = None
+    try:
+        # Parse field values
+        values_to_find = json.loads(field_values)
+        if not isinstance(values_to_find, list):
+            raise HTTPException(status_code=400, detail="field_values must be a JSON array")
+
+        # Extract just the value strings from field_values array
+        # Input format: [{"fieldName": "vendor_name", "value": "Nicholas Yeager"}, ...]
+        # Output: ["Nicholas Yeager", ...]
+        search_texts = []
+        for item in values_to_find:
+            if isinstance(item, dict):
+                # Extract value from dict, skip empty/None values
+                value = item.get('value', '')
+                if value:
+                    search_texts.append(str(value))
+            elif item:
+                # Handle plain string values
+                search_texts.append(str(item))
+
+        if not search_texts:
+            return JSONResponse(content={
+                "filename": file.filename,
+                "positions": [],
+                "total_found": 0
+            })
+
+        # Save file temporarily
+        temp_file_path = await save_uploaded_file(file)
+
+        # Find positions using docling service
+        from app.services.docling_service import docling_service
+        positions = await docling_service.find_text_positions(
+            temp_file_path,
+            search_texts=search_texts
+        )
+
+        return JSONResponse(content={
+            "filename": file.filename,
+            "positions": positions,
+            "total_found": len(positions)
+        })
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error getting field positions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if temp_file_path:
+            await cleanup_temp_file(temp_file_path)
+
+
 async def _generate_template_improvements(
-    template_id: int, 
-    document_analyses: List[Dict[str, Any]], 
+    template_id: int,
+    document_analyses: List[Dict[str, Any]],
     improvement_mode: str,
     focus_areas: List[str]
 ) -> Dict[str, Any]:

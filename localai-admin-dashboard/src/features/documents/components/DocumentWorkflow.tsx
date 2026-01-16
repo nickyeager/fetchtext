@@ -118,7 +118,8 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
   // --- Logging helper (gated) ---
   const debugLog = useCallback((...args: unknown[]) => {
     const viteEnv = (import.meta as unknown as { env?: Record<string, string> }).env;
-    if (viteEnv?.VITE_E2E_DEBUG || (process.env && (process.env as Record<string, string | undefined>).E2E_DEBUG)) {
+    // Only use Vite env vars (process.env doesn't exist in browser)
+    if (viteEnv?.VITE_E2E_DEBUG) {
       // eslint-disable-next-line no-console
       console.log('[DocumentWorkflow]', ...args);
     }

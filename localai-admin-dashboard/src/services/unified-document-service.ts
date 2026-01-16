@@ -110,6 +110,7 @@ export interface DocumentMetadata {
 export interface CreateDocumentOptions {
   file: File;
   uploadSource: UploadSource;
+  organizationId: string;
   templateId?: number;
   templateName?: string;
   processingMethod?: 'template_guided' | 'generic' | 'progressive' | 'ai_enhanced';
@@ -811,6 +812,7 @@ export class UnifiedDocumentService {
         processing_status: 'uploaded', // Set initial status
         metadata,
         uploaded_by: user.id,
+        organization_id: options.organizationId,
       };
 
       console.log('Creating document record:', documentData);
