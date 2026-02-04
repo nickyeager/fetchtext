@@ -99,6 +99,7 @@ interface SmartVariable {
 interface ExtractionOptions {
   useTwoPass?: boolean;
   confidenceThreshold?: number;
+  organizationId?: string;
 }
 
 interface SmartTemplate {
@@ -257,7 +258,8 @@ export class DocumentProcessorEnhanced {
    */
   async *processDocumentWithTemplateProgressive(
     file: File,
-    template: SmartTemplate
+    template: SmartTemplate,
+    organizationId?: string
   ): AsyncGenerator<
     {
       content: string;
@@ -289,7 +291,7 @@ export class DocumentProcessorEnhanced {
     }
 
     // Single-shot extraction only (no mock progressive simulation)
-    const singleShot = await this.processDocumentWithTemplate(file, template);
+    const singleShot = await this.processDocumentWithTemplate(file, template, organizationId);
 
     // Synthesize a single final progress update for UI compatibility
     const synthesizedProgress: Record<string, {
@@ -352,11 +354,12 @@ export class DocumentProcessorEnhanced {
   /**
    * Fast template-guided extraction using the optimized text-based endpoint
    */
-  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6, useTwoPass: boolean = false): Promise<Record<string, ExtractedField>> {
+  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6, useTwoPass: boolean = false, organizationId?: string): Promise<Record<string, ExtractedField>> {
     console.log('=== Starting FAST EXTRACTION ===');
     console.log('Text content length:', textContent.length);
     console.log('Template variables:', template.smart_variables.map(v => v.name));
     console.log('Use two-pass extraction:', useTwoPass);
+    console.log('Organization ID:', organizationId || 'none (using system default)');
 
     try {
       const templateData = JSON.stringify({
@@ -377,6 +380,11 @@ export class DocumentProcessorEnhanced {
       // Add two-pass parameter if enabled
       if (useTwoPass) {
         params.append('use_two_pass', 'true');
+      }
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
       }
 
       const extractUrl = `${this.enhancedBaseUrl}/extract-with-text?${params.toString()}`;
@@ -445,12 +453,12 @@ export class DocumentProcessorEnhanced {
     templateVariables: SmartVariable[],
     options: ExtractionOptions = {}
   ): Promise<Record<string, ExtractedField>> {
-    const { useTwoPass = false, confidenceThreshold = 0.6 } = options;
+    const { useTwoPass = false, confidenceThreshold = 0.6, organizationId } = options;
 
     console.log('=== extractWithText API called ===');
     console.log('Text content length:', textContent.length);
     console.log('Variables count:', templateVariables.length);
-    console.log('Options:', { useTwoPass, confidenceThreshold });
+    console.log('Options:', { useTwoPass, confidenceThreshold, organizationId });
 
     // Create a temporary template structure for extraction
     const tempTemplate: SmartTemplate = {
@@ -463,7 +471,7 @@ export class DocumentProcessorEnhanced {
       tags: []
     };
 
-    return this.extractWithTemplateFast(textContent, tempTemplate, confidenceThreshold, useTwoPass);
+    return this.extractWithTemplateFast(textContent, tempTemplate, confidenceThreshold, useTwoPass, organizationId);
   }
 
   // Removed unused delay helper
@@ -473,7 +481,7 @@ export class DocumentProcessorEnhanced {
    * Process a document with template-guided extraction
    * Enhanced to handle both smart templates and standard templates
    */
-  async processDocumentWithTemplate(file: File, template: SmartTemplate): Promise<TemplateExtractionResult> {
+  async processDocumentWithTemplate(file: File, template: SmartTemplate, organizationId?: string): Promise<TemplateExtractionResult> {
     // Validate file format using both MIME type and extension
     this.validateFileFormat(file);
 
@@ -511,7 +519,7 @@ export class DocumentProcessorEnhanced {
           try {
             console.log('Using client-side text extraction + fast backend extraction for smart template');
             const textContent = await this.extractTextFromFile(file);
-            const extractedFields = await this.extractWithTemplateFast(textContent, template, 0.6, false);
+            const extractedFields = await this.extractWithTemplateFast(textContent, template, 0.6, false, organizationId);
 
             // Create a complete result structure with actual content
             return {
@@ -545,6 +553,10 @@ export class DocumentProcessorEnhanced {
         formData.append('processing_mode', 'smart_template');
         formData.append('enable_validation', 'true');
         formData.append('confidence_threshold', '0.7');
+        // Add organization_id for org-specific LLM configuration
+        if (organizationId) {
+          formData.append('organization_id', organizationId);
+        }
 
         const response = await fetch(`${this.enhancedBaseUrl}/extract-with-smart-template`, {
           method: 'POST',
@@ -578,7 +590,7 @@ export class DocumentProcessorEnhanced {
       } else {
         // Standard template processing for backwards compatibility
         console.log('Processing with standard template (no smart variables)');
-        return await this.processWithStandardTemplate(file, template);
+        return await this.processWithStandardTemplate(file, template, organizationId);
       }
     } catch (error) {
       console.error('Template extraction failed, using fallback:', error);
@@ -1335,11 +1347,13 @@ export class DocumentProcessorEnhanced {
     quickScan?: boolean;
     includeConfidenceScores?: boolean;
     suggestTemplates?: boolean;
+    organizationId?: string;
   }): Promise<DocumentEvaluation> {
     const {
       quickScan = true,
       includeConfidenceScores = true,
-      suggestTemplates = true
+      suggestTemplates = true,
+      organizationId
     } = options || {};
 
     try {
@@ -1351,6 +1365,11 @@ export class DocumentProcessorEnhanced {
         include_confidence_scores: includeConfidenceScores.toString(),
         suggest_templates: suggestTemplates.toString()
       });
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
+      }
 
       // Reasonable timeout for Azure OpenAI document evaluation
       const response = await fetch(
@@ -1396,6 +1415,7 @@ export class DocumentProcessorEnhanced {
     allowGeneration?: boolean;
     autoSave?: boolean;
     generationMode?: 'automatic' | 'guided' | 'custom';
+    organizationId?: string;
   }): Promise<{
     action: 'use_existing' | 'generate_new';
     chosen_template?: any;
@@ -1415,7 +1435,8 @@ export class DocumentProcessorEnhanced {
       minMatchConfidence = 0.6,
       allowGeneration = true,
       autoSave = false,
-      generationMode = 'automatic'
+      generationMode = 'automatic',
+      organizationId
     } = options || {};
 
     try {
@@ -1429,6 +1450,11 @@ export class DocumentProcessorEnhanced {
         auto_save: autoSave.toString(),
         generation_mode: generationMode
       });
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
+      }
 
       console.log('🎯 Calling /decide-template endpoint with 2-way validation...');
 
@@ -1911,15 +1937,19 @@ Template Version: 1.0`;
   /**
    * Process with standard template (backwards compatibility)
    */
-  private async processWithStandardTemplate(file: File, template: SmartTemplate): Promise<TemplateExtractionResult> {
+  private async processWithStandardTemplate(file: File, template: SmartTemplate, organizationId?: string): Promise<TemplateExtractionResult> {
     console.log('Processing with standard template method');
-    
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('template_data', JSON.stringify({
       variables: template.variables || template.smart_variables || []
     }));
     formData.append('confidence_threshold', '0.6');
+    // Add organization_id for org-specific LLM configuration
+    if (organizationId) {
+      formData.append('organization_id', organizationId);
+    }
 
     const response = await fetch(`${this.enhancedBaseUrl}/extract-with-template`, {
       method: 'POST',

@@ -1,12 +1,12 @@
 import { Outlet } from '@tanstack/react-router'
 import {
-  IconBrowserCheck,
   IconNotification,
   IconPalette,
   IconTool,
   IconUser,
   IconCpu,
   IconApi,
+  IconCreditCard,
 } from '@tabler/icons-react'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/layout/header'
@@ -63,6 +63,11 @@ const sidebarNavItems = [
     href: '/settings/account',
   },
   {
+    title: 'Billing',
+    icon: <IconCreditCard size={18} />,
+    href: '/settings/billing',
+  },
+  {
     title: 'AI Models',
     icon: <IconCpu size={18} />,
     href: '/settings/ai-models',
@@ -81,10 +86,5 @@ const sidebarNavItems = [
     title: 'Notifications',
     icon: <IconNotification size={18} />,
     href: '/settings/notifications',
-  },
-  {
-    title: 'Display',
-    icon: <IconBrowserCheck size={18} />,
-    href: '/settings/display',
   },
 ]

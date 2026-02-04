@@ -9,6 +9,20 @@ from typing import Generator, AsyncGenerator
 import sys
 import os
 
+# Load environment variables from root .env file BEFORE importing app modules
+# This ensures Azure OpenAI credentials are available for local test runs
+from dotenv import load_dotenv
+
+# Find the project root (parent of document-processor)
+project_root = Path(__file__).parent.parent.parent
+env_file = project_root / ".env"
+
+if env_file.exists():
+    load_dotenv(env_file)
+    print(f"✓ Loaded environment from {env_file}")
+else:
+    print(f"⚠ No .env file found at {env_file}")
+
 # Add the app directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

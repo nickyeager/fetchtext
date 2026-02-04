@@ -1,0 +1,202 @@
+{
+  "name": "Enterprise Subscription Provisioning",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "enterprise-subscription",
+        "responseMode": "lastNode"
+      },
+      "id": "webhook-trigger",
+      "name": "Enterprise Subscription Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [20, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.organization_id}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-org-id",
+      "name": "Validate Organization ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"error\": \"Missing organization_id in request body\"\n}",
+        "responseCode": 400
+      },
+      "id": "missing-org-response",
+      "name": "Missing Org ID Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [460, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://document-processor:8090/models/provision/{{ $json.body.organization_id }}",
+        "options": {
+          "timeout": 300000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ selected_model: $json.body.selected_model || 'gpt-4o-mini' }) }}"
+      },
+      "id": "provision-instance",
+      "name": "Trigger Provisioning",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-provision-success",
+      "name": "Provisioning Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Provisioning started successfully\",\n  \"organization_id\": \"{{ $json.organization_id || $('Enterprise Subscription Webhook').item.json.body.organization_id }}\",\n  \"status\": \"{{ $json.status }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}",
+        "responseCode": 200
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 150]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Provisioning failed\",\n  \"details\": \"{{ $json.error || $json.message || 'Unknown error' }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}",
+        "responseCode": 500
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [-180, 300]
+    }
+  ],
+  "connections": {
+    "Enterprise Subscription Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Organization ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Organization ID": {
+      "main": [
+        [
+          {
+            "node": "Trigger Provisioning",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Missing Org ID Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Provisioning": {
+      "main": [
+        [
+          {
+            "node": "Provisioning Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provisioning Successful?": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "Enterprise",
+      "createdAt": "2025-01-21T00:00:00.000Z",
+      "updatedAt": "2025-01-21T00:00:00.000Z"
+    },
+    {
+      "name": "Provisioning",
+      "createdAt": "2025-01-21T00:00:00.000Z",
+      "updatedAt": "2025-01-21T00:00:00.000Z"
+    }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}

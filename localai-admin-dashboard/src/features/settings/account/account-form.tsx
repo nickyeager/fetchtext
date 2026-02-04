@@ -3,8 +3,10 @@ import { format } from 'date-fns'
 import { useForm } from 'react-hook-form'
 import { CalendarIcon, CaretSortIcon, CheckIcon } from '@radix-ui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { settingsService } from '@/lib/services/settings-service'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { showSubmittedData } from '@/utils/show-submitted-data'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -30,6 +32,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const languages = [
   { label: 'English', value: 'en' },
@@ -44,45 +47,93 @@ const languages = [
 ] as const
 
 const accountFormSchema = z.object({
-  name: z
+  display_name: z
     .string()
-    .min(2, {
-      message: 'Name must be at least 2 characters.',
-    })
-    .max(30, {
-      message: 'Name must not be longer than 30 characters.',
-    }),
-  dob: z.date({
-    required_error: 'A date of birth is required.',
-  }),
-  language: z.string({
-    required_error: 'Please select a language.',
-  }),
+    .min(2, { message: 'Name must be at least 2 characters.' })
+    .max(30, { message: 'Name must not be longer than 30 characters.' })
+    .optional()
+    .or(z.literal('')),
+  date_of_birth: z.date().optional().nullable(),
+  language: z.string(),
+  timezone: z.string().optional(),
 })
 
 type AccountFormValues = z.infer<typeof accountFormSchema>
 
-// This can come from your database or API.
-const defaultValues: Partial<AccountFormValues> = {
-  name: '',
-}
-
 export function AccountForm() {
-  const form = useForm<AccountFormValues>({
-    resolver: zodResolver(accountFormSchema),
-    defaultValues,
+  const queryClient = useQueryClient()
+
+  const { data: preferences, isLoading } = useQuery({
+    queryKey: ['user-preferences'],
+    queryFn: () => settingsService.getUserPreferences(),
   })
 
-  function onSubmit(data: AccountFormValues) {
-    showSubmittedData(data)
+  const mutation = useMutation({
+    mutationFn: (values: AccountFormValues) =>
+      settingsService.updateUserPreferences({
+        display_name: values.display_name || null,
+        date_of_birth: values.date_of_birth
+          ? values.date_of_birth.toISOString().split('T')[0]
+          : null,
+        language: values.language,
+        timezone: values.timezone || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-preferences'] })
+      toast.success('Account updated successfully')
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update account'
+      )
+    },
+  })
+
+  const form = useForm<AccountFormValues>({
+    resolver: zodResolver(accountFormSchema),
+    values: {
+      display_name: preferences?.display_name ?? '',
+      date_of_birth: preferences?.date_of_birth
+        ? new Date(preferences.date_of_birth)
+        : null,
+      language: preferences?.language ?? 'en',
+      timezone: preferences?.timezone ?? '',
+    },
+    mode: 'onChange',
+  })
+
+  if (isLoading) {
+    return (
+      <div className='space-y-8'>
+        <div className='space-y-2'>
+          <Skeleton className='h-4 w-16' />
+          <Skeleton className='h-10 w-full' />
+          <Skeleton className='h-4 w-80' />
+        </div>
+        <div className='space-y-2'>
+          <Skeleton className='h-4 w-24' />
+          <Skeleton className='h-10 w-[240px]' />
+          <Skeleton className='h-4 w-64' />
+        </div>
+        <div className='space-y-2'>
+          <Skeleton className='h-4 w-20' />
+          <Skeleton className='h-10 w-[200px]' />
+          <Skeleton className='h-4 w-72' />
+        </div>
+        <Skeleton className='h-10 w-32' />
+      </div>
+    )
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
+      <form
+        onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+        className='space-y-8'
+      >
         <FormField
           control={form.control}
-          name='name'
+          name='display_name'
           render={({ field }) => (
             <FormItem>
               <FormLabel>Name</FormLabel>
@@ -99,7 +150,7 @@ export function AccountForm() {
         />
         <FormField
           control={form.control}
-          name='dob'
+          name='date_of_birth'
           render={({ field }) => (
             <FormItem className='flex flex-col'>
               <FormLabel>Date of birth</FormLabel>
@@ -125,7 +176,7 @@ export function AccountForm() {
                 <PopoverContent className='w-auto p-0' align='start'>
                   <Calendar
                     mode='single'
-                    selected={field.value}
+                    selected={field.value ?? undefined}
                     onSelect={field.onChange}
                     disabled={(date: Date) =>
                       date > new Date() || date < new Date('1900-01-01')
@@ -203,7 +254,9 @@ export function AccountForm() {
             </FormItem>
           )}
         />
-        <Button type='submit'>Update account</Button>
+        <Button type='submit' disabled={mutation.isPending}>
+          {mutation.isPending ? 'Updating...' : 'Update account'}
+        </Button>
       </form>
     </Form>
   )

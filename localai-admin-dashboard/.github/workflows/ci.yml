@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      
+
   pull_request:
     branches:
       - main
@@ -23,7 +23,7 @@ jobs:
           node-version: 18
 
       - name: Install pnpm
-        run: npm install -g pnpm  
+        run: npm install -g pnpm
 
       - name: Install dependencies
         run: pnpm install
@@ -39,3 +39,182 @@ jobs:
 
       - name: Build the project
         run: pnpm build
+
+      - name: Run unit tests
+        run: pnpm test --run
+
+  # E2E Tests with Azure Provisioning
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: install-lint-build
+    # Only run E2E tests on main branch or when explicitly requested
+    if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the project
+        run: pnpm build
+
+      - name: Create E2E environment file
+        run: |
+          cat > .env.e2e << EOF
+          TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          EOF
+
+      - name: Start backend services
+        run: |
+          echo "Starting document-processor backend..."
+          # Note: In production CI, you would either:
+          # 1. Use docker-compose to start services
+          # 2. Use GitHub Actions services
+          # 3. Connect to a staging environment
+          # For now, we'll run against staging/production backend
+          echo "Using backend at: ${{ vars.E2E_BACKEND_URL || 'http://localhost:8090' }}"
+
+      - name: Run E2E tests (API only - no backend dependency)
+        run: |
+          # Run only tests that don't require running backend
+          # Full E2E tests require the backend to be running
+          npx playwright test tests/e2e/ui-smoke/ tests/e2e/auth/ --reporter=list
+        env:
+          CI: true
+          BASE_URL: http://localhost:5173
+          E2E_SKIP_GLOBAL_SETUP: "1"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: /tmp/playwright-report/
+          retention-days: 7
+
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-screenshots
+          path: tests/e2e/screenshots/
+          retention-days: 7
+
+  # Full E2E Tests with Azure (requires full infrastructure)
+  e2e-azure-provisioning:
+    runs-on: ubuntu-latest
+    needs: install-lint-build
+    # Only run Azure provisioning tests when secrets are available and explicitly requested
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      vars.ENABLE_AZURE_E2E == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the project
+        run: pnpm build
+
+      - name: Create E2E environment file with Azure credentials
+        run: |
+          cat > .env.e2e << EOF
+          # Test user credentials
+          TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}
+
+          # Supabase connection
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+
+          # Backend URL (staging or production)
+          BACKEND_URL=${{ vars.E2E_BACKEND_URL }}
+          BASE_URL=${{ vars.E2E_FRONTEND_URL }}
+          EOF
+
+      - name: Verify Azure credentials are configured
+        run: |
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
+            echo "::error::AZURE_TENANT_ID secret is not configured"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "::error::AZURE_CLIENT_ID secret is not configured"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "::error::AZURE_CLIENT_SECRET secret is not configured"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "::error::AZURE_SUBSCRIPTION_ID secret is not configured"
+            exit 1
+          fi
+          echo "✅ All Azure credentials are configured"
+
+      - name: Wait for backend to be ready
+        run: |
+          BACKEND_URL="${{ vars.E2E_BACKEND_URL || 'http://localhost:8090' }}"
+          echo "Waiting for backend at $BACKEND_URL..."
+          timeout 60 bash -c "until curl -s $BACKEND_URL/health > /dev/null 2>&1; do sleep 2; done" || {
+            echo "::warning::Backend not available, some tests may be skipped"
+          }
+
+      - name: Run Azure Provisioning E2E tests
+        run: |
+          npx playwright test tests/e2e/settings/azure-provisioning*.pw.spec.ts --reporter=list
+        env:
+          CI: true
+          BASE_URL: ${{ vars.E2E_FRONTEND_URL || 'http://localhost:5173' }}
+          BACKEND_URL: ${{ vars.E2E_BACKEND_URL || 'http://localhost:8090' }}
+          # Azure credentials passed to tests
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: azure-provisioning-report
+          path: /tmp/playwright-report/
+          retention-days: 7
+
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: azure-test-screenshots
+          path: tests/e2e/screenshots/
+          retention-days: 7

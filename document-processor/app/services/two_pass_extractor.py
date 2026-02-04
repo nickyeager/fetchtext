@@ -35,7 +35,8 @@ class TwoPassExtractor:
         text_content: str,
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float = 0.6,
-        provider: str = "azure"
+        provider: str = "azure",
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract fields using two-pass strategy.
@@ -45,6 +46,7 @@ class TwoPassExtractor:
             template_variables: List of variables to extract
             confidence_threshold: Minimum confidence for successful extraction
             provider: LLM provider to use
+            organization_id: Optional organization ID for org-specific LLM config
 
         Returns:
             Extraction result with combined best-confidence values
@@ -76,7 +78,8 @@ class TwoPassExtractor:
             template_variables,
             confidence_threshold,
             context=None,
-            provider=provider
+            provider=provider,
+            organization_id=organization_id
         )
 
         pass1_values = pass1_result.get("extracted_values", {})
@@ -120,7 +123,8 @@ class TwoPassExtractor:
                 low_confidence_vars,
                 confidence_threshold,
                 context=high_confidence,
-                provider=provider
+                provider=provider,
+                organization_id=organization_id
             )
 
             pass2_values = pass2_result.get("extracted_values", {})
@@ -197,7 +201,8 @@ class TwoPassExtractor:
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float,
         context: Optional[Dict[str, Dict[str, Any]]] = None,
-        provider: str = "azure"
+        provider: str = "azure",
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Run a single extraction pass using the base smart field extractor.
@@ -208,6 +213,7 @@ class TwoPassExtractor:
             confidence_threshold: Minimum confidence for successful extraction
             context: Optional existing context from previous extraction pass
             provider: LLM provider to use
+            organization_id: Optional organization ID for org-specific LLM config
 
         Returns:
             Extraction result from smart_field_extractor
@@ -217,7 +223,8 @@ class TwoPassExtractor:
             template_variables=template_variables,
             confidence_threshold=confidence_threshold,
             provider=provider,
-            existing_context=context
+            existing_context=context,
+            organization_id=organization_id
         )
 
 

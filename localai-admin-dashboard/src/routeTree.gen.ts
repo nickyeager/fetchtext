@@ -11,6 +11,8 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as TermsImport } from './routes/terms'
+import { Route as PrivacyImport } from './routes/privacy'
 import { Route as ClerkRouteImport } from './routes/clerk/route'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated/route'
 import { Route as IndexImport } from './routes/index'
@@ -45,7 +47,8 @@ import { Route as ClerkauthSignUpImport } from './routes/clerk/(auth)/sign-up'
 import { Route as ClerkauthSignInImport } from './routes/clerk/(auth)/sign-in'
 import { Route as AuthenticatedTemplatesTemplateIdImport } from './routes/_authenticated/templates/$templateId'
 import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_authenticated/settings/notifications'
-import { Route as AuthenticatedSettingsDisplayImport } from './routes/_authenticated/settings/display'
+import { Route as AuthenticatedSettingsIntegrationsImport } from './routes/_authenticated/settings/integrations'
+import { Route as AuthenticatedSettingsBillingImport } from './routes/_authenticated/settings/billing'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
@@ -64,6 +67,18 @@ import { Route as AuthenticatedWorkflowsInstancesInstanceIdEditorImport } from '
 import { Route as AuthenticatedWorkflowsInstancesInstanceIdConfigurationImport } from './routes/_authenticated/workflows/instances/$instanceId.configuration'
 
 // Create/Update Routes
+
+const TermsRoute = TermsImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const PrivacyRoute = PrivacyImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const ClerkRouteRoute = ClerkRouteImport.update({
   id: '/clerk',
@@ -276,10 +291,17 @@ const AuthenticatedSettingsNotificationsRoute =
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
-const AuthenticatedSettingsDisplayRoute =
-  AuthenticatedSettingsDisplayImport.update({
-    id: '/display',
-    path: '/display',
+const AuthenticatedSettingsIntegrationsRoute =
+  AuthenticatedSettingsIntegrationsImport.update({
+    id: '/integrations',
+    path: '/integrations',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+
+const AuthenticatedSettingsBillingRoute =
+  AuthenticatedSettingsBillingImport.update({
+    id: '/billing',
+    path: '/billing',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
@@ -418,6 +440,20 @@ declare module '@tanstack/react-router' {
       path: '/clerk'
       fullPath: '/clerk'
       preLoaderRoute: typeof ClerkRouteImport
+      parentRoute: typeof rootRoute
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyImport
+      parentRoute: typeof rootRoute
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsImport
       parentRoute: typeof rootRoute
     }
     '/_authenticated/settings': {
@@ -595,11 +631,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAppearanceImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
-    '/_authenticated/settings/display': {
-      id: '/_authenticated/settings/display'
-      path: '/display'
-      fullPath: '/settings/display'
-      preLoaderRoute: typeof AuthenticatedSettingsDisplayImport
+    '/_authenticated/settings/billing': {
+      id: '/_authenticated/settings/billing'
+      path: '/billing'
+      fullPath: '/settings/billing'
+      preLoaderRoute: typeof AuthenticatedSettingsBillingImport
+      parentRoute: typeof AuthenticatedSettingsRouteImport
+    }
+    '/_authenticated/settings/integrations': {
+      id: '/_authenticated/settings/integrations'
+      path: '/integrations'
+      fullPath: '/settings/integrations'
+      preLoaderRoute: typeof AuthenticatedSettingsIntegrationsImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
     '/_authenticated/settings/notifications': {
@@ -765,7 +808,8 @@ interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAccountRoute: typeof AuthenticatedSettingsAccountRoute
   AuthenticatedSettingsAiModelsRoute: typeof AuthenticatedSettingsAiModelsRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
-  AuthenticatedSettingsDisplayRoute: typeof AuthenticatedSettingsDisplayRoute
+  AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsIntegrationsRoute: typeof AuthenticatedSettingsIntegrationsRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
@@ -775,7 +819,9 @@ const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteCh
     AuthenticatedSettingsAccountRoute: AuthenticatedSettingsAccountRoute,
     AuthenticatedSettingsAiModelsRoute: AuthenticatedSettingsAiModelsRoute,
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
-    AuthenticatedSettingsDisplayRoute: AuthenticatedSettingsDisplayRoute,
+    AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+    AuthenticatedSettingsIntegrationsRoute:
+      AuthenticatedSettingsIntegrationsRoute,
     AuthenticatedSettingsNotificationsRoute:
       AuthenticatedSettingsNotificationsRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
@@ -938,6 +984,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/': typeof ClerkauthRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
@@ -962,7 +1010,8 @@ export interface FileRoutesByFullPath {
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/settings/display': typeof AuthenticatedSettingsDisplayRoute
+  '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/sign-in': typeof ClerkauthSignInRoute
@@ -990,6 +1039,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '': typeof AuthenticatedRouteRouteWithChildren
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/clerk': typeof ClerkAuthenticatedRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/otp': typeof authOtpRoute
@@ -1012,7 +1063,8 @@ export interface FileRoutesByTo {
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/settings/display': typeof AuthenticatedSettingsDisplayRoute
+  '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/sign-in': typeof ClerkauthSignInRoute
@@ -1042,6 +1094,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/clerk': typeof ClerkRouteRouteWithChildren
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/clerk/(auth)': typeof ClerkauthRouteRouteWithChildren
   '/clerk/_authenticated': typeof ClerkAuthenticatedRouteRouteWithChildren
@@ -1067,7 +1121,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
-  '/_authenticated/settings/display': typeof AuthenticatedSettingsDisplayRoute
+  '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/(auth)/sign-in': typeof ClerkauthSignInRoute
@@ -1098,6 +1153,8 @@ export interface FileRouteTypes {
     | '/'
     | ''
     | '/clerk'
+    | '/privacy'
+    | '/terms'
     | '/settings'
     | '/clerk/'
     | '/forgot-password'
@@ -1122,7 +1179,8 @@ export interface FileRouteTypes {
     | '/settings/account'
     | '/settings/ai-models'
     | '/settings/appearance'
-    | '/settings/display'
+    | '/settings/billing'
+    | '/settings/integrations'
     | '/settings/notifications'
     | '/templates/$templateId'
     | '/clerk/sign-in'
@@ -1149,6 +1207,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | ''
+    | '/privacy'
+    | '/terms'
     | '/clerk'
     | '/forgot-password'
     | '/otp'
@@ -1171,7 +1231,8 @@ export interface FileRouteTypes {
     | '/settings/account'
     | '/settings/ai-models'
     | '/settings/appearance'
-    | '/settings/display'
+    | '/settings/billing'
+    | '/settings/integrations'
     | '/settings/notifications'
     | '/templates/$templateId'
     | '/clerk/sign-in'
@@ -1199,6 +1260,8 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/clerk'
+    | '/privacy'
+    | '/terms'
     | '/_authenticated/settings'
     | '/clerk/(auth)'
     | '/clerk/_authenticated'
@@ -1224,7 +1287,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/ai-models'
     | '/_authenticated/settings/appearance'
-    | '/_authenticated/settings/display'
+    | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/integrations'
     | '/_authenticated/settings/notifications'
     | '/_authenticated/templates/$templateId'
     | '/clerk/(auth)/sign-in'
@@ -1254,6 +1318,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   ClerkRouteRoute: typeof ClerkRouteRouteWithChildren
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
   authOtpRoute: typeof authOtpRoute
   authResetPasswordRoute: typeof authResetPasswordRoute
@@ -1273,6 +1339,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   ClerkRouteRoute: ClerkRouteRouteWithChildren,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
   authOtpRoute: authOtpRoute,
   authResetPasswordRoute: authResetPasswordRoute,
@@ -1301,6 +1369,8 @@ export const routeTree = rootRoute
         "/",
         "/_authenticated",
         "/clerk",
+        "/privacy",
+        "/terms",
         "/(auth)/forgot-password",
         "/(auth)/otp",
         "/(auth)/reset-password",
@@ -1343,6 +1413,12 @@ export const routeTree = rootRoute
         "/clerk/_authenticated"
       ]
     },
+    "/privacy": {
+      "filePath": "privacy.tsx"
+    },
+    "/terms": {
+      "filePath": "terms.tsx"
+    },
     "/_authenticated/settings": {
       "filePath": "_authenticated/settings/route.tsx",
       "parent": "/_authenticated",
@@ -1350,7 +1426,8 @@ export const routeTree = rootRoute
         "/_authenticated/settings/account",
         "/_authenticated/settings/ai-models",
         "/_authenticated/settings/appearance",
-        "/_authenticated/settings/display",
+        "/_authenticated/settings/billing",
+        "/_authenticated/settings/integrations",
         "/_authenticated/settings/notifications",
         "/_authenticated/settings/"
       ]
@@ -1453,8 +1530,12 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/settings/appearance.tsx",
       "parent": "/_authenticated/settings"
     },
-    "/_authenticated/settings/display": {
-      "filePath": "_authenticated/settings/display.tsx",
+    "/_authenticated/settings/billing": {
+      "filePath": "_authenticated/settings/billing.tsx",
+      "parent": "/_authenticated/settings"
+    },
+    "/_authenticated/settings/integrations": {
+      "filePath": "_authenticated/settings/integrations.tsx",
       "parent": "/_authenticated/settings"
     },
     "/_authenticated/settings/notifications": {

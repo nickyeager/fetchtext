@@ -129,9 +129,11 @@ export function VariableBadgeNodeView({
                   <p className="text-sm font-medium border-l-2 border-primary pl-2">
                     {String(extractedValue)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Click to configure format
-                  </p>
+                  {onVariableClick && (
+                    <p className="text-xs text-muted-foreground">
+                      Click to configure format
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground italic">

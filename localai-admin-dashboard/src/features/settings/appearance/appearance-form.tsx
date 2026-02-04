@@ -2,9 +2,9 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { ChevronDownIcon } from '@radix-ui/react-icons'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { toast } from 'sonner'
 import { fonts } from '@/config/fonts'
 import { cn } from '@/lib/utils'
-import { showSubmittedData } from '@/utils/show-submitted-data'
 import { useFont } from '@/context/font-context'
 import { useTheme } from '@/context/theme-context'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -50,7 +50,7 @@ export function AppearanceForm() {
     if (data.font != font) setFont(data.font)
     if (data.theme != theme) setTheme(data.theme)
 
-    showSubmittedData(data)
+    toast.success('Appearance preferences updated')
   }
 
   return (
