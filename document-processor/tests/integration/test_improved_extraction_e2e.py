@@ -2,10 +2,28 @@
 
 IMPORTANT: These tests call REAL LLM services (Azure OpenAI or Ollama).
 They verify the complete extraction pipeline works correctly.
+
+When Azure OpenAI is not configured (missing environment variables),
+these tests will skip rather than fail, since they require real LLM access.
 """
 import pytest
 import asyncio
+import os
 from pathlib import Path
+
+
+def is_azure_openai_configured() -> bool:
+    """Check if Azure OpenAI credentials are available."""
+    return bool(
+        os.environ.get("AZURE_OPENAI_API_KEY") and
+        os.environ.get("AZURE_OPENAI_ENDPOINT")
+    )
+
+
+requires_azure_openai = pytest.mark.skipif(
+    not is_azure_openai_configured(),
+    reason="Azure OpenAI not configured (missing AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT)"
+)
 
 # Test with a realistic invoice document
 SAMPLE_INVOICE = """
@@ -55,6 +73,7 @@ class TestImprovedExtractionE2E:
             {"name": "total_amount", "type": "currency", "description": "Total amount due"},
         ]
 
+    @requires_azure_openai
     @pytest.mark.asyncio
     async def test_semantic_extraction_improves_accuracy(self, template_variables):
         """Semantic parsing should help extract fields accurately."""
@@ -110,6 +129,7 @@ class TestImprovedExtractionE2E:
             assert "extraction_pass" in field_data, f"{field_name} missing extraction_pass"
             assert field_data["extraction_pass"] in [1, 2], f"Invalid extraction_pass for {field_name}"
 
+    @requires_azure_openai
     @pytest.mark.asyncio
     async def test_context_aware_extraction_uses_context(self, template_variables):
         """Context-aware extraction should accept and utilize existing context."""
@@ -176,8 +196,9 @@ class TestExtractionAPIIntegration:
     def api_url(self):
         return "http://localhost:8090"
 
+    @requires_azure_openai
     @pytest.mark.asyncio
-    async def test_api_two_pass_endpoint(self, api_url, template_variables):
+    async def test_api_two_pass_endpoint(self, api_url):
         """Test the API endpoint accepts two-pass parameter."""
         import httpx
 
