@@ -1,0 +1,489 @@
+{
+  "name": "Stripe Subscription Handler",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "events": [
+          "checkout.session.completed",
+          "customer.subscription.created",
+          "customer.subscription.updated",
+          "customer.subscription.deleted"
+        ]
+      },
+      "id": "stripe-trigger",
+      "name": "Stripe Trigger",
+      "type": "n8n-nodes-base.stripeTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "credentials": {
+        "stripeApi": {
+          "id": "stripe-credentials",
+          "name": "Stripe API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "checkout-completed",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "checkout.session.completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "is-checkout-completed",
+      "name": "Is Checkout Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract data from Stripe checkout.session.completed event\nconst event = $input.first().json;\nconst session = event.data?.object || {};\nconst metadata = session.metadata || {};\n\n// Get organization_id from metadata (set during checkout creation)\nconst organization_id = metadata.organization_id;\nconst tier = metadata.tier || 'non_managed';\nconst selected_model = metadata.selected_model || 'gpt-4o-mini';\n\n// Determine if provisioning is needed\nconst requires_provisioning = tier === 'enterprise';\n\n// Get customer email for notifications\nconst customer_email = session.customer_email || session.customer_details?.email;\n\nreturn {\n  json: {\n    organization_id,\n    tier,\n    selected_model,\n    requires_provisioning,\n    customer_email,\n    stripe_customer_id: session.customer,\n    stripe_subscription_id: session.subscription,\n    amount_total: session.amount_total,\n    currency: session.currency,\n    event_type: event.type,\n    event_id: event.id\n  }\n};"
+      },
+      "id": "extract-checkout-data",
+      "name": "Extract Checkout Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-org-id",
+              "leftValue": "={{ $json.organization_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "has-organization-id",
+      "name": "Has Organization ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 200]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "organization_llm_configs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tier": "={{ $json.tier }}",
+            "provider_type": "={{ $json.tier === 'enterprise' ? 'byok_azure' : ($json.tier === 'professional' ? 'byok_azure' : 'shared') }}",
+            "provisioning_status": "={{ $json.requires_provisioning ? 'pending' : 'active' }}"
+          }
+        },
+        "filters": {
+          "conditions": [
+            {
+              "column": "organization_id",
+              "value": "={{ $json.organization_id }}"
+            }
+          ]
+        },
+        "options": {
+          "returnAll": true
+        }
+      },
+      "id": "update-org-tier",
+      "name": "Update Org Tier in Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, 100],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-provisioning",
+              "leftValue": "={{ $('Extract Checkout Data').item.json.requires_provisioning }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "needs-provisioning",
+      "name": "Needs Provisioning?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://document-processor:8090/models/provision/{{ $('Extract Checkout Data').item.json.organization_id }}",
+        "options": {
+          "timeout": 300000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ selected_model: $('Extract Checkout Data').item.json.selected_model }) }}"
+      },
+      "id": "trigger-provisioning",
+      "name": "Trigger Azure Provisioning",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@fetchtext.io",
+        "toEmail": "={{ $('Extract Checkout Data').item.json.customer_email }}",
+        "subject": "Welcome to FetchText {{ $('Extract Checkout Data').item.json.tier | capitalize }} Plan!",
+        "emailType": "html",
+        "html": "=<h1>Welcome to FetchText!</h1>\n<p>Thank you for subscribing to our <strong>{{ $('Extract Checkout Data').item.json.tier }}</strong> plan.</p>\n\n{{ $('Extract Checkout Data').item.json.requires_provisioning ? '<p>We are now provisioning your dedicated Azure OpenAI instance. This typically takes 2-5 minutes. You will receive another email when your instance is ready.</p>' : '<p>Your account is now active and ready to use!</p>' }}\n\n<p>Best regards,<br>The FetchText Team</p>"
+      },
+      "id": "send-welcome-email",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.sendGrid",
+      "typeVersion": 1,
+      "position": [1320, 200],
+      "credentials": {
+        "sendGridApi": {
+          "id": "sendgrid-credentials",
+          "name": "SendGrid API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle subscription update/cancellation events\nconst event = $input.first().json;\nconst subscription = event.data?.object || {};\nconst metadata = subscription.metadata || {};\n\nconst organization_id = metadata.organization_id;\nconst event_type = event.type;\n\n// Determine new tier based on event\nlet new_tier = 'free';\nlet action = 'none';\n\nif (event_type === 'customer.subscription.deleted') {\n  new_tier = 'free';\n  action = 'downgrade';\n} else if (event_type === 'customer.subscription.updated') {\n  // Check if subscription is still active\n  if (subscription.status === 'active') {\n    new_tier = metadata.tier || 'non_managed';\n    action = 'update';\n  } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {\n    new_tier = 'free';\n    action = 'downgrade';\n  }\n}\n\nreturn {\n  json: {\n    organization_id,\n    new_tier,\n    action,\n    subscription_status: subscription.status,\n    event_type,\n    event_id: event.id\n  }\n};"
+      },
+      "id": "handle-subscription-change",
+      "name": "Handle Subscription Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-downgrade",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "downgrade",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-downgrade",
+      "name": "Is Downgrade?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=http://document-processor:8090/models/provision/{{ $json.organization_id }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "trigger-deprovisioning",
+      "name": "Trigger Deprovisioning",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [880, 350]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "organization_llm_configs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tier": "free",
+            "provider_type": "none",
+            "provisioning_status": "inactive"
+          }
+        },
+        "filters": {
+          "conditions": [
+            {
+              "column": "organization_id",
+              "value": "={{ $json.organization_id }}"
+            }
+          ]
+        }
+      },
+      "id": "reset-org-to-free",
+      "name": "Reset Org to Free Tier",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1100, 350],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Stripe Subscription Handler\n\nThis workflow handles all Stripe subscription events:\n\n1. **checkout.session.completed** - New subscription\n   - Updates org tier in Supabase\n   - Triggers Azure provisioning for Enterprise\n   - Sends welcome email\n\n2. **customer.subscription.deleted** - Cancellation\n   - Triggers deprovisioning\n   - Resets org to free tier\n\n### Required Credentials:\n- Stripe API (webhook secret)\n- Supabase API (service role key)\n- SendGrid API (for emails)\n\n### Metadata Required in Checkout:\n```json\n{\n  \"organization_id\": \"uuid\",\n  \"tier\": \"enterprise\",\n  \"selected_model\": \"gpt-4o-mini\"\n}\n```",
+        "height": 400,
+        "width": 300
+      },
+      "id": "sticky-note",
+      "name": "Documentation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-300, 100]
+    },
+    {
+      "parameters": {},
+      "id": "no-op-missing-org",
+      "name": "Log Missing Org ID",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {},
+      "id": "no-op-complete",
+      "name": "Complete (No Provisioning)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1320, 100]
+    }
+  ],
+  "connections": {
+    "Stripe Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Checkout Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Checkout Completed?": {
+      "main": [
+        [
+          {
+            "node": "Extract Checkout Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Subscription Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Checkout Data": {
+      "main": [
+        [
+          {
+            "node": "Has Organization ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Organization ID?": {
+      "main": [
+        [
+          {
+            "node": "Update Org Tier in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Missing Org ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Org Tier in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Needs Provisioning?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Provisioning?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Azure Provisioning",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Complete (No Provisioning)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Subscription Change": {
+      "main": [
+        [
+          {
+            "node": "Is Downgrade?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Downgrade?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Deprovisioning",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Trigger Deprovisioning": {
+      "main": [
+        [
+          {
+            "node": "Reset Org to Free Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "Stripe",
+      "createdAt": "2025-01-31T00:00:00.000Z",
+      "updatedAt": "2025-01-31T00:00:00.000Z"
+    },
+    {
+      "name": "Billing",
+      "createdAt": "2025-01-31T00:00:00.000Z",
+      "updatedAt": "2025-01-31T00:00:00.000Z"
+    },
+    {
+      "name": "Provisioning",
+      "createdAt": "2025-01-31T00:00:00.000Z",
+      "updatedAt": "2025-01-31T00:00:00.000Z"
+    }
+  ],
+  "pinData": {},
+  "versionId": "1"
+}
