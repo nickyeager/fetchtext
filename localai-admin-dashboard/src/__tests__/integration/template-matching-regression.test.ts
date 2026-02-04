@@ -7,6 +7,8 @@
  *
  * This tests the fix for the "No template applied" bug where identical documents
  * were not matching previously generated templates due to score threshold issues.
+ *
+ * @vitest-environment node
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
