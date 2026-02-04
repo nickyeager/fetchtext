@@ -1,5 +1,7 @@
 """
 Azure OpenAI service for AI model integration
+
+Supports both system-wide default credentials and custom BYOK credentials.
 """
 import logging
 from typing import List, Dict, Any, Optional
@@ -8,18 +10,46 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class AzureOpenAIService:
-    """Service for interacting with Azure OpenAI API"""
-    
-    def __init__(self):
-        self.api_key = settings.AZURE_OPENAI_API_KEY
-        self.endpoint = settings.AZURE_OPENAI_ENDPOINT
-        self.api_version = settings.AZURE_OPENAI_API_VERSION
-        self.deployment_name = settings.AZURE_OPENAI_DEPLOYMENT_NAME
-        
+    """Service for interacting with Azure OpenAI API
+
+    Can be initialized with default credentials from settings or with
+    custom credentials for BYOK (Bring Your Own Key) scenarios.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        deployment_name: Optional[str] = None,
+        api_version: Optional[str] = None
+    ):
+        """
+        Initialize Azure OpenAI service.
+
+        Args:
+            api_key: Optional custom API key (BYOK). Uses settings default if None.
+            endpoint: Optional custom endpoint (BYOK). Uses settings default if None.
+            deployment_name: Optional custom deployment (BYOK). Uses settings default if None.
+            api_version: Optional API version. Uses settings default if None.
+        """
+        # Use custom credentials if provided, otherwise fall back to settings
+        self.api_key = api_key or settings.AZURE_OPENAI_API_KEY
+        self.endpoint = endpoint or settings.AZURE_OPENAI_ENDPOINT
+        self.api_version = api_version or settings.AZURE_OPENAI_API_VERSION
+        self.deployment_name = deployment_name or settings.AZURE_OPENAI_DEPLOYMENT_NAME
+
+        # Track if using custom credentials (for logging)
+        self._is_byok = api_key is not None
+
     @property
     def is_configured(self) -> bool:
         """Check if Azure OpenAI is properly configured"""
+        if self._is_byok:
+            # For BYOK, check if custom credentials are present
+            return bool(self.api_key and self.endpoint and self.deployment_name)
+        # For system default, use settings check
         return settings.is_azure_configured()
     
     def _get_headers(self) -> Dict[str, str]:
