@@ -7,8 +7,8 @@
 
 # Docker and Container Data
 volumes/
-shared/
-shared-backup/
+/shared/
+/shared-backup/
 neo4j/data/
 neo4j/logs/
 flowise/
