@@ -3,10 +3,28 @@ Comprehensive integration tests for SmartFieldExtractor.
 
 IMPORTANT: These tests call REAL LLM services to verify the complete extraction pipeline.
 They cover parsing strategies, document types, field types, and error handling.
+
+When Azure OpenAI is not configured (missing environment variables),
+tests that require LLM will skip rather than fail.
 """
 import pytest
 import asyncio
+import os
 from typing import Dict, Any, List
+
+
+def is_azure_openai_configured() -> bool:
+    """Check if Azure OpenAI credentials are available."""
+    return bool(
+        os.environ.get("AZURE_OPENAI_API_KEY") and
+        os.environ.get("AZURE_OPENAI_ENDPOINT")
+    )
+
+
+requires_azure_openai = pytest.mark.skipif(
+    not is_azure_openai_configured(),
+    reason="Azure OpenAI not configured (missing AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT)"
+)
 
 # Sample documents for different document types
 SAMPLE_RECEIPT = """
@@ -415,6 +433,7 @@ class TestFullExtractionPipeline:
             {"name": "customer_email", "type": "email", "description": "Customer email"},
         ]
 
+    @requires_azure_openai
     @pytest.mark.asyncio
     async def test_receipt_extraction_full_pipeline(self, receipt_variables):
         """Test full extraction pipeline on receipt document."""
@@ -544,6 +563,7 @@ class TestFullExtractionPipeline:
         # With high threshold, fields with lower confidence should be filtered
         assert result_low["fields_extracted"] >= result_high["fields_extracted"]
 
+    @requires_azure_openai
     @pytest.mark.asyncio
     async def test_extraction_with_existing_context(self):
         """Test extraction using existing context improves related field extraction."""

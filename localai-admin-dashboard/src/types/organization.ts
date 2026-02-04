@@ -101,3 +101,122 @@ export interface OrganizationDisplayItem {
   role: OrganizationRole;
   logo_url?: string;
 }
+
+// =============================================================================
+// Organization LLM Configuration Types
+// =============================================================================
+
+/**
+ * LLM pricing/feature tiers
+ */
+export type LLMTier = 'free' | 'non_managed' | 'professional' | 'enterprise';
+
+/**
+ * How the LLM is accessed
+ */
+export type LLMProviderType =
+  | 'none'          // No LLM (free tier)
+  | 'shared'        // FetchText's shared Azure OpenAI
+  | 'byok_azure'    // Customer's Azure OpenAI key
+  | 'byok_openai'   // Customer's OpenAI key
+  | 'self_hosted';  // Customer's endpoint (Ollama, vLLM)
+
+/**
+ * Enterprise deployment models
+ */
+export type DeploymentModel = 'managed_ours' | 'lighthouse' | 'marketplace';
+
+/**
+ * Organization LLM configuration
+ */
+export interface OrganizationLLMConfig {
+  organization_id: string;
+  tier: LLMTier;
+  provider_type: LLMProviderType;
+  deployment_model?: DeploymentModel;
+  custom_endpoint?: string;
+  daily_document_limit?: number;
+  monthly_document_limit?: number;
+  documents_processed_today: number;
+  documents_processed_month: number;
+  provisioning_status: string;
+  source: 'system_default' | 'organization';
+}
+
+/**
+ * Effective LLM configuration (resolved from org config or system default)
+ */
+export interface EffectiveLLMConfig {
+  source: 'system_default' | 'organization';
+  provider: string;
+  tier: LLMTier;
+  organization_id?: string;
+  has_usage_limits: boolean;
+  is_within_limits: boolean;
+  daily_limit?: number;
+  monthly_limit?: number;
+  documents_today: number;
+  documents_month: number;
+}
+
+/**
+ * Request to create/update org LLM config
+ */
+export interface UpdateOrganizationLLMConfigInput {
+  tier: LLMTier;
+  provider_type: LLMProviderType;
+  deployment_model?: DeploymentModel;
+  custom_endpoint?: string;
+  daily_document_limit?: number;
+  monthly_document_limit?: number;
+}
+
+/**
+ * LLM tier display information
+ */
+export interface LLMTierInfo {
+  tier: LLMTier;
+  name: string;
+  description: string;
+  features: string[];
+  hasAI: boolean;
+  hasUsageLimits: boolean;
+}
+
+/**
+ * Available LLM tiers with their details
+ */
+export const LLM_TIERS: Record<LLMTier, LLMTierInfo> = {
+  free: {
+    tier: 'free',
+    name: 'Free',
+    description: 'Template-only document generation, no AI extraction',
+    features: ['Template-based document creation', 'No AI extraction'],
+    hasAI: false,
+    hasUsageLimits: false,
+  },
+  non_managed: {
+    tier: 'non_managed',
+    name: 'Non-Managed',
+    description: 'Shared AI with usage limits',
+    features: ['AI-powered extraction', 'Usage limits apply', 'Shared infrastructure'],
+    hasAI: true,
+    hasUsageLimits: true,
+  },
+  professional: {
+    tier: 'professional',
+    name: 'Professional',
+    description: 'Bring your own API key',
+    features: ['Your own API key', 'Unlimited usage', 'SOC 2 ready'],
+    hasAI: true,
+    hasUsageLimits: false,
+  },
+  enterprise: {
+    tier: 'enterprise',
+    name: 'Enterprise',
+    description: 'Dedicated infrastructure',
+    features: ['Dedicated instance', 'HIPAA/FedRAMP ready', 'Custom deployment'],
+    hasAI: true,
+    hasUsageLimits: false,
+  },
+};

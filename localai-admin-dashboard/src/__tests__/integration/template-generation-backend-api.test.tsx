@@ -5,6 +5,8 @@
  * new /api/enhanced-documents/decide-template flow. They are written
  * to be resilient to either using an existing template or generating a
  * new one, and they use the test-documents/ fixtures in this repo.
+ *
+ * @vitest-environment node
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';

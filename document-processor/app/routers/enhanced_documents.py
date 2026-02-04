@@ -77,7 +77,8 @@ async def batch_process_with_ai_enhancement(
     extract_metadata: bool = Query(True, description="Extract document metadata"),
     extract_structure: bool = Query(True, description="Extract document structure"),
     use_ai_enhancement: bool = Query(True, description="Apply AI enhancement"),
-    max_concurrent: int = Query(3, description="Maximum concurrent processing", ge=1, le=10)
+    max_concurrent: int = Query(3, description="Maximum concurrent processing", ge=1, le=10),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Process multiple documents with AI enhancement in batch.
@@ -244,7 +245,8 @@ async def extract_with_text(
     text_content: str = Query(..., description="Text content to extract from"),
     template_data: str = Query(..., description="JSON string containing template smart variables"),
     confidence_threshold: float = Query(0.6, description="Minimum confidence threshold for extraction"),
-    use_two_pass: bool = Query(False, description="Use two-pass extraction for improved accuracy")
+    use_two_pass: bool = Query(False, description="Use two-pass extraction for improved accuracy"),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Extract template fields from provided text content.
@@ -270,7 +272,8 @@ async def extract_with_text(
                 text_content=text_content,
                 template_variables=template_variables,
                 confidence_threshold=confidence_threshold,
-                provider="azure"
+                provider="azure",
+                organization_id=organization_id
             )
             logger.info(f"Two-pass extraction completed: method={extracted_data.get('extraction_method', 'unknown')}")
         else:
@@ -280,7 +283,8 @@ async def extract_with_text(
                 text_content,
                 template_variables,
                 confidence_threshold,
-                provider="azure"  # Use Azure OpenAI for smart extraction
+                provider="azure",  # Use Azure OpenAI for smart extraction
+                organization_id=organization_id
             )
             logger.info(f"Smart extractor returned method: {extracted_data.get('extraction_method', 'unknown')}")
 
@@ -354,7 +358,8 @@ def _get_category_description(category: str) -> str:
 async def extract_with_template(
     file: UploadFile = File(...),
     template_data: Optional[str] = Query(None, description="JSON string containing template smart variables"),
-    confidence_threshold: float = Query(0.6, description="Minimum confidence threshold for extraction")
+    confidence_threshold: float = Query(0.6, description="Minimum confidence threshold for extraction"),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Extract structured data from document using template smart variables.
@@ -445,7 +450,8 @@ async def extract_with_template(
                 result.get('content', {}).get('text', ''),
                 template_variables,
                 confidence_threshold,
-                provider="azure"  # Use Azure OpenAI for smart extraction
+                provider="azure",  # Use Azure OpenAI for smart extraction
+                organization_id=organization_id
             )
         else:
             # Fall back to generic extraction
@@ -478,7 +484,8 @@ async def decide_template_strategy(
     min_match_confidence: float = Query(0.7, ge=0.0, le=1.0, description="Minimum match score to use an existing template"),
     allow_generation: bool = Query(True, description="Allow generating a template when no strong match exists"),
     auto_save: bool = Query(False, description="Auto-save generated templates to the database"),
-    generation_mode: str = Query("automatic", description="Template generation mode when generation is chosen: automatic, guided, custom")
+    generation_mode: str = Query("automatic", description="Template generation mode when generation is chosen: automatic, guided, custom"),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Decide whether to use an existing template or generate a new one for the uploaded document.
@@ -508,6 +515,7 @@ async def decide_template_strategy(
             file.filename,
             file.content_type or "",
             quick_scan=quick_scan,
+            organization_id=organization_id,
         )
 
         suggestions = evaluation.get('template_suggestions', []) or []
@@ -558,7 +566,8 @@ async def decide_template_strategy(
                                     content=document_text,
                                     template_variables=smart_variables,
                                     confidence_threshold=0.6,
-                                    provider="azure"  # Use configured AI provider
+                                    provider="azure",  # Use configured AI provider
+                                    organization_id=organization_id
                                 )
 
                                 # Add extraction metrics to suggestion
@@ -810,7 +819,8 @@ async def evaluate_document_type(
     file: UploadFile = File(...),
     quick_scan: bool = Query(True, description="Perform quick scan only (faster)"),
     include_confidence_scores: bool = Query(True, description="Include detailed confidence scores"),
-    suggest_templates: bool = Query(True, description="Suggest matching templates")
+    suggest_templates: bool = Query(True, description="Suggest matching templates"),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Quickly evaluate document type and suggest processing options.
@@ -867,7 +877,8 @@ async def evaluate_document_type(
             file.filename,
             file.content_type or "",
             quick_scan=quick_scan,
-            content_override=clean_text
+            content_override=clean_text,
+            organization_id=organization_id
         )
         
         # Filter results based on parameters
@@ -906,7 +917,8 @@ async def extract_with_smart_template(
     confidence_threshold: float = Form(0.7, description="Minimum confidence threshold for extraction"),
     enable_validation: bool = Form(True, description="Enable extraction validation"),
     provider: str = Form("azure", description="AI provider to use (azure or ollama)"),
-    use_two_pass: bool = Form(False, description="Use two-pass extraction for improved accuracy")
+    use_two_pass: bool = Form(False, description="Use two-pass extraction for improved accuracy"),
+    organization_id: Optional[str] = Form(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Extract structured data from document using smart template with AI-based field extraction.
@@ -1029,7 +1041,8 @@ async def extract_with_smart_template(
                 text_content=text_content,
                 template_variables=template_variables,
                 confidence_threshold=confidence_threshold,
-                provider=provider
+                provider=provider,
+                organization_id=organization_id
             )
         else:
             # Use smart field extractor for AI-powered extraction
@@ -1038,7 +1051,8 @@ async def extract_with_smart_template(
                 text_content,
                 template_variables,
                 confidence_threshold,
-                provider=provider
+                provider=provider,
+                organization_id=organization_id
             )
         
         # Build response in format expected by frontend
@@ -1088,6 +1102,7 @@ class SmartExtractRequest(BaseModel):
     template_data: Dict[str, Any]
     confidence_threshold: float = 0.6
     provider: str = "azure"
+    organization_id: Optional[str] = None
 
 @router.post("/smart-extract")
 async def smart_field_extraction(request: SmartExtractRequest):
@@ -1125,7 +1140,8 @@ async def smart_field_extraction(request: SmartExtractRequest):
             request.text_content,
             template_variables,
             request.confidence_threshold,
-            provider=request.provider
+            provider=request.provider,
+            organization_id=request.organization_id
         )
         
         return JSONResponse(content={
@@ -1155,7 +1171,8 @@ async def analyze_document_for_template_generation(
     file: UploadFile = File(...),
     confidence_threshold: float = Query(0.7, description="Minimum confidence for field detection"),
     include_suggestions: bool = Query(True, description="Include AI-generated field suggestions"),
-    analysis_depth: str = Query("standard", description="Analysis depth: basic, standard, comprehensive")
+    analysis_depth: str = Query("standard", description="Analysis depth: basic, standard, comprehensive"),
+    organization_id: Optional[str] = Query(None, description="Organization ID for org-specific LLM config")
 ):
     """
     Analyze document structure and content to identify potential template fields.
@@ -1619,13 +1636,15 @@ async def _generate_template_improvements(
 async def _extract_template_fields_DEPRECATED(
     text_content: str,
     template_variables: List[Dict[str, Any]],
-    confidence_threshold: float = 0.6
+    confidence_threshold: float = 0.6,
+    organization_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """FIXED: Now properly calling smart_field_extractor"""
-    
+
     # Call the smart field extractor directly
     result = await smart_field_extractor.extract_fields_intelligently(
-        text_content, template_variables, confidence_threshold, provider="azure"
+        text_content, template_variables, confidence_threshold, provider="azure",
+        organization_id=organization_id
     )
     
     # FORCE the method to be correct if it's still showing wrong

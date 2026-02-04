@@ -16,23 +16,35 @@ export default defineConfig({
     // Simpler config to avoid potential instability
     testTimeout: 20000,
     hookTimeout: 20000,
+    // Memory optimization - prevent heap out of memory
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        maxForks: 2,
+        minForks: 1,
+      },
+    },
+    maxConcurrency: 5,
+    fileParallelism: false,
     env: {
       VITE_SUPABASE_URL: 'http://localhost:8000',
       VITE_SUPABASE_ANON_KEY: 'test_anon_key',
     },
+    // Root directory for test discovery
+    root: path.resolve(__dirname),
     // Exclude E2E tests from Vitest (they use Playwright)
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/tests/e2e/**',
-      '**/tests/integration/**',
+      'tests/**',
+      '**/*.pw.spec.ts',
+      '**/*.pw.spec.tsx',
       '**/*.spec.ts',
       '**/*.spec.tsx',
     ],
-    // Include patterns for Vitest tests
+    // Include patterns for Vitest tests - only src directory
     include: [
       'src/**/*.test.{ts,tsx}',
-      'src/**/__tests__/**/*.{ts,tsx}',
     ],
   },
 })

@@ -68,6 +68,12 @@ import { supabase } from '@/lib/supabase';
 // Shared utilities - DRY refactor
 import { parseExtractedFields } from '@/lib/document-utils';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import {
+  getExtractedFields,
+  getSimpleFieldValues,
+  createMetadataWithExtractedFields,
+  type ExtractedFieldsMap,
+} from '@/lib/extracted-fields-utils';
 
 interface DocumentDetailViewProps {
   documentId: string;
@@ -238,27 +244,25 @@ export function DocumentDetailView({
         return;
       }
 
-      // Get extracted fields from metadata
-      const metadata = document.metadata as Record<string, unknown>;
-      const extractedData = metadata.extracted_data as Record<string, unknown> | undefined;
-      const extractedValues = extractedData?.extracted_values as Record<string, unknown> | undefined;
+      // Use consolidated utility to get extracted fields from all legacy paths
+      const extractedFields = getExtractedFields(document);
+      const simpleValues = getSimpleFieldValues(document);
 
-      if (!extractedValues || Object.keys(extractedValues).length === 0) {
+      if (Object.keys(extractedFields).length === 0) {
         return;
       }
 
-      // Prepare field values for position lookup
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] fetchFieldPositions: Using consolidated utility', {
+        totalFields: Object.keys(extractedFields).length,
+        fieldNames: Object.keys(extractedFields),
+      });
+
+      // Prepare field values for position lookup using the simple values
       const fieldValuesToFind: Array<{ fieldName: string; value: string }> = [];
-      for (const [fieldName, fieldData] of Object.entries(extractedValues)) {
-        let value: string | null = null;
-        if (typeof fieldData === 'string') {
-          value = fieldData;
-        } else if (fieldData && typeof fieldData === 'object') {
-          const fd = fieldData as Record<string, unknown>;
-          value = fd.value ? String(fd.value) : null;
-        }
-        if (value && value.trim().length > 0) {
-          fieldValuesToFind.push({ fieldName, value: value.trim() });
+      for (const [fieldName, value] of Object.entries(simpleValues)) {
+        if (value !== null && value !== undefined && String(value).trim().length > 0) {
+          fieldValuesToFind.push({ fieldName, value: String(value).trim() });
         }
       }
 
@@ -291,7 +295,7 @@ export function DocumentDetailView({
     };
 
     fetchFieldPositions();
-  }, [documentFileUrl, document?.metadata, documentProcessor]);
+  }, [documentFileUrl, document, documentProcessor]);
 
   // Extract templateId for dependency tracking
   const documentTemplateId = (document?.metadata as Record<string, unknown> | undefined)?.template_id as number | undefined;
@@ -557,15 +561,8 @@ export function DocumentDetailView({
       processedPreview: processedText.substring(0, 100)
     });
     
-    // Get extracted data from various sources
-    let extractedData: Record<string, unknown> = {};
-    if (document.extracted_fields && typeof document.extracted_fields === 'object') {
-      extractedData = document.extracted_fields as Record<string, unknown>;
-    } else if ((document.metadata as any)?.extracted_fields && typeof (document.metadata as any).extracted_fields === 'object') {
-      extractedData = (document.metadata as any).extracted_fields as Record<string, unknown>;
-    } else if ((document.metadata as any)?.extraction_result?.extracted_values && typeof (document.metadata as any).extraction_result.extracted_values === 'object') {
-      extractedData = (document.metadata as any).extraction_result.extracted_values as Record<string, unknown>;
-    }
+    // Get extracted data using consolidated utility (reads from all legacy paths)
+    const extractedData = getSimpleFieldValues(document);
     
     return {
       original: {
@@ -1366,28 +1363,26 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
         fields: newFields,
       });
 
-      // Merge new fields with existing fields
-      const existingExtraction = (document.metadata as Record<string, unknown>)?.extraction_result as Record<string, unknown> | undefined || {};
-      const existingFields = parseExtractedFields(
-        (existingExtraction.extracted_values as Record<string, unknown>) || document.extracted_fields || {}
+      // Convert new fields to ExtractedFieldsMap format
+      const newFieldsMap: ExtractedFieldsMap = {};
+      for (const [key, fieldData] of Object.entries(newFields)) {
+        newFieldsMap[key] = {
+          value: fieldData.value,
+          confidence: fieldData.confidence,
+          sourceText: fieldData.sourceText,
+        };
+      }
+
+      // Use consolidated utility to merge and write to canonical path
+      const updatedMetadata = createMetadataWithExtractedFields(
+        document.metadata as Record<string, unknown>,
+        newFieldsMap
       );
 
-      const mergedFields = {
-        ...existingFields,
-        ...newFields,
-      };
-
-      // Update document metadata with merged fields
+      // Update document metadata with merged fields in canonical location
       await UnifiedDocumentService.updateDocumentStatus(documentId, {
         status: DocumentStatus.COMPLETED,
-        metadata: {
-          ...(document.metadata as Record<string, unknown>),
-          extracted_fields: mergedFields,
-          extraction_result: {
-            ...existingExtraction,
-            extracted_values: mergedFields,
-          },
-        } as Record<string, unknown>,
+        metadata: updatedMetadata as Record<string, unknown>,
       });
 
       // Invalidate queries to refresh the document data

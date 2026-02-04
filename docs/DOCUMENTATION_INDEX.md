@@ -1,6 +1,6 @@
 # FetchText Project - Complete Documentation Index
 
-**Last Updated**: 2025-12-16
+**Last Updated**: 2026-02-03
 **Purpose**: Comprehensive guide to all documentation in the FetchText project
 
 ---
@@ -44,6 +44,7 @@ For someone new to the project, start here:
 ## 🚀 Deployment & Operations
 
 ### Deployment
+- **[PRODUCTION_RESOURCES.md](PRODUCTION_RESOURCES.md)** - **Single source of truth for all production URLs and credentials**
 - **[architecture/DEPLOYMENT_PLAN.md](architecture/DEPLOYMENT_PLAN.md)** - Production deployment strategy
 - **[documentation/setup.md](../documentation/setup.md)** - Setup verification and port configuration
 - **[supabase-deployment-log.md](supabase-deployment-log.md)** - Production Supabase migration tracking
@@ -226,7 +227,7 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 | **Working with APIs** | documentation/document-processor-api.md → document-processor/API_ENDPOINTS.md |
 | **Debugging issues** | localai-admin-dashboard/.vscode/README.md → CLAUDE.md (auth section) |
 | **Writing tests** | localai-admin-dashboard/tests/README.md → localai-admin-dashboard/src/__tests__/integration/README.md |
-| **Deploying to production** | DEPLOYMENT_PLAN.md → documentation/setup.md |
+| **Deploying to production** | PRODUCTION_RESOURCES.md → DEPLOYMENT_PLAN.md → deployment-verification-checklist.md |
 | **Understanding templates** | TEMPLATE_MATCHING_CURRENT_STATE.md |
 | **Monitoring services** | documentation/monitoring.md → documentation/setup.md |
 
@@ -259,10 +260,11 @@ From CLAUDE.md - "Critical: Authentication & Database Issues (Lessons Learned)":
 4. DOCUMENT_PROCESSING_COMPLETE_GUIDE.md
 
 #### DevOps/SRE
-1. DEPLOYMENT_PLAN.md
-2. documentation/setup.md
-3. documentation/monitoring.md
-4. ARCHITECTURE.md (Service Architecture section)
+1. PRODUCTION_RESOURCES.md
+2. DEPLOYMENT_PLAN.md
+3. deployment-verification-checklist.md
+4. documentation/monitoring.md
+5. ARCHITECTURE.md (Service Architecture section)
 
 ---
 

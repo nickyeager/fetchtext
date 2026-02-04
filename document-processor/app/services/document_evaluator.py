@@ -80,7 +80,8 @@ class DocumentEvaluator:
         content_type: str,
         quick_scan: bool = True,
         content_override: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Evaluate document type with configurable depth
@@ -92,6 +93,7 @@ class DocumentEvaluator:
             quick_scan: If True, performs quick analysis; if False, full analysis
             content_override: Pre-extracted clean text content (bypasses file extraction)
             user_id: Optional user ID to include their private templates in matching
+            organization_id: Optional organization ID for org-specific LLM config (reserved for future use)
 
         Quick scan: First page/partial analysis, basic patterns
         Full scan: Complete document analysis with AI

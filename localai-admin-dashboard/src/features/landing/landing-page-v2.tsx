@@ -1,111 +1,130 @@
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ThemeSwitch } from '@/components/theme-switch';
 import { useAuth } from '@/context/auth-context';
+import { DemoWidget } from './components/demo-widget';
+import { DocumentFactoryAnimation } from './components/document-factory-animation';
 import {
   ArrowRight,
   FileText,
   Workflow,
   Shield,
-  Zap,
-  Database,
-  Cloud,
-  Play,
   Check,
   Menu,
   X,
-  Sparkles,
   Globe,
-  Lock,
-  Server,
   Brain,
-  FolderSync
+  FolderSync,
+  Terminal,
+  Cpu,
+  ChevronDown,
+  Cloud,
+  HardDrive,
+  Download,
+  ExternalLink,
+  ShieldCheck,
+  Users
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import './landing.css';
+
+type DeploymentMode = 'cloud' | 'self-hosted';
 
 export function LandingPageV2() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [deploymentMode, setDeploymentMode] = useState<DeploymentMode>('cloud');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="landing-page min-h-screen">
+      {/* Blueprint Grid Overlay */}
+      <div className="fixed inset-0 blueprint-grid pointer-events-none opacity-50" />
+
       {/* Navbar */}
-      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4">
+      <nav className="sticky top-0 z-50 w-full border-b border-[var(--landing-card-border)] bg-[var(--landing-bg)]/90 backdrop-blur-xl">
+        <div className="container mx-auto px-4 lg:px-8">
           <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold">FetchText</span>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[var(--landing-primary)] flex items-center justify-center">
+                <Terminal className="h-4 w-4 text-[var(--landing-bg)]" />
+              </div>
+              <span className="font-display text-xl font-bold tracking-tight">FetchText</span>
+              <span className="tech-badge hidden sm:inline-flex">v2.0</span>
             </div>
-            
+
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm font-medium hover:text-primary transition-colors">
-                Features
+              <a href="#features" className="font-mono text-sm text-[var(--landing-fg-muted)] hover:text-[var(--landing-primary)] transition-colors">
+                &gt; Features
               </a>
-              <a href="#security" className="text-sm font-medium hover:text-primary transition-colors">
-                Security
+              <a href="#security" className="font-mono text-sm text-[var(--landing-fg-muted)] hover:text-[var(--landing-primary)] transition-colors">
+                &gt; Security
               </a>
-              <a href="#pricing" className="text-sm font-medium hover:text-primary transition-colors">
-                Pricing
+              <a href="#pricing" className="font-mono text-sm text-[var(--landing-fg-muted)] hover:text-[var(--landing-primary)] transition-colors">
+                &gt; Pricing
               </a>
-              <a href="#faq" className="text-sm font-medium hover:text-primary transition-colors">
-                FAQ
+              <a href="#faq" className="font-mono text-sm text-[var(--landing-fg-muted)] hover:text-[var(--landing-primary)] transition-colors">
+                &gt; FAQ
               </a>
             </div>
 
             <div className="hidden md:flex items-center gap-4">
-              <ThemeSwitch />
               {user ? (
-                <Button asChild>
-                  <Link to="/dashboard">Dashboard</Link>
-                </Button>
+                <Link to="/dashboard" className="btn-industrial text-sm">
+                  Dashboard
+                  <ArrowRight className="ml-2 h-4 w-4 inline" />
+                </Link>
               ) : (
                 <>
-                  <Button variant="ghost" asChild>
-                    <Link to="/sign-in">Sign In</Link>
-                  </Button>
-                  <Button asChild>
-                    <Link to="/sign-up">Get Started</Link>
-                  </Button>
+                  <Link to="/sign-in" className="font-mono text-sm text-[var(--landing-fg-muted)] hover:text-[var(--landing-primary)] transition-colors">
+                    Sign In
+                  </Link>
+                  <Link to="/sign-up" className="btn-industrial text-sm">
+                    Get Started
+                    <ArrowRight className="ml-2 h-4 w-4 inline" />
+                  </Link>
                 </>
               )}
             </div>
 
             {/* Mobile Menu Button */}
             <button
-              className="md:hidden"
+              type="button"
+              className="md:hidden w-10 h-10 flex items-center justify-center border border-[var(--landing-card-border)]"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-expanded={mobileMenuOpen ? "true" : "false"}
+              aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
         </div>
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t">
+          <div className="md:hidden border-t border-[var(--landing-card-border)] bg-[var(--landing-bg)]">
             <div className="container mx-auto px-4 py-4 space-y-3">
-              <a href="#features" className="block text-sm font-medium">Features</a>
-              <a href="#security" className="block text-sm font-medium">Security</a>
-              <a href="#pricing" className="block text-sm font-medium">Pricing</a>
-              <a href="#faq" className="block text-sm font-medium">FAQ</a>
-              <div className="pt-3 border-t space-y-3">
+              <a href="#features" className="block font-mono text-sm py-2">&gt; Features</a>
+              <a href="#security" className="block font-mono text-sm py-2">&gt; Security</a>
+              <a href="#pricing" className="block font-mono text-sm py-2">&gt; Pricing</a>
+              <a href="#faq" className="block font-mono text-sm py-2">&gt; FAQ</a>
+              <div className="pt-3 border-t border-[var(--landing-card-border)] space-y-3">
                 {user ? (
-                  <Button className="w-full" asChild>
-                    <Link to="/dashboard">Dashboard</Link>
-                  </Button>
+                  <Link to="/dashboard" className="btn-industrial w-full text-center block">
+                    Dashboard
+                  </Link>
                 ) : (
                   <>
-                    <Button variant="ghost" className="w-full" asChild>
-                      <Link to="/sign-in">Sign In</Link>
-                    </Button>
-                    <Button className="w-full" asChild>
-                      <Link to="/sign-up">Get Started</Link>
-                    </Button>
+                    <Link to="/sign-in" className="btn-outline-industrial w-full text-center block">
+                      Sign In
+                    </Link>
+                    <Link to="/sign-up" className="btn-industrial w-full text-center block">
+                      Get Started
+                    </Link>
                   </>
                 )}
               </div>
@@ -115,263 +134,410 @@ export function LandingPageV2() {
       </nav>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-4 py-20 lg:py-32">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <section className="relative container mx-auto px-4 lg:px-8 py-20 lg:py-32">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
           <div className="space-y-8">
-            <Badge variant="secondary" className="px-4 py-1">
-              <Sparkles className="h-3 w-3 mr-2" />
-              Self-Hosted AI Platform
-            </Badge>
-            
-            <h1 className="text-4xl lg:text-6xl font-bold tracking-tight">
-              Process Documents with
-              <span className="text-primary block mt-2">Complete Privacy</span>
-            </h1>
-            
-            <p className="text-xl text-muted-foreground">
-              Extract data, automate workflows, and leverage AI—all within your own infrastructure. 
-              No cloud dependencies, no data leaving your servers.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button size="lg" asChild>
-                <Link to="/sign-up">
-                  Get Started
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link to="/learn-more">
-                  <Play className="mr-2 h-4 w-4" />
-                  Learn More
-                </Link>
-              </Button>
+            <div className={`${mounted ? 'animate-fade-up' : 'opacity-0'}`}>
+              <span className="tech-badge">
+                <Cpu className="h-3 w-3 mr-2 inline" />
+                Document AI Platform
+              </span>
             </div>
-          </div>
-          
-          <div className="relative">
-            <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 p-8">
-              <div className="h-full w-full rounded-xl bg-card border shadow-2xl p-6 space-y-4">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <span className="font-semibold">Document Processing</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="h-2 bg-muted rounded w-full" />
-                  <div className="h-2 bg-muted rounded w-4/5" />
-                  <div className="h-2 bg-muted rounded w-3/5" />
-                </div>
-                <div className="pt-4 grid grid-cols-2 gap-3">
-                  <div className="bg-primary/10 rounded p-3 text-center">
-                    <div className="text-2xl font-bold text-primary">95%</div>
-                    <div className="text-xs text-muted-foreground">Accuracy</div>
-                  </div>
-                  <div className="bg-primary/10 rounded p-3 text-center">
-                    <div className="text-2xl font-bold text-primary">10x</div>
-                    <div className="text-xs text-muted-foreground">Faster</div>
-                  </div>
-                </div>
+
+            <h1 className={`font-display text-4xl lg:text-6xl font-bold tracking-tight leading-tight ${mounted ? 'animate-fade-up animate-delay-100' : 'opacity-0'}`}>
+              <span className="text-[var(--landing-fg)]">Process Documents with AI</span>
+              <span className="block text-[var(--landing-primary)] mt-2 glitch-text" data-text="Your Way">
+                Your Way
+              </span>
+            </h1>
+
+            <p className={`text-lg text-[var(--landing-fg-muted)] max-w-lg leading-relaxed ${mounted ? 'animate-fade-up animate-delay-200' : 'opacity-0'}`}>
+              Extract data, automate workflows, and leverage AI—
+              <span className="text-[var(--landing-primary)]"> on our cloud or your infrastructure.</span> You choose how to run it.
+            </p>
+
+            {/* Deployment Toggle */}
+            <div className={`hero-deployment-selector ${mounted ? 'animate-fade-up animate-delay-300' : 'opacity-0'}`}>
+              <div className="hero-deployment-label">Select deployment</div>
+              <DeploymentToggle mode={deploymentMode} onChange={setDeploymentMode} />
+            </div>
+
+            <div className={`flex flex-col sm:flex-row gap-4 ${mounted ? 'animate-fade-up animate-delay-400' : 'opacity-0'}`}>
+              {deploymentMode === 'cloud' ? (
+                <>
+                  <Link to="/sign-up" className="btn-industrial inline-flex items-center justify-center">
+                    Start Free
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                  <a href="#pricing" className="btn-outline-industrial inline-flex items-center justify-center">
+                    View Pricing
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="https://github.com/nickyeager/fetchtext"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-industrial inline-flex items-center justify-center"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download
+                  </a>
+                  <a
+                    href="https://docs.fetchtext.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-outline-industrial inline-flex items-center justify-center"
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View Docs
+                  </a>
+                </>
+              )}
+            </div>
+
+            {/* Status indicators */}
+            <div className={`flex items-center gap-6 pt-4 ${mounted ? 'animate-fade-up animate-delay-500' : 'opacity-0'}`}>
+              <div className="flex items-center gap-2">
+                <div className="status-online" />
+                <span className="font-mono text-xs text-[var(--landing-fg-muted)]">
+                  {deploymentMode === 'cloud' ? 'Cloud Online' : 'Docker Ready'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-[var(--landing-fg-muted)]">v2.4.1</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs text-[var(--landing-primary)]">MIT License</span>
               </div>
             </div>
           </div>
+
+          <div className={`relative space-y-6 ${mounted ? 'animate-fade-up animate-delay-200' : 'opacity-0'}`}>
+            <div className="scan-line">
+              <DocumentFactoryAnimation className="border border-[var(--landing-card-border)]" />
+            </div>
+            <DemoWidget />
+          </div>
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 hidden lg:flex flex-col items-center gap-2">
+          <span className="font-mono text-xs text-[var(--landing-fg-muted)]">SCROLL</span>
+          <ChevronDown className="h-4 w-4 text-[var(--landing-primary)] animate-bounce" />
         </div>
       </section>
 
       {/* Features Section */}
-      <section id="features" className="container mx-auto px-4 py-20">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-            Everything You Need for Document AI
-          </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Powerful features designed for privacy-conscious organizations
-          </p>
-        </div>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <FeatureCard
-            icon={<FileText className="h-6 w-6" />}
-            title="Smart Document Processing"
-            description="Extract structured data from PDFs, images, and documents using state-of-the-art AI models running locally."
-          />
-          <FeatureCard
-            icon={<Brain className="h-6 w-6" />}
-            title="Template Intelligence"
-            description="Create smart templates that learn from your documents and improve extraction accuracy over time."
-          />
-          <FeatureCard
-            icon={<Workflow className="h-6 w-6" />}
-            title="Workflow Automation"
-            description="Build complex document workflows with N8N integration for complete process automation."
-          />
-          <FeatureCard
-            icon={<Shield className="h-6 w-6" />}
-            title="Complete Data Privacy"
-            description="Your data never leaves your infrastructure. Run everything on-premise or in your private cloud."
-          />
-          <FeatureCard
-            icon={<Globe className="h-6 w-6" />}
-            title="Multi-Model Support"
-            description="Use Ollama for local LLMs or connect to Azure OpenAI for enhanced capabilities."
-          />
-          <FeatureCard
-            icon={<FolderSync className="h-6 w-6" />}
-            title="Google Drive Integration"
-            description="Seamlessly sync and process documents from Google Drive with real-time folder monitoring."
-          />
+      <section id="features" className="relative py-24 bg-[var(--landing-bg-alt)]">
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="tech-badge mb-4 inline-flex">System Capabilities</span>
+            <h2 className="font-display text-3xl lg:text-5xl font-bold mt-4">
+              <span className="section-header">Everything for Document AI</span>
+            </h2>
+            <p className="text-lg text-[var(--landing-fg-muted)] mt-4 max-w-2xl mx-auto">
+              Enterprise-grade features for {deploymentMode === 'cloud' ? 'teams who want it simple' : 'privacy-conscious organizations'}
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <FeatureCard
+              icon={<FileText className="h-6 w-6" />}
+              title="Smart Document Processing"
+              description={deploymentMode === 'cloud'
+                ? "Extract structured data with our managed AI infrastructure—no setup required."
+                : "Extract structured data from PDFs, images, and documents using AI models on your infrastructure."
+              }
+              tag="CORE"
+              relevance="both"
+            />
+            <FeatureCard
+              icon={<Brain className="h-6 w-6" />}
+              title="Template Intelligence"
+              description={deploymentMode === 'cloud'
+                ? "Create smart templates that learn from your documents. We handle all the AI."
+                : "Create smart templates with AI you control—Ollama, vLLM, or your own Azure keys."
+              }
+              tag="AI"
+              relevance="both"
+            />
+            <FeatureCard
+              icon={<Workflow className="h-6 w-6" />}
+              title="Workflow Automation"
+              description={deploymentMode === 'cloud'
+                ? "Build complex document workflows with fully managed N8N integration."
+                : "Build complex document workflows with N8N running on your own servers."
+              }
+              tag="AUTOMATION"
+              relevance="both"
+            />
+            <FeatureCard
+              icon={<Shield className="h-6 w-6" />}
+              title="Complete Data Privacy"
+              description={deploymentMode === 'cloud'
+                ? "SOC 2 compliant infrastructure. Your data encrypted at rest and in transit."
+                : "Your data never leaves your infrastructure. Run everything air-gapped if needed."
+              }
+              tag="SECURITY"
+              relevance={deploymentMode === 'cloud' ? 'cloud' : 'self-hosted'}
+            />
+            <FeatureCard
+              icon={<Globe className="h-6 w-6" />}
+              title="Multi-Model Support"
+              description={deploymentMode === 'cloud'
+                ? "Powered by Azure OpenAI with automatic model updates and optimizations."
+                : "Use Ollama for local LLMs, or connect your own Azure/OpenAI API keys."
+              }
+              tag="MODELS"
+              relevance="both"
+            />
+            <FeatureCard
+              icon={<FolderSync className="h-6 w-6" />}
+              title="Google Drive Integration"
+              description={deploymentMode === 'cloud'
+                ? "Connect your Google Drive in one click. We handle the sync automatically."
+                : "Seamlessly sync documents from Google Drive with your own OAuth credentials."
+              }
+              tag="SYNC"
+              relevance="both"
+            />
+          </div>
         </div>
       </section>
 
-      {/* Security Section */}
-      <section id="security" className="bg-muted/50 py-20">
-        <div className="container mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-6">
-              <h2 className="text-3xl lg:text-4xl font-bold">
-                Enterprise-Grade Security, Complete Control
-              </h2>
-              <p className="text-lg text-muted-foreground">
-                Unlike cloud-based solutions, FetchText ensures your sensitive documents never leave your infrastructure.
-              </p>
-              
-              <div className="space-y-4">
-                <SecurityFeature
-                  icon={<Lock className="h-5 w-5" />}
-                  title="End-to-End Encryption"
-                  description="All data is encrypted at rest and in transit within your infrastructure"
+      {/* Security Section - Side by Side Comparison */}
+      <section id="security" className="relative py-24">
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="tech-badge mb-4 inline-flex">Security Protocol</span>
+            <h2 className="font-display text-3xl lg:text-5xl font-bold mt-4">
+              <span className="section-header">Enterprise-Grade Security</span>
+            </h2>
+            <p className="text-lg text-[var(--landing-fg-muted)] mt-4 max-w-2xl mx-auto">
+              Whether cloud or self-hosted, your data is protected with industry-leading security
+            </p>
+          </div>
+
+          <div className="security-comparison">
+            <div className="security-column cloud">
+              <div className="security-column-header">
+                <span className="security-column-icon">☁️</span>
+                <span className="security-column-title">Cloud Security</span>
+              </div>
+              <div className="security-column-features">
+                <SecurityFeatureItem text="SOC 2 Type II certified" />
+                <SecurityFeatureItem text="Data encrypted at rest & in transit" />
+                <SecurityFeatureItem text="99.9% uptime SLA guarantee" />
+                <SecurityFeatureItem text="GDPR compliant processing" />
+                <SecurityFeatureItem text="Automatic backups & recovery" />
+                <SecurityFeatureItem text="Managed security patches" />
+              </div>
+            </div>
+
+            <div className="security-column self-hosted">
+              <div className="security-column-header">
+                <span className="security-column-icon">🖥️</span>
+                <span className="security-column-title">Self-Hosted Security</span>
+              </div>
+              <div className="security-column-features">
+                <SecurityFeatureItem text="SOC 2 compliant architecture" />
+                <SecurityFeatureItem text="Data never leaves your servers" />
+                <SecurityFeatureItem text="Air-gapped deployment option" />
+                <SecurityFeatureItem text="Full data sovereignty" />
+                <SecurityFeatureItem text="Your backup strategy" />
+                <SecurityFeatureItem text="Zero external dependencies" />
+              </div>
+            </div>
+          </div>
+
+          {/* Shared Compliance Badges */}
+          <div className="compliance-badges">
+            <div className="compliance-badge">
+              <ShieldCheck className="h-4 w-4" />
+              GDPR Ready
+            </div>
+            <div className="compliance-badge">
+              <ShieldCheck className="h-4 w-4" />
+              HIPAA Ready
+            </div>
+            <div className="compliance-badge">
+              <Users className="h-4 w-4" />
+              RBAC
+            </div>
+            <div className="compliance-badge">
+              <FileText className="h-4 w-4" />
+              Audit Logging
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section - Side by Side Tracks */}
+      <section id="pricing" className="relative py-24 bg-[var(--landing-bg-alt)]">
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="tech-badge mb-4 inline-flex">Pricing Structure</span>
+            <h2 className="font-display text-3xl lg:text-5xl font-bold mt-4">
+              <span className="section-header">Choose Your Path</span>
+            </h2>
+            <p className="text-lg text-[var(--landing-fg-muted)] mt-4">
+              Same powerful features, different deployment options
+            </p>
+          </div>
+
+          <div className="pricing-tracks-container">
+            {/* Cloud Track */}
+            <div className="pricing-track cloud">
+              <div className="pricing-track-header">
+                <div className="pricing-track-icon">☁️</div>
+                <div className="pricing-track-title">Cloud</div>
+                <div className="pricing-track-subtitle">We run everything</div>
+              </div>
+              <div className="pricing-track-cards">
+                <PricingMiniCard
+                  name="Free"
+                  price="$0"
+                  period="/mo"
+                  features={[
+                    "100 documents/month",
+                    "Shared AI processing",
+                    "Community support",
+                    "Basic templates"
+                  ]}
+                  cta="Start Free"
+                  href="/sign-up"
+                  variant="secondary"
                 />
-                <SecurityFeature
-                  icon={<Server className="h-5 w-5" />}
-                  title="Self-Hosted Infrastructure"
-                  description="Deploy on your own servers or private cloud for complete control"
+                <PricingMiniCard
+                  name="Pro"
+                  price="$49"
+                  period="/mo"
+                  features={[
+                    "Unlimited documents",
+                    "Priority AI processing",
+                    "Email support",
+                    "Google Drive sync",
+                    "Advanced templates"
+                  ]}
+                  cta="Start Pro Trial"
+                  href="/sign-up?plan=pro"
+                  variant="primary"
+                  featured
                 />
-                <SecurityFeature
-                  icon={<Shield className="h-5 w-5" />}
-                  title="Zero External Dependencies"
-                  description="No API calls to external services unless explicitly configured"
-                />
-                <SecurityFeature
-                  icon={<Database className="h-5 w-5" />}
-                  title="Data Sovereignty"
-                  description="Your data stays in your chosen geographic location"
+                <PricingMiniCard
+                  name="Enterprise"
+                  price="Custom"
+                  features={[
+                    "Dedicated infrastructure",
+                    "99.9% SLA",
+                    "Custom integrations",
+                    "SSO / SAML",
+                    "24/7 support"
+                  ]}
+                  cta="Contact Sales"
+                  href="mailto:nick@fetchtext.io?subject=FetchText%20Cloud%20Enterprise"
+                  variant="secondary"
                 />
               </div>
             </div>
-            
-            <div className="bg-card rounded-xl border p-8 shadow-lg">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <Shield className="h-8 w-8 text-primary" />
-                  <h3 className="text-2xl font-bold">Security First</h3>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-green-500" />
-                    <span>SOC 2 Compliant Architecture</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-green-500" />
-                    <span>GDPR & HIPAA Ready</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-green-500" />
-                    <span>Role-Based Access Control</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-green-500" />
-                    <span>Audit Logging</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-green-500" />
-                    <span>Air-Gapped Deployment Option</span>
-                  </div>
-                </div>
+
+            {/* Mobile Divider */}
+            <div className="pricing-divider">
+              <div className="pricing-divider-line" />
+              <span className="pricing-divider-text">or</span>
+              <div className="pricing-divider-line" />
+            </div>
+
+            {/* Self-Hosted Track */}
+            <div className="pricing-track self-hosted">
+              <div className="pricing-track-header">
+                <div className="pricing-track-icon">🖥️</div>
+                <div className="pricing-track-title">Self-Hosted</div>
+                <div className="pricing-track-subtitle">You run everything</div>
+              </div>
+              <div className="pricing-track-cards">
+                <PricingMiniCard
+                  name="Community"
+                  price="Free"
+                  period=" forever"
+                  features={[
+                    "Unlimited documents",
+                    "Ollama AI (local)",
+                    "Community support",
+                    "Full source access"
+                  ]}
+                  cta="Download"
+                  href="https://github.com/nickyeager/fetchtext"
+                  variant="secondary"
+                  external
+                />
+                <PricingMiniCard
+                  name="Pro"
+                  price="$499"
+                  period="/year"
+                  features={[
+                    "Everything in Community",
+                    "Email support",
+                    "Priority updates",
+                    "Google Drive sync",
+                    "Commercial license"
+                  ]}
+                  cta="Buy License"
+                  href="mailto:nick@fetchtext.io?subject=FetchText%20Self-Hosted%20Pro"
+                  variant="primary"
+                  featured
+                />
+                <PricingMiniCard
+                  name="Enterprise"
+                  price="Custom"
+                  features={[
+                    "Everything in Pro",
+                    "Priority support",
+                    "Custom development",
+                    "Air-gapped deployment",
+                    "Training & onboarding"
+                  ]}
+                  cta="Contact Sales"
+                  href="mailto:nick@fetchtext.io?subject=FetchText%20Self-Hosted%20Enterprise"
+                  variant="secondary"
+                />
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="container mx-auto px-4 py-20">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">
-            Simple, Transparent Pricing
-          </h2>
-          <p className="text-xl text-muted-foreground">
-            One-time license fee, no recurring costs
-          </p>
-        </div>
-        
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          <PricingCard
-            title="Community"
-            price="Free"
-            description="Perfect for individuals and small teams"
-            features={[
-              "Up to 3 users",
-              "1,000 documents/month",
-              "Basic templates",
-              "Community support",
-              "Docker deployment"
-            ]}
-            cta="Get Started"
-            variant="outline"
-          />
-          <PricingCard
-            title="Professional"
-            price="$499"
-            description="For growing teams and businesses"
-            features={[
-              "Unlimited users",
-              "Unlimited documents",
-              "Advanced templates",
-              "Priority support",
-              "Kubernetes deployment",
-              "Google Drive integration",
-              "Custom AI models"
-            ]}
-            cta="Buy License"
-            highlighted
-          />
-          <PricingCard
-            title="Enterprise"
-            price="Custom"
-            description="For large organizations"
-            features={[
-              "Everything in Pro",
-              "SLA guarantee",
-              "Custom integrations",
-              "Training & onboarding",
-              "Air-gapped deployment",
-              "24/7 support",
-              "Custom development"
-            ]}
-            cta="Contact Sales"
-            variant="outline"
-          />
-        </div>
-      </section>
-
       {/* FAQ Section */}
-      <section id="faq" className="bg-muted/50 py-20">
-        <div className="container mx-auto px-4 max-w-3xl">
-          <h2 className="text-3xl lg:text-4xl font-bold text-center mb-12">
-            Frequently Asked Questions
-          </h2>
-          
-          <div className="space-y-6">
+      <section id="faq" className="relative py-24">
+        <div className="container mx-auto px-4 lg:px-8 max-w-3xl">
+          <div className="text-center mb-16">
+            <span className="tech-badge mb-4 inline-flex">Documentation</span>
+            <h2 className="font-display text-3xl lg:text-5xl font-bold mt-4">
+              <span className="section-header">FAQ</span>
+            </h2>
+          </div>
+
+          <div className="space-y-4">
             <FAQItem
-              question="How is FetchText different from cloud-based solutions?"
-              answer="FetchText runs entirely on your infrastructure. Your documents and data never leave your servers, giving you complete control and privacy. Unlike SaaS solutions, there are no monthly fees or usage limits."
+              question="Should I choose Cloud or Self-Hosted?"
+              answer="Cloud is best for teams wanting zero setup, automatic updates, and managed infrastructure. Self-Hosted is ideal for organizations with strict compliance requirements, existing infrastructure, or data sovereignty needs. Both options provide the same core features."
+            />
+            <FAQItem
+              question="Can I switch between Cloud and Self-Hosted?"
+              answer="Yes! You can export your templates and data anytime. We provide migration tools to move between deployment options. Your workflows and templates are fully portable."
+            />
+            <FAQItem
+              question="What's included in the self-hosted free tier?"
+              answer="Everything except priority support. Run unlimited documents with Ollama AI models completely free. The Community tier includes full source access and all core features—no artificial limitations."
             />
             <FAQItem
               question="What AI models does FetchText support?"
-              answer="FetchText supports Ollama for local LLM deployment, Azure OpenAI for enhanced capabilities, and custom models. You can run models like Llama, Mistral, and others completely offline."
+              answer="Cloud uses Azure OpenAI for fast, reliable processing. Self-Hosted supports Ollama for local LLMs (Llama, Mistral, Qwen), or you can bring your own Azure/OpenAI API keys."
             />
             <FAQItem
-              question="How difficult is it to set up?"
+              question="How difficult is self-hosted setup?"
               answer="FetchText can be deployed in under 5 minutes using Docker Compose. We provide detailed documentation and deployment scripts for Docker, Kubernetes, and bare metal installations."
             />
             <FAQItem
@@ -383,77 +549,82 @@ export function LandingPageV2() {
       </section>
 
       {/* CTA Section */}
-      <section className="container mx-auto px-4 py-20">
-        <div className="bg-primary rounded-2xl p-12 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-primary-foreground mb-4">
-            Ready to Take Control of Your Document AI?
-          </h2>
-          <p className="text-xl text-primary-foreground/90 mb-8 max-w-2xl mx-auto">
-            Join hundreds of organizations processing millions of documents with complete privacy
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="secondary" asChild>
-              <Link to="/sign-up">
-                Start Free Trial
-                <ArrowRight className="ml-2 h-4 w-4" />
+      <section className="relative py-24">
+        <div className="container mx-auto px-4 lg:px-8">
+          <div className="industrial-card p-12 lg:p-16 text-center">
+            <h2 className="font-display text-3xl lg:text-5xl font-bold mb-4">
+              Ready to Get Started?
+            </h2>
+            <p className="text-lg text-[var(--landing-fg-muted)] mb-8 max-w-2xl mx-auto">
+              Process documents with AI—your cloud or your servers, your choice
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link to="/sign-up" className="btn-industrial inline-flex items-center justify-center">
+                <Cloud className="mr-2 h-4 w-4" />
+                Start Cloud Free
               </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="bg-transparent text-primary-foreground border-primary-foreground hover:bg-primary-foreground/10" asChild>
-              <a href="https://github.com/yourusername/fetchtext" target="_blank" rel="noopener noreferrer">
-                View on GitHub
+              <a
+                href="https://github.com/nickyeager/fetchtext"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-outline-industrial inline-flex items-center justify-center"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Self-Host Now
               </a>
-            </Button>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-12">
-        <div className="container mx-auto px-4">
+      <footer className="industrial-footer py-12">
+        <div className="container mx-auto px-4 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <span className="font-bold">FetchText</span>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-[var(--landing-primary)] flex items-center justify-center">
+                  <Terminal className="h-4 w-4 text-[var(--landing-bg)]" />
+                </div>
+                <span className="font-display font-bold text-white">FetchText</span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Self-hosted document AI platform with complete data privacy
+              <p className="text-sm text-[var(--landing-fg-muted)]">
+                Document AI platform — cloud or self-hosted, your choice
               </p>
+              <div className="flex items-center gap-2">
+                <div className="status-online" />
+                <span className="font-mono text-xs text-[var(--landing-fg-muted)]">All systems operational</span>
+              </div>
             </div>
-            
+
             <div>
-              <h4 className="font-semibold mb-3">Product</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#features" className="hover:text-primary">Features</a></li>
-                <li><a href="#pricing" className="hover:text-primary">Pricing</a></li>
-                <li><a href="/docs" className="hover:text-primary">Documentation</a></li>
-                <li><a href="/api" className="hover:text-primary">API Reference</a></li>
+              <h4 className="font-display font-semibold mb-4 text-[var(--landing-primary)]">&gt; Product</h4>
+              <ul className="space-y-2 font-mono text-sm text-[var(--landing-fg-muted)]">
+                <li><a href="#features" className="hover:text-[var(--landing-primary)] transition-colors">Features</a></li>
+                <li><a href="#pricing" className="hover:text-[var(--landing-primary)] transition-colors">Pricing</a></li>
+                <li><a href="#faq" className="hover:text-[var(--landing-primary)] transition-colors">Documentation</a></li>
               </ul>
             </div>
-            
+
             <div>
-              <h4 className="font-semibold mb-3">Company</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="/about" className="hover:text-primary">About</a></li>
-                <li><a href="/blog" className="hover:text-primary">Blog</a></li>
-                <li><a href="/contact" className="hover:text-primary">Contact</a></li>
-                <li><a href="/privacy" className="hover:text-primary">Privacy</a></li>
+              <h4 className="font-display font-semibold mb-4 text-[var(--landing-primary)]">&gt; Legal</h4>
+              <ul className="space-y-2 font-mono text-sm text-[var(--landing-fg-muted)]">
+                <li><Link to="/terms" className="hover:text-[var(--landing-primary)] transition-colors">Terms of Service</Link></li>
+                <li><Link to="/privacy" className="hover:text-[var(--landing-primary)] transition-colors">Privacy Policy</Link></li>
               </ul>
             </div>
-            
+
             <div>
-              <h4 className="font-semibold mb-3">Connect</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="https://github.com" className="hover:text-primary">GitHub</a></li>
-                <li><a href="https://twitter.com" className="hover:text-primary">Twitter</a></li>
-                <li><a href="https://discord.com" className="hover:text-primary">Discord</a></li>
-                <li><a href="/contact" className="hover:text-primary">Support</a></li>
+              <h4 className="font-display font-semibold mb-4 text-[var(--landing-primary)]">&gt; Contact</h4>
+              <ul className="space-y-2 font-mono text-sm text-[var(--landing-fg-muted)]">
+                <li><a href="mailto:nick@fetchtext.io" className="hover:text-[var(--landing-primary)] transition-colors">nick@fetchtext.io</a></li>
+                <li><a href="mailto:nick@fetchtext.io?subject=Support%20Request" className="hover:text-[var(--landing-primary)] transition-colors">Support</a></li>
               </ul>
             </div>
           </div>
-          
-          <div className="mt-12 pt-8 border-t text-center text-sm text-muted-foreground">
-            <p>© 2024 FetchText. Open source and self-hosted with ❤️</p>
+
+          <div className="mt-12 pt-8 border-t border-[var(--landing-card-border)] text-center font-mono text-sm text-[var(--landing-fg-muted)]">
+            <p>&copy; {new Date().getFullYear()} FetchText // Document Processing Platform // MIT License</p>
           </div>
         </div>
       </footer>
@@ -461,89 +632,171 @@ export function LandingPageV2() {
   );
 }
 
-// Component helpers
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+// ============================================
+// Component: Deployment Toggle
+// ============================================
+function DeploymentToggle({
+  mode,
+  onChange
+}: {
+  mode: DeploymentMode;
+  onChange: (mode: DeploymentMode) => void;
+}) {
   return (
-    <Card className="hover:shadow-lg transition-shadow">
-      <CardHeader>
-        <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-4">
-          {icon}
-        </div>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <CardDescription>{description}</CardDescription>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SecurityFeature({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="flex gap-4">
-      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
-        {icon}
-      </div>
-      <div>
-        <h4 className="font-semibold mb-1">{title}</h4>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
+    <div className="deployment-toggle">
+      <button
+        type="button"
+        className={`deployment-toggle-option ${mode === 'cloud' ? 'active' : ''}`}
+        onClick={() => onChange('cloud')}
+        aria-pressed={mode === 'cloud' ? 'true' : 'false'}
+      >
+        <Cloud className="h-4 w-4 deployment-toggle-icon" />
+        Cloud
+      </button>
+      <button
+        type="button"
+        className={`deployment-toggle-option ${mode === 'self-hosted' ? 'active' : ''}`}
+        onClick={() => onChange('self-hosted')}
+        aria-pressed={mode === 'self-hosted' ? 'true' : 'false'}
+      >
+        <HardDrive className="h-4 w-4 deployment-toggle-icon" />
+        Self-Hosted
+      </button>
     </div>
   );
 }
 
-function PricingCard({ 
-  title, 
-  price, 
-  description, 
-  features, 
-  cta, 
-  highlighted = false,
-  variant = "default" 
-}: { 
-  title: string; 
-  price: string; 
-  description: string; 
-  features: string[]; 
-  cta: string; 
-  highlighted?: boolean;
-  variant?: "default" | "outline";
+// ============================================
+// Component: Feature Card
+// ============================================
+function FeatureCard({
+  icon,
+  title,
+  description,
+  tag,
+  relevance
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  tag: string;
+  relevance?: 'cloud' | 'self-hosted' | 'both';
 }) {
   return (
-    <Card className={highlighted ? "border-primary shadow-lg scale-105" : ""}>
-      <CardHeader>
-        {highlighted && (
-          <Badge className="w-fit mb-4">Most Popular</Badge>
-        )}
-        <CardTitle className="text-2xl">{title}</CardTitle>
-        <div className="mt-4">
-          <span className="text-4xl font-bold">{price}</span>
-          {price !== "Free" && price !== "Custom" && <span className="text-muted-foreground">/one-time</span>}
+    <div className="feature-card">
+      <div className="flex items-start justify-between mb-4">
+        <div className="icon-glow">
+          {icon}
         </div>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ul className="space-y-2">
-          {features.map((feature, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <Check className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-              <span className="text-sm">{feature}</span>
-            </li>
-          ))}
-        </ul>
-        <Button className="w-full" variant={highlighted ? "default" : variant as any}>
-          {cta}
-        </Button>
-      </CardContent>
-    </Card>
+        <div className="flex items-center gap-2">
+          {relevance && (
+            <span className={`feature-relevance-badge ${relevance}`}>
+              {relevance === 'both' ? 'Both' : relevance === 'cloud' ? 'Cloud' : 'Self-Hosted'}
+            </span>
+          )}
+          <span className="font-mono text-xs text-[var(--landing-primary)] opacity-70">[{tag}]</span>
+        </div>
+      </div>
+      <h3 className="font-display text-lg font-bold mb-2">{title}</h3>
+      <p className="text-sm text-[var(--landing-fg-muted)] leading-relaxed">{description}</p>
+    </div>
   );
 }
 
-function FAQItem({ question, answer }: { question: string; answer: string }) {
+// ============================================
+// Component: Security Feature Item
+// ============================================
+function SecurityFeatureItem({ text }: { text: string }) {
   return (
-    <div className="bg-card rounded-lg p-6 border">
-      <h3 className="font-semibold mb-2">{question}</h3>
-      <p className="text-muted-foreground">{answer}</p>
+    <div className="security-feature-item">
+      <Check className="h-4 w-4" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+// ============================================
+// Component: Pricing Mini Card
+// ============================================
+function PricingMiniCard({
+  name,
+  price,
+  period,
+  features,
+  cta,
+  href,
+  variant = 'secondary',
+  featured = false,
+  external = false
+}: {
+  name: string;
+  price: string;
+  period?: string;
+  features: string[];
+  cta: string;
+  href: string;
+  variant?: 'primary' | 'secondary';
+  featured?: boolean;
+  external?: boolean;
+}) {
+  const isExternal = external || href.startsWith('mailto:') || href.startsWith('http');
+
+  const ctaClass = `pricing-mini-cta ${variant}`;
+
+  return (
+    <div className={`pricing-mini-card ${featured ? 'featured' : ''}`}>
+      <div className="pricing-mini-header">
+        <span className="pricing-mini-name">{name}</span>
+        <span className="pricing-mini-price">
+          {price}
+          {period && <span>{period}</span>}
+        </span>
+      </div>
+      <ul className="pricing-mini-features">
+        {features.map((feature, i) => (
+          <li key={i}>
+            <Check className="h-4 w-4" />
+            {feature}
+          </li>
+        ))}
+      </ul>
+      {isExternal ? (
+        <a href={href} className={ctaClass} target="_blank" rel="noopener noreferrer">
+          {cta}
+        </a>
+      ) : (
+        <Link to={href} className={ctaClass}>
+          {cta}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Component: FAQ Item
+// ============================================
+function FAQItem({ question, answer }: { question: string; answer: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="industrial-card">
+      <button
+        type="button"
+        className="w-full p-6 text-left flex items-start gap-4"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen ? "true" : "false"}
+      >
+        <span className="font-mono text-[var(--landing-primary)] flex-shrink-0">
+          {isOpen ? '[-]' : '[+]'}
+        </span>
+        <div className="flex-1">
+          <h3 className="font-display font-semibold">{question}</h3>
+          {isOpen && (
+            <p className="mt-3 text-[var(--landing-fg-muted)] leading-relaxed">{answer}</p>
+          )}
+        </div>
+      </button>
     </div>
   );
 }
