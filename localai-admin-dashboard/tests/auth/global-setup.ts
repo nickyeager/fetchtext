@@ -78,16 +78,17 @@ async function fetchSupabaseSession(): Promise<{ authPayload: any }> { // eslint
   return { authPayload: { currentSession: json, currentUser: json.user } };
 }
 
-async function writeStorageState(payload: { authPayload: unknown }) {
+async function writeStorageState(payload: { authPayload: any }) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  // Supabase v2 expects the session data directly, not wrapped in currentSession
+  const session = payload.authPayload.currentSession;
   const storageState = {
     cookies: [],
     origins: [
       {
-        origin: 'http://localhost:5174',
+        origin: 'http://localhost:5173',
         localStorage: [
-          { name: 'localai-supabase-auth', value: JSON.stringify(payload.authPayload) },
-          { name: 'sb-local-auth-token', value: JSON.stringify(payload.authPayload) },
-          { name: 'sb-local-persist-session', value: 'true' },
+          // Supabase v2 stores the raw session data
+          { name: 'localai-supabase-auth', value: JSON.stringify(session) },
         ],
       },
     ],
@@ -103,7 +104,7 @@ async function writeStorageState(payload: { authPayload: unknown }) {
 async function globalSetup() {
   if (process.env.E2E_SKIP_GLOBAL_SETUP === '1') return;
   loadE2EEnv();
-  const frontendBase = process.env.BASE_URL || 'http://localhost:5174';
+  const frontendBase = process.env.BASE_URL || 'http://localhost:5173';
   await assertFrontendHealthy(frontendBase);
   try {
     const { authPayload } = await fetchSupabaseSession();
