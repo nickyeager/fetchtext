@@ -6,16 +6,40 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import { RefreshCw, Check, AlertCircle, Bot, Server, Cloud, Zap } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RefreshCw, Check, AlertCircle, Bot, Server, Cloud, Zap, Building2, Crown, Rocket, Shield, Sparkles } from 'lucide-react'
 import { aiService } from '@/lib/services/ai-service'
+import { useOrganization } from '@/context/organization-context'
+import { LLM_TIERS } from '@/types/organization'
 import { toast } from 'sonner'
 import ModelSelector from './model-selector'
 import ProviderSelector from './provider-selector'
+import { ProvisioningStatus } from '@/components/provisioning/ProvisioningStatus'
+import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config'
 
 export default function AIModelsSettings() {
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [selectedProvider, setSelectedProvider] = useState<string>('')
+  const [enterpriseModel, setEnterpriseModel] = useState<string>('gpt-4o-mini')
+  const [showUpgradeUI, setShowUpgradeUI] = useState(false)
   const queryClient = useQueryClient()
+  const { activeOrganization, canManage } = useOrganization()
+
+  // Fetch org's effective LLM config
+  const {
+    data: effectiveConfig,
+    isLoading: isLoadingEffectiveConfig,
+    refetch: refetchEffectiveConfig
+  } = useQuery({
+    queryKey: ['org-llm-config', activeOrganization?.id],
+    queryFn: () => activeOrganization?.id
+      ? aiService.getEffectiveLLMConfig(activeOrganization.id)
+      : Promise.resolve(null),
+    enabled: !!activeOrganization?.id,
+    retry: 1,
+    staleTime: 30000,
+  })
 
   // Fetch available providers
   const {
@@ -42,6 +66,33 @@ export default function AIModelsSettings() {
     enabled: !!providersData,
     retry: 2,
     staleTime: 30000, // 30 seconds
+  })
+
+  // Fetch provisioning status for enterprise tier
+  const {
+    data: provisioningStatus,
+    refetch: refetchProvisioningStatus
+  } = useQuery({
+    queryKey: ['provisioning-status', activeOrganization?.id],
+    queryFn: async () => {
+      if (!activeOrganization?.id) return null
+      const response = await fetch(
+        `${DOCUMENT_PROCESSOR_URL}/models/provision/${activeOrganization.id}/status`
+      )
+      if (!response.ok) {
+        throw new Error('Failed to fetch provisioning status')
+      }
+      return response.json()
+    },
+    enabled: !!activeOrganization?.id && (effectiveConfig?.tier === 'enterprise' || showUpgradeUI),
+    refetchInterval: (query) => {
+      // Poll every 5 seconds while provisioning
+      const status = query.state.data?.status
+      if (status === 'provisioning' || status === 'pending') {
+        return 5000
+      }
+      return false
+    },
   })
 
   // Set active provider mutation
@@ -85,6 +136,37 @@ export default function AIModelsSettings() {
     }
   })
 
+  // Provision enterprise instance mutation
+  const provisionMutation = useMutation({
+    mutationFn: async (model: string) => {
+      if (!activeOrganization?.id) {
+        throw new Error('No organization selected')
+      }
+      const response = await fetch(
+        `${DOCUMENT_PROCESSOR_URL}/models/provision/${activeOrganization.id}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selected_model: model }),
+        }
+      )
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Provisioning failed')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      toast.success('Provisioning started! Your dedicated instance is being created.')
+      setShowUpgradeUI(false)
+      queryClient.invalidateQueries({ queryKey: ['provisioning-status'] })
+      refetchProvisioningStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(`Provisioning failed: ${error.message}`)
+    }
+  })
+
   // Set initial selected values when data loads
   useEffect(() => {
     if (modelsData && !selectedModel) {
@@ -114,12 +196,21 @@ export default function AIModelsSettings() {
   const handleRefresh = () => {
     refetchProviders()
     refetchModels()
+    refetchEffectiveConfig()
     toast.info('Refreshing AI configuration...')
   }
 
   const handleTestConnection = () => {
     testConnectionMutation.mutate()
   }
+
+  const handleStartProvisioning = () => {
+    provisionMutation.mutate(enterpriseModel)
+  }
+
+  // Check if provisioning is in progress or active
+  const isProvisioning = provisioningStatus?.status === 'provisioning' || provisioningStatus?.status === 'pending'
+  const isProvisioningActive = provisioningStatus?.status === 'active'
 
   if (modelsError) {
     return (
@@ -154,6 +245,237 @@ export default function AIModelsSettings() {
         </p>
       </div>
       <Separator />
+
+      {/* Organization LLM Tier Status */}
+      {activeOrganization && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">
+                  {activeOrganization.name} - AI Configuration
+                </CardTitle>
+              </div>
+              {effectiveConfig && (
+                <Badge variant={effectiveConfig.source === 'organization' ? 'default' : 'secondary'}>
+                  {effectiveConfig.source === 'organization' ? (
+                    <><Crown className="h-3 w-3 mr-1" /> Custom Config</>
+                  ) : (
+                    'System Default'
+                  )}
+                </Badge>
+              )}
+            </div>
+            <CardDescription>
+              Your organization's AI tier and usage status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingEffectiveConfig ? (
+              <div className="space-y-3">
+                <Skeleton className="h-8 w-48" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            ) : effectiveConfig ? (
+              <div className="space-y-4">
+                {/* Tier Info */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-lg">
+                        {LLM_TIERS[effectiveConfig.tier]?.name || effectiveConfig.tier}
+                      </span>
+                      {LLM_TIERS[effectiveConfig.tier]?.hasAI && (
+                        <Badge variant="outline" className="text-xs">
+                          <Bot className="h-3 w-3 mr-1" /> AI Enabled
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {LLM_TIERS[effectiveConfig.tier]?.description}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Usage Limits (for non_managed tier) */}
+                {effectiveConfig.has_usage_limits && (
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Daily Usage</span>
+                      <span className={effectiveConfig.is_within_limits ? 'text-muted-foreground' : 'text-destructive font-medium'}>
+                        {effectiveConfig.documents_today} / {effectiveConfig.daily_limit} documents
+                      </span>
+                    </div>
+                    <Progress
+                      value={effectiveConfig.daily_limit
+                        ? (effectiveConfig.documents_today / effectiveConfig.daily_limit) * 100
+                        : 0
+                      }
+                      className="h-2"
+                    />
+
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Monthly Usage</span>
+                      <span className="text-muted-foreground">
+                        {effectiveConfig.documents_month} / {effectiveConfig.monthly_limit} documents
+                      </span>
+                    </div>
+                    <Progress
+                      value={effectiveConfig.monthly_limit
+                        ? (effectiveConfig.documents_month / effectiveConfig.monthly_limit) * 100
+                        : 0
+                      }
+                      className="h-2"
+                    />
+
+                    {!effectiveConfig.is_within_limits && (
+                      <Alert variant="destructive" className="mt-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          Usage limit exceeded. Upgrade your plan for unlimited AI processing.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                )}
+
+                {/* Upgrade prompt for non-managed tier */}
+                {effectiveConfig.tier === 'non_managed' && canManage && !isProvisioning && !isProvisioningActive && (
+                  <div className="pt-2 border-t">
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Want unlimited AI processing with dedicated infrastructure?
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowUpgradeUI(true)}
+                    >
+                      <Rocket className="h-4 w-4 mr-2" />
+                      Upgrade to Enterprise
+                    </Button>
+                  </div>
+                )}
+
+                {/* Show provisioning status when in progress */}
+                {(isProvisioning || isProvisioningActive) && activeOrganization?.id && (
+                  <div className="pt-2 border-t">
+                    <ProvisioningStatus
+                      organizationId={activeOrganization.id}
+                      onComplete={() => {
+                        refetchEffectiveConfig()
+                        queryClient.invalidateQueries({ queryKey: ['provisioning-status'] })
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Using system default AI configuration
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Enterprise Upgrade Card */}
+      {showUpgradeUI && canManage && (
+        <Card className="border-primary/50 bg-gradient-to-br from-primary/5 to-transparent">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-primary" />
+                <CardTitle className="text-base">Upgrade to Enterprise</CardTitle>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowUpgradeUI(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+            <CardDescription>
+              Get a dedicated Azure OpenAI instance for your organization
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Benefits */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background border">
+                <Shield className="h-5 w-5 text-green-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Data Isolation</p>
+                  <p className="text-xs text-muted-foreground">Your own isolated Azure instance</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background border">
+                <Zap className="h-5 w-5 text-yellow-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">No Usage Limits</p>
+                  <p className="text-xs text-muted-foreground">Unlimited document processing</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-background border">
+                <Sparkles className="h-5 w-5 text-purple-500 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Latest Models</p>
+                  <p className="text-xs text-muted-foreground">GPT-4o and GPT-4o-mini</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Select your AI model</label>
+              <Select value={enterpriseModel} onValueChange={setEnterpriseModel}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gpt-4o-mini">
+                    <div className="flex flex-col">
+                      <span>GPT-4o-mini (Recommended)</span>
+                      <span className="text-xs text-muted-foreground">Fast and cost-effective</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="gpt-4o">
+                    <div className="flex flex-col">
+                      <span>GPT-4o</span>
+                      <span className="text-xs text-muted-foreground">Most capable, higher cost</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Provision Button */}
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleStartProvisioning}
+                disabled={provisionMutation.isPending}
+                className="w-full"
+              >
+                {provisionMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Starting Provisioning...
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="h-4 w-4 mr-2" />
+                    Provision My Instance
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Provisioning takes 2-5 minutes. You can continue using the app while we set up your instance.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Provider Selection */}
       <Card>

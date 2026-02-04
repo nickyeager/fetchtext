@@ -2,13 +2,18 @@
  * Field Persistence Service
  *
  * Handles saving extracted fields to the database
- * Responsible for merging new fields with existing extracted data
+ * Uses the canonical path: metadata.extracted_values
  *
  * @module field-persistence-service
  */
 
 import { supabase } from '@/lib/supabase';
 import { requireAuthentication } from '@/lib/supabase-auth-utils';
+import {
+  createMetadataWithExtractedFields,
+  type ExtractedFieldValue,
+  type ExtractedFieldsMap,
+} from '@/lib/extracted-fields-utils';
 
 export interface SaveFieldOptions {
   documentId: string;
@@ -16,14 +21,22 @@ export interface SaveFieldOptions {
   value: unknown;
   confidence: number;
   sourceText?: string;
-  location?: { page?: number; position?: number };
+  location?: {
+    page?: number;
+    position?: number;
+    bbox?: { x: number; y: number; width: number; height: number };
+  };
 }
 
 export interface ExtractedFieldData {
   value: unknown;
   confidence: number;
   sourceText?: string;
-  location?: { page?: number; position?: number };
+  location?: {
+    page?: number;
+    position?: number;
+    bbox?: { x: number; y: number; width: number; height: number };
+  };
   extracted_at?: string;
   extraction_method?: string;
 }
@@ -35,8 +48,8 @@ export class FieldPersistenceService {
   /**
    * Save a single extracted field to the document
    *
-   * Merges the new field with existing extracted_fields in the document metadata
-   * Preserves user edits and other fields
+   * Uses canonical path: metadata.extracted_values
+   * Reads from all legacy paths for backwards compatibility
    *
    * @param options - Field data to save
    * @throws Error if save fails or authentication fails
@@ -54,10 +67,10 @@ export class FieldPersistenceService {
     // Require authentication
     const user = await requireAuthentication();
 
-    // Fetch current document
+    // Fetch current document metadata
     const { data: document, error: fetchError } = await supabase
       .from('documents')
-      .select('metadata, extracted_fields')
+      .select('metadata')
       .eq('id', documentId)
       .single();
 
@@ -65,41 +78,28 @@ export class FieldPersistenceService {
       throw new Error(`Failed to fetch document: ${fetchError?.message || 'Not found'}`);
     }
 
-    // Prepare field data
-    const fieldData: ExtractedFieldData = {
-      value,
+    // Prepare field data in canonical format
+    const fieldData: ExtractedFieldValue = {
+      value: value as string | number | null,
       confidence,
-      ...(sourceText && { sourceText }),
-      ...(location && { location }),
-      extracted_at: new Date().toISOString(),
-      extraction_method: 'real_time_extraction',
+      sourceText,
+      location,
     };
 
-    // Merge with existing fields
-    // Priority: metadata.extracted_fields > extracted_fields column
-    const metadata = (document.metadata as Record<string, unknown>) || {};
-    const metadataExtractedFields = metadata.extracted_fields as Record<string, unknown> || {};
-    const columnExtractedFields = document.extracted_fields as Record<string, unknown> || {};
-
-    // Start with column fields, overlay metadata fields, then add new field
-    const mergedFields = {
-      ...columnExtractedFields,
-      ...metadataExtractedFields,
+    // Create new field to add
+    const newFields: ExtractedFieldsMap = {
       [fieldName]: fieldData,
     };
 
-    // Update both metadata and extracted_fields column for redundancy
-    const updatedMetadata = {
-      ...metadata,
-      extracted_fields: mergedFields,
-    };
+    // Use utility to merge with existing fields and write to canonical path
+    const existingMetadata = (document.metadata as Record<string, unknown>) || {};
+    const updatedMetadata = createMetadataWithExtractedFields(existingMetadata, newFields);
 
-    // Save to database
+    // Save to database (only metadata column - no extracted_fields column exists)
     const { error: updateError } = await supabase
       .from('documents')
       .update({
         metadata: updatedMetadata,
-        extracted_fields: mergedFields,
         updated_at: new Date().toISOString(),
       })
       .eq('id', documentId);
@@ -109,7 +109,7 @@ export class FieldPersistenceService {
     }
 
     // eslint-disable-next-line no-console
-    console.log(`[FieldPersistenceService] Saved field "${fieldName}" for document ${documentId}`, {
+    console.log(`[FieldPersistenceService] Saved field "${fieldName}" to canonical path for document ${documentId}`, {
       value,
       confidence,
       userId: user.id,
@@ -119,6 +119,7 @@ export class FieldPersistenceService {
   /**
    * Save multiple fields at once (batch operation)
    *
+   * Uses canonical path: metadata.extracted_values
    * More efficient than calling saveField multiple times
    *
    * @param documentId - Document ID
@@ -132,10 +133,10 @@ export class FieldPersistenceService {
     // Require authentication
     const user = await requireAuthentication();
 
-    // Fetch current document
+    // Fetch current document metadata
     const { data: document, error: fetchError } = await supabase
       .from('documents')
-      .select('metadata, extracted_fields')
+      .select('metadata')
       .eq('id', documentId)
       .single();
 
@@ -143,39 +144,26 @@ export class FieldPersistenceService {
       throw new Error(`Failed to fetch document: ${fetchError?.message || 'Not found'}`);
     }
 
-    // Add metadata to each field
-    const fieldsWithMetadata: Record<string, ExtractedFieldData> = {};
+    // Convert to canonical ExtractedFieldsMap format
+    const newFields: ExtractedFieldsMap = {};
     Object.entries(fields).forEach(([name, data]) => {
-      fieldsWithMetadata[name] = {
-        ...data,
-        extracted_at: new Date().toISOString(),
-        extraction_method: 'real_time_extraction',
+      newFields[name] = {
+        value: data.value as string | number | null,
+        confidence: data.confidence,
+        sourceText: data.sourceText,
+        location: data.location,
       };
     });
 
-    // Merge with existing fields
-    const metadata = (document.metadata as Record<string, unknown>) || {};
-    const metadataExtractedFields = metadata.extracted_fields as Record<string, unknown> || {};
-    const columnExtractedFields = document.extracted_fields as Record<string, unknown> || {};
+    // Use utility to merge with existing fields and write to canonical path
+    const existingMetadata = (document.metadata as Record<string, unknown>) || {};
+    const updatedMetadata = createMetadataWithExtractedFields(existingMetadata, newFields);
 
-    const mergedFields = {
-      ...columnExtractedFields,
-      ...metadataExtractedFields,
-      ...fieldsWithMetadata,
-    };
-
-    // Update both locations
-    const updatedMetadata = {
-      ...metadata,
-      extracted_fields: mergedFields,
-    };
-
-    // Save to database
+    // Save to database (only metadata column)
     const { error: updateError } = await supabase
       .from('documents')
       .update({
         metadata: updatedMetadata,
-        extracted_fields: mergedFields,
         updated_at: new Date().toISOString(),
       })
       .eq('id', documentId);
@@ -185,7 +173,7 @@ export class FieldPersistenceService {
     }
 
     // eslint-disable-next-line no-console
-    console.log(`[FieldPersistenceService] Saved ${Object.keys(fields).length} fields for document ${documentId}`, {
+    console.log(`[FieldPersistenceService] Saved ${Object.keys(fields).length} fields to canonical path for document ${documentId}`, {
       fieldNames: Object.keys(fields),
       userId: user.id,
     });

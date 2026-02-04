@@ -1,8 +1,15 @@
 /**
  * AI service for managing models across multiple providers
+ *
+ * Supports both system-wide defaults and per-organization configurations.
  */
 
 import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config';
+import type {
+  OrganizationLLMConfig,
+  EffectiveLLMConfig,
+  UpdateOrganizationLLMConfigInput,
+} from '@/types/organization';
 
 export interface AIModel {
   name: string;
@@ -243,6 +250,139 @@ class AIService {
       return `${parts[0]} (${parts[1]})`;
     }
     return model.name;
+  }
+
+  // ===========================================================================
+  // Organization LLM Configuration Methods
+  // ===========================================================================
+
+  /**
+   * Get the LLM configuration for an organization
+   * Returns org's custom config or system default
+   */
+  async getOrgLLMConfig(organizationId: string): Promise<OrganizationLLMConfig> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/models/org-config/${organizationId}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to fetch org LLM config:', error);
+      }
+      throw new Error(
+        'Failed to fetch organization LLM configuration. Please check if the document processor is running.'
+      );
+    }
+  }
+
+  /**
+   * Get the effective LLM configuration for an organization
+   * Shows what will actually be used for LLM requests
+   */
+  async getEffectiveLLMConfig(organizationId: string): Promise<EffectiveLLMConfig> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/models/org-config/${organizationId}/effective`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to fetch effective LLM config:', error);
+      }
+      throw new Error(
+        'Failed to fetch effective LLM configuration. Please check if the document processor is running.'
+      );
+    }
+  }
+
+  /**
+   * Update an organization's LLM configuration
+   */
+  async updateOrgLLMConfig(
+    organizationId: string,
+    config: UpdateOrganizationLLMConfigInput
+  ): Promise<OrganizationLLMConfig> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/models/org-config/${organizationId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(config),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to update org LLM config:', error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an organization's custom LLM configuration
+   * After deletion, org will use system default
+   */
+  async deleteOrgLLMConfig(organizationId: string): Promise<void> {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/models/org-config/${organizationId}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to delete org LLM config:', error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Check if organization is within usage limits
+   */
+  async checkUsageLimits(organizationId: string): Promise<{
+    withinLimits: boolean;
+    dailyUsed: number;
+    dailyLimit: number | null;
+    monthlyUsed: number;
+    monthlyLimit: number | null;
+  }> {
+    const effective = await this.getEffectiveLLMConfig(organizationId);
+
+    return {
+      withinLimits: effective.is_within_limits,
+      dailyUsed: effective.documents_today,
+      dailyLimit: effective.daily_limit ?? null,
+      monthlyUsed: effective.documents_month,
+      monthlyLimit: effective.monthly_limit ?? null,
+    };
   }
 }
 
