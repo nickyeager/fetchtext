@@ -549,12 +549,25 @@ docker compose ps
 
 | Change Type | Required Action | Command |
 |-------------|-----------------|---------|
-| `document-processor/app/**/*.py` | **Auto-restart immediately** | `docker compose -p localai restart document-processor` |
+| `document-processor/app/**/*.py` | **Rebuild container** | `docker compose -p localai up -d --build document-processor` |
 | `localai-admin-dashboard/**` | **Auto-rebuild immediately** | `cd localai-admin-dashboard && npx pnpm build` |
 | `.env` changes | **Restart ALL containers** | `docker compose -p localai restart` |
 | `supabase/migrations/` | **Apply migration** | Use Supabase CLI or MCP tool |
 
-**After restarting, verify the service is healthy:**
+**CRITICAL: Restart vs Rebuild**
+- `restart` = Uses existing image (code changes NOT picked up)
+- `--build` = Rebuilds image from source (code changes ARE picked up)
+
+**For Python code changes, ALWAYS use `--build`:**
+```bash
+# CORRECT - rebuilds container with new code:
+docker compose -p localai up -d --build document-processor
+
+# WRONG - reuses old image, code changes ignored:
+docker compose -p localai restart document-processor
+```
+
+**After rebuilding, verify the service is healthy:**
 ```bash
 # For document-processor:
 docker compose -p localai ps document-processor
@@ -585,6 +598,17 @@ npx pnpm format       # Prettier formatting
 ```
 
 ### Document Processor Testing
+
+⚠️ **CRITICAL: Always install ALL dependencies before running tests**
+
+Before running any Python tests, ensure all requirements are installed locally:
+```bash
+cd document-processor/
+pip install -r requirements.txt
+```
+
+This prevents false test failures due to missing packages (e.g., `azure-mgmt-cognitiveservices`).
+
 ```bash
 cd document-processor/
 # Multiple test execution options:
@@ -595,7 +619,7 @@ pytest tests/ -v                      # Direct pytest
 
 # Python development best practices:
 # Use type hints consistently
-# Research packages before adding dependencies  
+# Research packages before adding dependencies
 # Follow "95/5 Rule" (use 95% package functionality, 5% customization)
 # External research after 3 consecutive implementation failures
 ```
@@ -1041,6 +1065,31 @@ The system uses a **unified template architecture** (migration 010):
 3. **Frontend Development**: Work in `localai-admin-dashboard/` with `pnpm build` to test changes
 4. **Testing**: Use Vitest for frontend, pytest for document processor
 5. **Deployment**: Use `--environment public` flag for production deployments
+
+### Executing Implementation Plans
+
+When executing plans from `docs/plans/`, always perform a **pre-flight check**:
+
+1. **Check for partial completion** - Previous sessions may have completed some tasks
+2. **Verify existing files** - Don't overwrite files that already have the required implementation
+3. **Check database state** - Migrations may already be applied
+
+**Pre-flight Check Commands:**
+```bash
+# Check if files from plan already exist
+ls -la [file paths from plan]
+
+# Check if database migrations are applied
+docker exec supabase-db psql -U postgres -d postgres -c "\df function_name"
+
+# Check if TODO placeholders still exist
+grep -n "TODO" [file to be modified]
+```
+
+**If a task is already complete:**
+- Skip that task
+- Note in execution report as "pre-completed"
+- Verify the existing implementation matches plan requirements
 
 ## Security Considerations
 
