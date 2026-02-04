@@ -40,7 +40,8 @@ class SmartFieldExtractor:
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float = 0.6,
         provider: str = "azure",
-        existing_context: Optional[Dict[str, Dict[str, Any]]] = None
+        existing_context: Optional[Dict[str, Dict[str, Any]]] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Use LLM to intelligently extract field values from text content.
@@ -52,6 +53,7 @@ class SmartFieldExtractor:
             provider: LLM provider to use (azure, ollama)
             existing_context: Optional dict of already extracted fields to provide context.
                              Format: {"field_name": {"value": "extracted value", "confidence": 0.95}}
+            organization_id: Optional organization ID for org-specific LLM config
 
         Returns:
             Dict with extraction results including extracted_values, method, and metadata
@@ -78,9 +80,10 @@ class SmartFieldExtractor:
             self.logger.info(f"LLM params: {llm_params}, max_tokens type: {type(llm_params.get('max_tokens'))}")
             
             # Call LLM for intelligent extraction
-            self.logger.info(f"Calling LLM service with provider: {llm_params.get('provider', provider)}")
+            self.logger.info(f"Calling LLM service with provider: {llm_params.get('provider', provider)}, org_id: {organization_id}")
             response = await self.llm_service.complete(
                 extraction_prompt,
+                organization_id=organization_id,
                 **llm_params
             )
             self.logger.info(f"LLM response received (length: {len(response)})")
@@ -729,11 +732,19 @@ Return ONLY this JSON format (no markdown, no explanations):
         content: str,
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float = 0.6,
-        provider: str = "azure"
+        provider: str = "azure",
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Test extraction with a template to validate field extractability.
         This performs REAL extraction to determine if template fields can be extracted.
+
+        Args:
+            content: The document text to extract from
+            template_variables: List of field definitions to extract
+            confidence_threshold: Minimum confidence for extracted values
+            provider: LLM provider to use (azure, ollama)
+            organization_id: Optional organization ID for org-specific LLM config
 
         Returns:
             ExtractionTestResult with:
@@ -752,7 +763,8 @@ Return ONLY this JSON format (no markdown, no explanations):
                 text_content=content,
                 template_variables=template_variables,
                 confidence_threshold=confidence_threshold,
-                provider=provider
+                provider=provider,
+                organization_id=organization_id
             )
 
             # Analyze results
