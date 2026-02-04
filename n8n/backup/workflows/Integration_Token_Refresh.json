@@ -1,0 +1,258 @@
+{
+  "name": "Integration Token Refresh",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [20, 300],
+      "notes": "Runs every 15 minutes to check for expiring tokens"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://document-processor:8090/api/integrations/expiring-tokens",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "minutes",
+              "value": "30"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "get-expiring-tokens",
+      "name": "Get Expiring Tokens",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [240, 300],
+      "notes": "Fetches all tokens expiring within 30 minutes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.tokens ? $json.tokens.length : 0 }}",
+              "operation": "gt",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "has-expiring-tokens",
+      "name": "Has Expiring Tokens?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "tokens",
+        "options": {}
+      },
+      "id": "split-tokens",
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 200],
+      "notes": "Process each expiring token individually"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://document-processor:8090/api/integrations/{{ $json.integration_type }}/refresh",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "organization_id",
+              "value": "={{ $json.organization_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "refresh-token",
+      "name": "Refresh Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 200],
+      "notes": "Call refresh endpoint for each expiring token",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-refresh-result",
+      "name": "Refresh Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Count successful and failed refreshes\nconst items = $input.all();\n\nlet successful = 0;\nlet failed = 0;\nlet errors = [];\n\nfor (const item of items) {\n  if (item.json.success) {\n    successful++;\n  } else {\n    failed++;\n    if (item.json.error) {\n      errors.push(`${item.json.integration_type || 'unknown'}: ${item.json.error}`);\n    }\n  }\n}\n\nreturn [{\n  json: {\n    total_processed: items.length,\n    successful,\n    failed,\n    errors,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "notes": "Combine results for logging"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log no tokens to refresh\nreturn [{\n  json: {\n    message: 'No expiring tokens found',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "no-tokens",
+      "name": "No Tokens to Refresh",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-180, 300]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Expiring Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Expiring Tokens": {
+      "main": [
+        [
+          {
+            "node": "Has Expiring Tokens?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Expiring Tokens?": {
+      "main": [
+        [
+          {
+            "node": "Split Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Tokens to Refresh",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Items": {
+      "main": [
+        [
+          {
+            "node": "Refresh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh Token": {
+      "main": [
+        [
+          {
+            "node": "Check Refresh Result?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Refresh Result?": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Integration",
+      "createdAt": "2025-01-26T00:00:00.000Z",
+      "updatedAt": "2025-01-26T00:00:00.000Z"
+    },
+    {
+      "name": "Maintenance",
+      "createdAt": "2025-01-26T00:00:00.000Z",
+      "updatedAt": "2025-01-26T00:00:00.000Z"
+    },
+    {
+      "name": "OAuth",
+      "createdAt": "2025-01-26T00:00:00.000Z",
+      "updatedAt": "2025-01-26T00:00:00.000Z"
+    }
+  ],
+  "pinData": {},
+  "versionId": "1",
+  "meta": {
+    "instanceId": "fetchtext-local"
+  }
+}
