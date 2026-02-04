@@ -23,6 +23,7 @@ import { X, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { TemplateService } from '@/lib/template-service'
 import { supabase } from '@/lib/supabase'
+import { useOrganization } from '@/context/organization-context'
 
 interface CreateTemplateDialogProps {
   isOpen: boolean
@@ -42,6 +43,7 @@ export function CreateTemplateDialog({
   onClose,
   onSuccess,
 }: CreateTemplateDialogProps) {
+  const { activeOrganization } = useOrganization()
   const [isLoading, setIsLoading] = useState(false)
   const [categories, setCategories] = useState<TemplateCategory[]>([])
   const [formData, setFormData] = useState({
@@ -88,6 +90,11 @@ export function CreateTemplateDialog({
       return
     }
 
+    if (!activeOrganization) {
+      toast.error('Please select an organization first')
+      return
+    }
+
     try {
       setIsLoading(true)
 
@@ -101,6 +108,7 @@ export function CreateTemplateDialog({
         tags: formData.tags,
         templateData: formData.templateData ? JSON.parse(formData.templateData) : {},
         thumbnailUrl: formData.thumbnailUrl || undefined,
+        organization_id: activeOrganization.id,
       }
 
       await TemplateService.createTemplate(templateData)

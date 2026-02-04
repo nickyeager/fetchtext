@@ -1,32 +1,37 @@
 import { z } from 'zod'
 
-const userStatusSchema = z.union([
-  z.literal('active'),
-  z.literal('inactive'),
-  z.literal('invited'),
-  z.literal('suspended'),
-])
-export type UserStatus = z.infer<typeof userStatusSchema>
+// Re-export types from member-table for convenience
+export type { MemberTableRow, MemberStatus } from '../types/member-table'
+export { isMember, isInvitation } from '../types/member-table'
 
-const userRoleSchema = z.union([
-  z.literal('superadmin'),
-  z.literal('admin'),
-  z.literal('cashier'),
-  z.literal('manager'),
-])
+/**
+ * Zod schema for organization roles
+ */
+export const organizationRoleSchema = z.enum(['owner', 'admin', 'member'])
 
-const userSchema = z.object({
+/**
+ * Zod schema for member status
+ */
+export const memberStatusSchema = z.enum(['active', 'invited'])
+
+/**
+ * Zod schema for member table row (runtime validation)
+ */
+export const memberTableRowSchema = z.object({
   id: z.string(),
-  firstName: z.string(),
-  lastName: z.string(),
-  username: z.string(),
-  email: z.string(),
-  phoneNumber: z.string(),
-  status: userStatusSchema,
-  role: userRoleSchema,
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
+  userId: z.string().nullable(),
+  email: z.string().email(),
+  name: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  role: organizationRoleSchema,
+  status: memberStatusSchema,
+  joinedAt: z.string(),
+  invitedBy: z.string().nullable(),
+  expiresAt: z.string().optional(),
+  type: z.enum(['member', 'invitation']),
 })
-export type User = z.infer<typeof userSchema>
 
-export const userListSchema = z.array(userSchema)
+/**
+ * Zod schema for array of member table rows
+ */
+export const memberTableRowListSchema = z.array(memberTableRowSchema)

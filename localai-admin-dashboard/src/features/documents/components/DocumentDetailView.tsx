@@ -3,15 +3,15 @@
  * Shows document content with processing capabilities
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { 
-  ArrowLeft, 
-  Download, 
-  FileText, 
-  Copy, 
-  Eye, 
+import {
+  ArrowLeft,
+  Download,
+  FileText,
+  Copy,
+  Eye,
   RefreshCw,
   Save,
   Edit3,
@@ -23,7 +23,14 @@ import {
   CheckCircle,
   Edit,
   Zap,
-  Settings
+  Settings,
+  Workflow,
+  Columns,
+  Code,
+  FileOutput,
+  ChevronDown,
+  FileJson,
+  FileType,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,9 +39,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { useDocumentManager } from '@/hooks/use-document-manager';
-import { WysiwygEditor } from './WysiwygEditor';
+import { SimpleEditor } from '@/components/ui/simple-editor';
 import { MarkdownViewer } from './MarkdownViewer';
 import { templateService } from '@/services/template-service';
 import { UnifiedDocumentService } from '@/services/unified-document-service';
@@ -45,33 +60,20 @@ import TemplateSelector from '@/components/documents/TemplateSelector';
 import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplateDialog';
 import { ExtractedFieldsEditor } from './ExtractedFieldsEditor';
 import { CreateTemplateFromFields } from './CreateTemplateFromFields';
+import { DocumentPipelineView } from './DocumentPipelineView';
+import { TemplateVariablesPanel } from './TemplateVariablesPanel';
+import { DualDocumentView } from './DualDocumentView';
+import { supabase } from '@/lib/supabase';
 
-/**
- * Parses extracted fields data that may be stored as JSON string or object
- * Handles double-stringification issues from Supabase storage
- */
-function parseExtractedFields(data: unknown): Record<string, unknown> {
-  if (!data) return {};
-
-  // If it's already an object, return it
-  if (typeof data === 'object' && data !== null) {
-    return data as Record<string, unknown>;
-  }
-
-  // If it's a string, try to parse it
-  if (typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch (e) {
-      console.error('[parseExtractedFields] Failed to parse JSON string:', e);
-    }
-  }
-
-  return {};
-}
+// Shared utilities - DRY refactor
+import { parseExtractedFields } from '@/lib/document-utils';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import {
+  getExtractedFields,
+  getSimpleFieldValues,
+  createMetadataWithExtractedFields,
+  type ExtractedFieldsMap,
+} from '@/lib/extracted-fields-utils';
 
 interface DocumentDetailViewProps {
   documentId: string;
@@ -106,7 +108,7 @@ export function DocumentDetailView({
 }: DocumentDetailViewProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<'side-by-side' | 'tabs' | 'overlay'>('side-by-side');
+  const [viewMode, setViewMode] = useState<'dual' | 'side-by-side' | 'tabs' | 'overlay' | 'pipeline'>('dual');
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -117,12 +119,25 @@ export function DocumentDetailView({
   const [generatedTemplate, setGeneratedTemplate] = useState<any>(null);
   const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false);
   const [fieldsForTemplate, setFieldsForTemplate] = useState<any[]>([]);
+  const [documentFileUrl, setDocumentFileUrl] = useState<string | null>(null);
 
   const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
   
   // State for formatted template output (moved to top to avoid hooks order issues)
   const [formattedOutput, setFormattedOutput] = React.useState<string | null>(null);
+
+  // State for template view toggle - switch between raw template and generated output
+  // Default to showing template view (with {{variable}} placeholders)
+  const [showTemplateView, setShowTemplateView] = React.useState(true);
+  const [rawTemplateContent, setRawTemplateContent] = React.useState<string | null>(null);
+
+  // State for field highlighting in document preview
+  const [activeHighlightField, setActiveHighlightField] = React.useState<string | null>(null);
+
+  // State for field positions (bounding boxes) fetched from backend
+  const [fieldPositions, setFieldPositions] = React.useState<Map<string, { page: number; bbox: { x: number; y: number; width: number; height: number } | null }>>(new Map());
+  const [isLoadingPositions, setIsLoadingPositions] = React.useState(false);
 
   // Fetch document data with real-time updates
   const {
@@ -188,6 +203,140 @@ export function DocumentDetailView({
       refetch();
     }
   }, [documentId, refetch]);
+
+  // Fetch signed URL for document preview
+  useEffect(() => {
+    const fetchDocumentUrl = async () => {
+      if (!document?.file_path) {
+        setDocumentFileUrl(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .createSignedUrl(document.file_path, 3600); // 1 hour expiry
+
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.error('[DocumentDetailView] Failed to get signed URL:', error);
+          setDocumentFileUrl(null);
+          return;
+        }
+
+        setDocumentFileUrl(data.signedUrl);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[DocumentDetailView] Error getting document URL:', error);
+        setDocumentFileUrl(null);
+      }
+    };
+
+    fetchDocumentUrl();
+  }, [document?.file_path]);
+
+  // Fetch field positions (bounding boxes) for highlighting
+  // This runs after we have the document URL and extracted fields
+  useEffect(() => {
+    const fetchFieldPositions = async () => {
+      // Need both document URL and extracted fields to fetch positions
+      if (!documentFileUrl || !document?.metadata) {
+        return;
+      }
+
+      // Use consolidated utility to get extracted fields from all legacy paths
+      const extractedFields = getExtractedFields(document);
+      const simpleValues = getSimpleFieldValues(document);
+
+      if (Object.keys(extractedFields).length === 0) {
+        return;
+      }
+
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] fetchFieldPositions: Using consolidated utility', {
+        totalFields: Object.keys(extractedFields).length,
+        fieldNames: Object.keys(extractedFields),
+      });
+
+      // Prepare field values for position lookup using the simple values
+      const fieldValuesToFind: Array<{ fieldName: string; value: string }> = [];
+      for (const [fieldName, value] of Object.entries(simpleValues)) {
+        if (value !== null && value !== undefined && String(value).trim().length > 0) {
+          fieldValuesToFind.push({ fieldName, value: String(value).trim() });
+        }
+      }
+
+      if (fieldValuesToFind.length === 0) {
+        return;
+      }
+
+      setIsLoadingPositions(true);
+      try {
+        const result = await documentProcessor.getFieldPositions(documentFileUrl, fieldValuesToFind);
+
+        // Convert positions array to a Map for efficient lookup
+        const positionsMap = new Map<string, { page: number; bbox: { x: number; y: number; width: number; height: number } | null }>();
+        for (const pos of result.positions) {
+          if (pos.fieldName && !positionsMap.has(pos.fieldName)) {
+            positionsMap.set(pos.fieldName, {
+              page: pos.page,
+              bbox: pos.bbox,
+            });
+          }
+        }
+
+        setFieldPositions(positionsMap);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[DocumentDetailView] Error fetching field positions:', error);
+      } finally {
+        setIsLoadingPositions(false);
+      }
+    };
+
+    fetchFieldPositions();
+  }, [documentFileUrl, document, documentProcessor]);
+
+  // Extract templateId for dependency tracking
+  const documentTemplateId = (document?.metadata as Record<string, unknown> | undefined)?.template_id as number | undefined;
+
+  // Fetch raw template content when template_id is available
+  // Also check for custom_template_content in document metadata (document-specific override)
+  useEffect(() => {
+    const fetchTemplateContent = async () => {
+      // First check for document-specific custom template content
+      const metadata = document?.metadata as Record<string, unknown> | undefined;
+      const customContent = metadata?.custom_template_content as string | undefined;
+
+      if (customContent) {
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Using custom template content from document metadata');
+        setRawTemplateContent(customContent);
+        return;
+      }
+
+      // Fall back to the global template content
+      if (!documentTemplateId) {
+        setRawTemplateContent(null);
+        return;
+      }
+
+      try {
+        const template = await templateService.getTemplate(documentTemplateId);
+        if (template?.template_content) {
+          setRawTemplateContent(template.template_content);
+        } else {
+          setRawTemplateContent(null);
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[DocumentDetailView] Error fetching template content:', error);
+        setRawTemplateContent(null);
+      }
+    };
+
+    fetchTemplateContent();
+  }, [documentTemplateId, document?.metadata]);
 
   // Derive evaluation data from document metadata
   const evaluation = useMemo<DocumentEvaluation | null>(() => {
@@ -305,6 +454,75 @@ export function DocumentDetailView({
     /* eslint-enable no-console */
   }, [document, documentId]);
 
+  // Comprehensive field detection hook (reusable across components)
+  const comprehensiveFieldDetection = useMemo(() => {
+    if (!document) return { extractedFields: {}, confidenceScores: {}, detectionPath: 'none' };
+
+    let extractedFields = {};
+    let confidenceScores = {};
+    let detectionPath = 'none';
+
+    // Define data sources in priority order (most reliable first)
+    const sources = [
+      {
+        name: 'metadata.extracted_data.extracted_values',
+        getter: () => (document.metadata as Record<string, unknown>)?.extracted_data,
+        hasConfidence: true
+      },
+      {
+        name: 'metadata.extraction_result.extracted_values',
+        getter: () => (document.metadata as Record<string, unknown>)?.extraction_result,
+        hasConfidence: true
+      },
+      {
+        name: 'document.extracted_fields',
+        getter: () => document.extracted_fields,
+        hasConfidence: false
+      },
+      {
+        name: 'metadata.extracted_fields',
+        getter: () => document.metadata?.extracted_fields,
+        hasConfidence: false
+      },
+      {
+        name: 'metadata.fields',
+        getter: () => document.metadata?.fields,
+        hasConfidence: false
+      }
+    ];
+
+    // Try each source in priority order
+    for (const source of sources) {
+      const rawData = source.getter();
+      console.log('rawData sources', rawData);
+      if (!rawData) continue;
+
+      // Parse the data (handles JSON strings and objects)
+      const parsed = parseExtractedFields(rawData);
+      if (Object.keys(parsed).length === 0) continue;
+
+      // Check if this source has extracted_values structure
+      if (source.hasConfidence && 'extracted_values' in parsed) {
+        const data = parsed as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
+        if (data.extracted_values && Object.keys(data.extracted_values).length > 0) {
+          extractedFields = parseExtractedFields(data.extracted_values);
+          detectionPath = source.name;
+          if (data.confidence_scores) {
+            confidenceScores = data.confidence_scores;
+          }
+          break;
+        }
+      } else {
+        // Direct field data without nested structure
+        extractedFields = parsed;
+        detectionPath = source.name;
+        break;
+      }
+    }
+
+    return { extractedFields, confidenceScores, detectionPath };
+  }, [document]);
+
   // Convert document data to content format
   const documentContent: DocumentContent = useMemo(() => {
     if (!document) return { original: { text: '' }, processed: { text: '' } };
@@ -343,15 +561,8 @@ export function DocumentDetailView({
       processedPreview: processedText.substring(0, 100)
     });
     
-    // Get extracted data from various sources
-    let extractedData: Record<string, unknown> = {};
-    if (document.extracted_fields && typeof document.extracted_fields === 'object') {
-      extractedData = document.extracted_fields as Record<string, unknown>;
-    } else if ((document.metadata as any)?.extracted_fields && typeof (document.metadata as any).extracted_fields === 'object') {
-      extractedData = (document.metadata as any).extracted_fields as Record<string, unknown>;
-    } else if ((document.metadata as any)?.extraction_result?.extracted_values && typeof (document.metadata as any).extraction_result.extracted_values === 'object') {
-      extractedData = (document.metadata as any).extraction_result.extracted_values as Record<string, unknown>;
-    }
+    // Get extracted data using consolidated utility (reads from all legacy paths)
+    const extractedData = getSimpleFieldValues(document);
     
     return {
       original: {
@@ -375,44 +586,127 @@ export function DocumentDetailView({
     }
   }, [documentContent.processed.text, documentContent.processed.html, editedContent]);
   
-  // Generate formatted output when document changes  
+  // Generate formatted output when document changes
   useEffect(() => {
-    const generateOutput = async () => {
-  const extractedData = documentContent.processed.extracted_data;
-  const templateId = (document?.metadata as any)?.template_id as number | undefined;
-      
-      if (!extractedData || (templateId === undefined || templateId === null) || Object.keys(extractedData).length === 0) {
-        return documentContent.processed.text;
-      }
+    // Helper to extract a simple value from potentially nested structures
+    const extractSimpleValue = (value: unknown): string => {
+      if (value === null || value === undefined) return '';
+      if (typeof value !== 'object') return String(value);
 
-      try {
-        // Get the template used for processing (all templates are now smart templates)
-        const template = await templateService.getTemplate(templateId);
-        
-        if (!template) {
-          return documentContent.processed.text;
-        }
-
-        // Replace template variables with extracted values
-        let formattedContent = template.template_content || '';
-        
-        Object.entries(extractedData).forEach(([key, value]) => {
-          const placeholder = `{{${key}}}`;
-          const displayValue = typeof value === 'object' && value !== null && 'value' in value 
-            ? String((value as any).value || '') 
-            : String(value || '');
-          formattedContent = formattedContent.replace(new RegExp(placeholder, 'g'), displayValue);
-        });
-
-        return formattedContent;
-      } catch (error) {
-        console.error('Error generating formatted output:', error);
-        return documentContent.processed.text;
-      }
+      const obj = value as Record<string, unknown>;
+      // If it has a 'value' property, use that
+      if ('value' in obj) return String(obj.value || '');
+      // If it's an array, join values
+      if (Array.isArray(value)) return value.map(v => extractSimpleValue(v)).join(', ');
+      // Otherwise try to stringify nicely
+      return JSON.stringify(value);
     };
 
-    if ((document?.metadata as any)?.template_id && documentContent.processed.extracted_data) {
+    // Helper function to flatten and generate structured output from extracted data
+    const generateStructuredOutput = (data: Record<string, unknown>): string => {
+      const lines: string[] = ['# Extracted Fields\n'];
+
+      // Try to find the actual extracted values - check common nested structures
+      let fieldsToDisplay: Record<string, unknown> = {};
+
+      // Check if data has nested extracted_values
+      if (data.extracted_values && typeof data.extracted_values === 'object') {
+        fieldsToDisplay = { ...fieldsToDisplay, ...(data.extracted_values as Record<string, unknown>) };
+      }
+      // Check for extraction_result.extracted_values
+      if (data.extraction_result && typeof data.extraction_result === 'object') {
+        const result = data.extraction_result as Record<string, unknown>;
+        if (result.extracted_values && typeof result.extracted_values === 'object') {
+          fieldsToDisplay = { ...fieldsToDisplay, ...(result.extracted_values as Record<string, unknown>) };
+        }
+      }
+      // If no nested structure found, use the data directly (but skip meta fields)
+      if (Object.keys(fieldsToDisplay).length === 0) {
+        Object.entries(data).forEach(([key, value]) => {
+          // Skip meta fields like confidence_scores, extraction_method, etc.
+          if (!['confidence_scores', 'extraction_method', 'template_id', 'processing_time'].includes(key)) {
+            fieldsToDisplay[key] = value;
+          }
+        });
+      }
+
+      // Get confidence scores if available
+      const confidenceScores = (data.confidence_scores ||
+        (data.extraction_result as Record<string, unknown> | undefined)?.confidence_scores) as Record<string, number> | undefined;
+
+      // Generate the display
+      Object.entries(fieldsToDisplay).forEach(([key, value]) => {
+        const displayValue = extractSimpleValue(value);
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const confidence = confidenceScores?.[key];
+        const confidenceStr = confidence !== undefined ? ` _(${Math.round(confidence * 100)}% confidence)_` : '';
+        lines.push(`**${label}:** ${displayValue}${confidenceStr}\n`);
+      });
+
+      if (lines.length === 1) {
+        lines.push('_No extracted fields found_\n');
+      }
+
+      return lines.join('\n');
+    };
+
+    const generateOutput = async () => {
+      const extractedData = documentContent.processed.extracted_data;
+      const metadata = document?.metadata as Record<string, unknown> | undefined;
+      const templateId = metadata?.template_id as number | undefined;
+
+      // If no extracted data, return original
+      if (!extractedData || Object.keys(extractedData).length === 0) {
+        return documentContent.processed.text;
+      }
+
+      // If we have a template, use it to format the output
+      if (templateId !== undefined && templateId !== null) {
+        try {
+          // Get the template used for processing (all templates are now smart templates)
+          const template = await templateService.getTemplate(templateId);
+
+          if (!template || !template.template_content) {
+            // No template content, fall back to structured display
+            return generateStructuredOutput(extractedData);
+          }
+
+          // Replace template variables with extracted values
+          let formattedContent = template.template_content;
+
+          // Flatten extracted data for template replacement
+          let flatFields: Record<string, unknown> = {};
+          if (extractedData.extracted_values && typeof extractedData.extracted_values === 'object') {
+            flatFields = extractedData.extracted_values as Record<string, unknown>;
+          } else {
+            flatFields = extractedData;
+          }
+
+          Object.entries(flatFields).forEach(([key, value]) => {
+            const placeholder = `{{${key}}}`;
+            const displayValue = extractSimpleValue(value);
+            // Escape special regex characters in placeholder
+            const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            formattedContent = formattedContent.replace(new RegExp(escapedPlaceholder, 'g'), displayValue);
+          });
+
+          return formattedContent;
+        } catch (error) {
+          /* eslint-disable no-console */
+          console.error('Error generating formatted output:', error);
+          /* eslint-enable no-console */
+          return generateStructuredOutput(extractedData);
+        }
+      }
+
+      // No template yet, show structured extracted data
+      return generateStructuredOutput(extractedData);
+    };
+
+    if (documentContent.processed.extracted_data && Object.keys(documentContent.processed.extracted_data).length > 0) {
       generateOutput().then(setFormattedOutput);
+    } else {
+      setFormattedOutput(null);
     }
   }, [(document?.metadata as any)?.template_id, documentContent.processed.extracted_data, document?.name, documentContent.processed.text]);
   
@@ -648,13 +942,163 @@ export function DocumentDetailView({
   // Handler for saving generated template
   const handleSaveGeneratedTemplate = async (_templateData: unknown) => {
     if (!document) return;
-    
+
     try {
       // Save template through the dialog's mutation
       // After saving, the dialog will navigate to the template editor
     } catch (error) {
       console.error('Failed to save generated template:', error);
       setProcessingError(error instanceof Error ? error.message : 'Failed to save template');
+    }
+  };
+
+  // Ref for debouncing auto-save
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handler for auto-saving template content changes (debounced)
+  const handleTemplateContentChange = useCallback(
+    (content: string) => {
+      if (!documentId) {
+        console.warn('[DocumentDetailView] handleTemplateContentChange: No documentId');
+        return;
+      }
+
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] handleTemplateContentChange called:', {
+        documentId,
+        contentLength: content.length,
+      });
+
+      // Clear existing timer
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+
+      // Debounce the save - wait 1 second after user stops typing
+      autoSaveTimerRef.current = setTimeout(async () => {
+        try {
+          // eslint-disable-next-line no-console
+          console.log('[DocumentDetailView] Auto-saving custom template content...');
+
+          const currentDoc = document;
+          if (!currentDoc) return;
+
+          const metadata = currentDoc.metadata as Record<string, unknown> | undefined;
+          const updatedMetadata = {
+            ...metadata,
+            custom_template_content: content,
+            custom_template_updated_at: new Date().toISOString(),
+          };
+
+          // Keep current status (default to COMPLETED if not set)
+          // Map string status to DocumentStatus enum
+          const statusMap: Record<string, DocumentStatus> = {
+            'uploaded': DocumentStatus.UPLOADED,
+            'analyzing': DocumentStatus.ANALYZING,
+            'processing': DocumentStatus.PROCESSING,
+            'completed': DocumentStatus.COMPLETED,
+            'failed': DocumentStatus.FAILED,
+          };
+          const currentStatus = statusMap[currentDoc.processing_status || 'completed'] || DocumentStatus.COMPLETED;
+
+          await UnifiedDocumentService.updateDocumentStatus(documentId, {
+            status: currentStatus,
+            metadata: updatedMetadata,
+          });
+
+          // eslint-disable-next-line no-console
+          console.log('[DocumentDetailView] Auto-save SUCCESSFUL');
+        } catch (error) {
+          console.error('[DocumentDetailView] Auto-save failed:', error);
+        }
+      }, 1000);
+    },
+    [documentId, document]
+  );
+
+  // Cleanup auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Handler for saving template content edits from TemplateOutputView
+  const handleSaveTemplateContent = async (
+    content: string,
+    action: 'create' | 'modify',
+    newName?: string
+  ): Promise<void> => {
+    if (!document) {
+      console.warn('[DocumentDetailView] handleSaveTemplateContent: No document available');
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[DocumentDetailView] handleSaveTemplateContent called:', {
+      documentId,
+      action,
+      contentLength: content.length,
+      newName,
+    });
+
+    try {
+      if (action === 'modify') {
+        // Save as document-specific custom template content
+        // This overrides the template output for THIS document only
+        const metadata = document.metadata as Record<string, unknown> | undefined;
+        const updatedMetadata = {
+          ...metadata,
+          custom_template_content: content,
+          custom_template_updated_at: new Date().toISOString(),
+        };
+
+        // Keep current status (default to COMPLETED if not set)
+        // Map string status to DocumentStatus enum
+        const statusMap: Record<string, DocumentStatus> = {
+          'uploaded': DocumentStatus.UPLOADED,
+          'analyzing': DocumentStatus.ANALYZING,
+          'processing': DocumentStatus.PROCESSING,
+          'completed': DocumentStatus.COMPLETED,
+          'failed': DocumentStatus.FAILED,
+        };
+        const currentStatus = statusMap[document.processing_status || 'completed'] || DocumentStatus.COMPLETED;
+
+        await UnifiedDocumentService.updateDocumentStatus(documentId, {
+          status: currentStatus,
+          metadata: updatedMetadata,
+        });
+
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Saved custom template content SUCCESSFULLY');
+
+        // Refresh document data to reflect the save
+        await refetch();
+      } else if (action === 'create' && newName) {
+        // Create a new template with this content
+        const templateData = {
+          name: newName,
+          template_content: content,
+          description: `Template created from document: ${document.name}`,
+          category: 'custom',
+          is_public: false,
+        };
+
+        const result = await templateService.createTemplate(templateData);
+        // eslint-disable-next-line no-console
+        console.log('[DocumentDetailView] Created new template:', result);
+
+        // Optionally navigate to the new template
+        if (result?.id) {
+          navigate({ to: '/templates/$templateId', params: { templateId: String(result.id) } });
+        }
+      }
+    } catch (error) {
+      console.error('[DocumentDetailView] Failed to save template content:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Failed to save template');
+      throw error; // Re-throw so TemplateOutputView can handle UI feedback
     }
   };
 
@@ -726,27 +1170,7 @@ export function DocumentDetailView({
     }
   };
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'processing': return 'bg-blue-100 text-blue-800';
-      case 'analyzing': return 'bg-yellow-100 text-yellow-800';
-      case 'pending': return 'bg-purple-100 text-purple-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getStatusIcon = (status?: string) => {
-    switch (status) {
-      case 'completed': return <CheckCircle className="w-4 h-4" data-testid="check-circle-icon" />;
-      case 'processing': return <Loader2 className="w-4 h-4 animate-spin" />;
-      case 'analyzing': return <Sparkles className="w-4 h-4" />;
-      case 'pending': return <Sparkles className="w-4 h-4" />;
-      case 'failed': return <AlertTriangle className="w-4 h-4" />;
-      default: return <FileText className="w-4 h-4" />;
-    }
-  };
+  // Status utilities moved to @/lib/document-utils and @/components/shared/StatusBadge
 
   const calculateProcessingProgress = (doc: any) => {
     if (!doc) return 0;
@@ -769,9 +1193,125 @@ export function DocumentDetailView({
     }
   };
 
-  const handleDownload = async (format: 'json' | 'txt' | 'csv' | 'html' | 'docx') => {
-    if (onDownload) {
-      await onDownload(format);
+  const handleDownload = async (format: 'json' | 'txt' | 'csv' | 'html' | 'docx' | 'md' | 'pdf') => {
+    // Get the content to export - use template view or generated output based on toggle
+    const contentToExport = showTemplateView && rawTemplateContent
+      ? rawTemplateContent
+      : (formattedOutput || documentContent.processed.text);
+
+    const fileName = document?.name?.replace(/\.[^/.]+$/, '') || 'document';
+
+    // Helper to trigger download
+    const downloadFile = (content: string, filename: string, mimeType: string) => {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    switch (format) {
+      case 'md':
+        downloadFile(contentToExport, `${fileName}.md`, 'text/markdown');
+        break;
+
+      case 'txt':
+        downloadFile(contentToExport, `${fileName}.txt`, 'text/plain');
+        break;
+
+      case 'html': {
+        const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; line-height: 1.6; }
+    h1, h2, h3 { color: #1a1a1a; }
+    p { margin: 1em 0; }
+    code { background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { background: #f4f4f4; padding: 1em; border-radius: 6px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+${contentToExport.replace(/\n/g, '<br>\n')}
+</body>
+</html>`;
+        downloadFile(htmlContent, `${fileName}.html`, 'text/html');
+        break;
+      }
+
+      case 'pdf': {
+        // Generate PDF using browser print
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${fileName}</title>
+  <style>
+    @media print { @page { margin: 1in; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 100%; margin: 0 auto; padding: 2rem; line-height: 1.6; }
+    h1, h2, h3 { color: #1a1a1a; }
+    p { margin: 1em 0; }
+    code { background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { background: #f4f4f4; padding: 1em; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<h1>${fileName}</h1>
+${contentToExport.replace(/\n/g, '<br>\n')}
+</body>
+</html>`);
+          printWindow.document.close();
+          printWindow.focus();
+          setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+          }, 250);
+        }
+        break;
+      }
+
+      case 'docx': {
+        // For DOCX, create a simple HTML-based document that Word can open
+        const docContent = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head>
+  <meta charset="UTF-8">
+  <title>${fileName}</title>
+  <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+</head>
+<body>
+<h1>${fileName}</h1>
+${contentToExport.replace(/\n/g, '<br>\n')}
+</body>
+</html>`;
+        downloadFile(docContent, `${fileName}.doc`, 'application/msword');
+        break;
+      }
+
+      case 'json': {
+        const jsonContent = JSON.stringify({
+          name: fileName,
+          content: contentToExport,
+          extractedFields: comprehensiveFieldDetection.extractedFields,
+          exportedAt: new Date().toISOString(),
+        }, null, 2);
+        downloadFile(jsonContent, `${fileName}.json`, 'application/json');
+        break;
+      }
+
+      default:
+        if (onDownload) {
+          await onDownload(format);
+        }
     }
   };
 
@@ -804,13 +1344,56 @@ export function DocumentDetailView({
 
       // Invalidate queries to refresh the document data
       queryClient.invalidateQueries({ queryKey: ['processedDocument', documentId] });
-      
+
       console.log('✅ Extracted fields updated successfully');
     } catch (error) {
       console.error('❌ Failed to update extracted fields:', error);
       throw error;
     }
   };
+
+  // Handler for when TemplateOutputView extracts new fields in real-time
+  const handleFieldsChange = useCallback(async (newFields: Record<string, { value: string | null; confidence?: number; sourceText?: string; type?: string }>) => {
+    if (!document) return;
+
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[DocumentDetailView] handleFieldsChange: New fields extracted', {
+        fieldCount: Object.keys(newFields).length,
+        fields: newFields,
+      });
+
+      // Convert new fields to ExtractedFieldsMap format
+      const newFieldsMap: ExtractedFieldsMap = {};
+      for (const [key, fieldData] of Object.entries(newFields)) {
+        newFieldsMap[key] = {
+          value: fieldData.value,
+          confidence: fieldData.confidence,
+          sourceText: fieldData.sourceText,
+        };
+      }
+
+      // Use consolidated utility to merge and write to canonical path
+      const updatedMetadata = createMetadataWithExtractedFields(
+        document.metadata as Record<string, unknown>,
+        newFieldsMap
+      );
+
+      // Update document metadata with merged fields in canonical location
+      await UnifiedDocumentService.updateDocumentStatus(documentId, {
+        status: DocumentStatus.COMPLETED,
+        metadata: updatedMetadata as Record<string, unknown>,
+      });
+
+      // Invalidate queries to refresh the document data
+      await queryClient.invalidateQueries({ queryKey: ['processedDocument', documentId] });
+
+      // eslint-disable-next-line no-console
+      console.log('✅ New fields saved and document refreshed');
+    } catch (error) {
+      console.error('❌ Failed to save new extracted fields:', error);
+    }
+  }, [document, documentId, queryClient]);
 
   const handleCreateTemplateFromFields = async (templateData: {
     name: string;
@@ -820,6 +1403,22 @@ export function DocumentDetailView({
     is_public: boolean;
   }) => {
     try {
+      // Generate template_content by replacing extracted values with placeholders
+      const { extractedFields } = comprehensiveFieldDetection;
+      let templateContent = documentContent.original.text;
+
+      // Replace each extracted value with {{placeholder}} syntax
+      Object.entries(extractedFields).forEach(([key, value]) => {
+        if (value && String(value).length > 0) {
+          // Escape special regex characters in the value
+          const escapedValue = String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          // Create regex to find the value (case-insensitive, whole word)
+          const regex = new RegExp(escapedValue, 'gi');
+          // Replace with placeholder
+          templateContent = templateContent.replace(regex, `{{${key}}}`);
+        }
+      });
+
       // Use the unified template service to create a new template
       const newTemplate = await templateService.createTemplate({
         name: templateData.name,
@@ -827,15 +1426,42 @@ export function DocumentDetailView({
         category: templateData.category,
         smart_variables: templateData.smart_variables,
         is_public: templateData.is_public,
+        template_content: templateContent, // ✨ Include generated template content
         tags: [],
       } as any);
 
+      /* eslint-disable no-console */
       console.log('✅ Template created successfully:', newTemplate);
+
+      // ✨ Associate the template with the document
+      if (newTemplate.id && document) {
+        console.log('🔗 Associating template with document:', {
+          documentId,
+          templateId: newTemplate.id,
+          templateName: newTemplate.name
+        });
+
+        await UnifiedDocumentService.updateDocumentStatus(documentId, {
+          status: DocumentStatus.COMPLETED, // Keep current status
+          metadata: {
+            template_id: newTemplate.id,
+            template_name: newTemplate.name,
+            template_associated_at: new Date().toISOString()
+          }
+        });
+
+        console.log('✅ Template associated with document successfully');
+      /* eslint-enable no-console */
+
+        // Refetch document to show updated metadata
+        await refetch();
+      }
+
       setShowCreateTemplateDialog(false);
-      
+
       // Invalidate template queries to refresh template lists
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      
+
     } catch (error) {
       console.error('❌ Failed to create template:', error);
       throw error;
@@ -959,14 +1585,7 @@ export function DocumentDetailView({
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{document.name}</h1>
               <div className="flex flex-wrap items-center gap-2 mt-1">
-                <Badge 
-                  className={getStatusColor(currentStatus)}
-                  data-testid="status-badge"
-                  data-status={currentStatus}
-                >
-                  {getStatusIcon(currentStatus)}
-                  <span className="ml-1">{currentStatus || 'pending'}</span>
-                </Badge>
+                <StatusBadge status={currentStatus} />
                 {document.metadata?.processing_method && (
                   <Badge variant="outline">{document.metadata.processing_method}</Badge>
                 )}
@@ -1374,115 +1993,7 @@ export function DocumentDetailView({
     );
   }
 
-  const renderSideBySideView = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
-      {/* Original Content */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center">
-              <FileText className="w-5 h-5 mr-2" />
-              Original Document
-            </CardTitle>
-            <div className="flex items-center space-x-2">
-              <Badge variant="outline">
-                {document.file_type?.toUpperCase() || 'Unknown'}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copyToClipboard(documentContent.original.text)}
-              >
-                <Copy className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <MarkdownViewer
-            content={documentContent.original.text}
-            height="h-64 sm:h-96"
-          />
-        </CardContent>
-      </Card>
-
-      {/* Processed Content */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center">
-              <Edit3 className="w-5 h-5 mr-2" />
-              Processed Document
-              {editMode && <Badge className="ml-2">Editing</Badge>}
-            </CardTitle>
-            <div className="flex items-center space-x-2">
-              {documentContent.processed.template_applied && (
-                <Badge variant="secondary">
-                  Template: {documentContent.processed.template_applied}
-                </Badge>
-              )}
-              {(document.metadata as any)?.template_id && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigateToTemplateEdit((document.metadata as any).template_id)}
-                    className="text-xs"
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    Edit Template
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowTemplateChanger(!showTemplateChanger)}
-                    className="text-xs"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-1" />
-                    Change Template
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditMode(!editMode)}
-              >
-                {editMode ? <Eye className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-              </Button>
-              {editMode && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleSaveContent}
-                >
-                  <Save className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {editMode ? (
-            <div className="h-64 sm:h-96">
-              <WysiwygEditor
-                value={editedContent}
-                onChange={setEditedContent}
-                placeholder="Enter processed document content..."
-                height="100%"
-              />
-            </div>
-          ) : (
-            <MarkdownViewer
-              content={formattedOutput || documentContent.processed.text}
-              height="h-64 sm:h-96"
-            />
-          )}
-        </CardContent>
-      </Card>
-      
-    </div>
-  );
+  
 
   const renderTabsView = () => (
     <>
@@ -1493,8 +2004,8 @@ export function DocumentDetailView({
           <span className="sm:hidden">Original</span>
         </TabsTrigger>
         <TabsTrigger value="processed" className="text-xs sm:text-sm px-2 py-2">
-          <span className="hidden sm:inline">Processed Document</span>
-          <span className="sm:hidden">Processed</span>
+          <span className="hidden sm:inline">Extracted Fieldssss</span>
+          <span className="sm:hidden">Extracted</span>
         </TabsTrigger>
       </TabsList>
       
@@ -1506,13 +2017,20 @@ export function DocumentDetailView({
                 <FileText className="w-5 h-5 mr-2" />
                 Original Content
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copyToClipboard(documentContent.original.text)}
-              >
-                <Copy className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(documentContent.original.text)}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Copy to Clipboard</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </CardHeader>
           <CardContent>
@@ -1530,47 +2048,71 @@ export function DocumentDetailView({
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center">
                 <Edit3 className="w-5 h-5 mr-2" />
-                Processed Content
+                Extracted Fields
                 {editMode && <Badge className="ml-2">Editing</Badge>}
               </CardTitle>
               <div className="flex items-center space-x-2">
                 {(document.metadata as any)?.template_id && (
                   <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigateToTemplateEdit((document.metadata as any).template_id, false)}
-                      className="text-xs"
-                    >
-                      <Edit className="w-4 h-4 mr-1" />
-                      Edit Template
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowTemplateChanger(!showTemplateChanger)}
-                      className="text-xs"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      Change Template
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigateToTemplateEdit((document.metadata as any).template_id, false)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Edit Template</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowTemplateChanger(!showTemplateChanger)}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Change Template</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditMode(!editMode)}
-                >
-                  {editMode ? <Eye className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditMode(!editMode)}
+                    >
+                      {editMode ? <Eye className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{editMode ? 'View Mode' : 'Edit Mode'}</p>
+                  </TooltipContent>
+                </Tooltip>
                 {editMode && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleSaveContent}
-                  >
-                    <Save className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSaveContent}
+                      >
+                        <Save className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Save Changes</p>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -1578,7 +2120,7 @@ export function DocumentDetailView({
           <CardContent>
             {editMode ? (
               <div className="h-64 sm:h-96">
-                <WysiwygEditor
+                <SimpleEditor
                   value={editedContent}
                   onChange={setEditedContent}
                   placeholder="Enter processed document content..."
@@ -1586,18 +2128,151 @@ export function DocumentDetailView({
                 />
               </div>
             ) : (
-              <MarkdownViewer
-                content={formattedOutput || documentContent.processed.text}
-                height="h-64 sm:h-96"
-              />
+              <>
+                {showTemplateView && rawTemplateContent && (
+                  <div className="mb-2 p-2 bg-muted/50 rounded-md border border-dashed">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                      <Code className="w-4 h-4" />
+                      <span>Template View - Showing placeholders</span>
+                    </div>
+                  </div>
+                )}
+                <MarkdownViewer
+                  content={showTemplateView && rawTemplateContent ? rawTemplateContent : (formattedOutput || documentContent.processed.text)}
+                  height="h-64 sm:h-96"
+                />
+              </>
             )}
           </CardContent>
         </Card>
       </TabsContent>
       </Tabs>
-      
+
     </>
   );
+
+  const renderPipelineView = () => {
+    // Use comprehensive field detection for all fields
+    const { extractedFields, confidenceScores } = comprehensiveFieldDetection;
+    const templateVariables = Object.keys(extractedFields);
+
+    // Get template content - use raw template if available, otherwise original text
+    const templateContent = rawTemplateContent || documentContent.original.text || '';
+
+    // Get metadata with proper typing
+    const metadata = document?.metadata as Record<string, unknown> | undefined;
+    const templateName = metadata?.template_name as string | undefined;
+    const templateId = metadata?.template_id as number | undefined;
+    const updatedAt = metadata?.updated_at as string | undefined;
+
+    // Determine which output to show based on toggle
+    const outputContent = showTemplateView && rawTemplateContent
+      ? rawTemplateContent
+      : (formattedOutput || documentContent.processed.text);
+
+    return (
+      <DocumentPipelineView
+        templateContent={templateContent}
+        templateVariables={templateVariables}
+        extractedFields={extractedFields}
+        confidenceScores={confidenceScores}
+        finalOutput={outputContent}
+        documentName={document?.name}
+        templateName={templateName}
+        templateId={templateId}
+        templateUpdatedAt={updatedAt}
+        onUpdateTemplate={templateId ? () => navigateToTemplateEdit(templateId) : undefined}
+      />
+    );
+  };
+
+  const renderDualView = () => {
+    const { extractedFields, confidenceScores } = comprehensiveFieldDetection;
+    const metadata = document?.metadata as Record<string, unknown> | undefined;
+    const templateName = metadata?.template_name as string | undefined;
+    const templateId = metadata?.template_id as number | undefined;
+
+    // Determine which content to show based on toggle
+    let templateContent: string;
+    if (showTemplateView && rawTemplateContent) {
+      // Show raw template with {{variable}} placeholders
+      templateContent = rawTemplateContent;
+    } else if (formattedOutput) {
+      // Show generated output with values filled in
+      templateContent = formattedOutput;
+    } else {
+      // Fallback to original text
+      templateContent = documentContent.original.text || '';
+    }
+
+    // Prepare highlight fields with location data for document preview
+    // This maps extractedFields to the format expected by DocumentPreviewPanel
+    // Includes bbox data from fieldPositions state (fetched from backend)
+    const highlightFields = Object.entries(extractedFields).reduce((acc, [fieldName, fieldData]) => {
+      if (fieldData === null || fieldData === undefined) return acc;
+
+      // Get position data (including bbox) for this field from the fetched positions
+      const positionData = fieldPositions.get(fieldName);
+
+      // Handle both simple string values and structured field objects
+      if (typeof fieldData === 'string') {
+        acc[fieldName] = {
+          value: fieldData,
+          confidence: confidenceScores[fieldName] ?? 0.5,
+          location: positionData ? {
+            page: positionData.page,
+            bbox: positionData.bbox ?? undefined,
+          } : undefined,
+        };
+      } else if (typeof fieldData === 'object') {
+        const field = fieldData as Record<string, unknown>;
+        const existingLocation = field.location as { page?: number; position?: number } | undefined;
+        acc[fieldName] = {
+          value: field.value ?? field,
+          confidence: (field.confidence as number) ?? confidenceScores[fieldName] ?? 0.5,
+          sourceText: field.sourceText as string | undefined,
+          location: {
+            page: positionData?.page ?? existingLocation?.page,
+            position: existingLocation?.position,
+            bbox: positionData?.bbox ?? undefined,
+          },
+        };
+      }
+      return acc;
+    }, {} as Record<string, { value: unknown; confidence?: number; sourceText?: string; location?: { page?: number; position?: number; bbox?: { x: number; y: number; width: number; height: number } } }>);
+
+    // Handler for when a highlight is clicked in the document preview
+    const handleFieldHighlightClick = (fieldName: string, _value: string) => {
+      setActiveHighlightField(fieldName);
+      // Could also scroll to the field in the template output view
+    };
+
+    return (
+      <DualDocumentView
+        fileUrl={documentFileUrl}
+        fileName={document?.name || 'document'}
+        fileType={document?.file_type || 'application/pdf'}
+        fileSize={document?.file_size}
+        templateContent={templateContent}
+        extractedFields={extractedFields}
+        templateName={templateName}
+        templateId={templateId}
+        onEditTemplate={templateId ? () => navigateToTemplateEdit(templateId) : undefined}
+        onExport={() => handleDownload('html')}
+        className="h-[70vh]"
+        documentText={documentContent.original.text}
+        documentId={documentId}
+        editable={true}
+        onTemplateChange={handleTemplateContentChange}
+        onFieldsChange={handleFieldsChange}
+        onSaveTemplate={handleSaveTemplateContent}
+        highlightFields={highlightFields}
+        activeField={activeHighlightField}
+        onFieldHighlightClick={handleFieldHighlightClick}
+        showHighlights={true}
+      />
+    );
+  };
 
   return (
     <div className={`p-4 sm:p-6 ${isFullscreen ? 'fixed inset-0 bg-white z-50' : ''}`}>
@@ -1616,14 +2291,7 @@ export function DocumentDetailView({
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-semibold truncate">{document.name}</h1>
             <div className="flex flex-wrap items-center gap-2 mt-1">
-                <Badge 
-                  className={getStatusColor(document.processing_status || document.metadata?.processing_status || 'completed')}
-                  data-testid="status-badge"
-                  data-status={document.processing_status || document.metadata?.processing_status || 'completed'}
-                >
-                  {getStatusIcon(document.processing_status || document.metadata?.processing_status || 'completed')}
-                  <span className="ml-1">{document.processing_status || document.metadata?.processing_status || 'completed'}</span>
-                </Badge>
+                <StatusBadge status={document.processing_status || document.metadata?.processing_status || 'completed'} />
               {document.metadata?.processing_method && (
                 <Badge variant="outline">{document.metadata.processing_method}</Badge>
               )}
@@ -1658,16 +2326,69 @@ export function DocumentDetailView({
             <span className="hidden sm:inline">Rerun Smart Extraction</span>
             <span className="sm:hidden">Rerun Extraction</span>
           </Button>
-          
+
+          {/* Toggle between Template View and Generated Output */}
+          {rawTemplateContent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showTemplateView ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowTemplateView(!showTemplateView)}
+                  className="w-full sm:w-auto"
+                >
+                  {showTemplateView ? (
+                    <>
+                      <Code className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">Template View</span>
+                      <span className="sm:hidden">Template</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileOutput className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">Generated Output</span>
+                      <span className="sm:hidden">Output</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{showTemplateView
+                  ? "Showing template with {{variable}} placeholders"
+                  : "Showing generated output with extracted values"
+                }</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setViewMode(viewMode === 'side-by-side' ? 'tabs' : 'side-by-side')}
+              onClick={() => {
+                const modes: Array<'dual' | 'side-by-side' | 'tabs' | 'pipeline'> = ['dual', 'side-by-side', 'tabs', 'pipeline'];
+                const currentIndex = modes.indexOf(viewMode as 'dual' | 'side-by-side' | 'tabs' | 'pipeline');
+                const nextIndex = (currentIndex + 1) % modes.length;
+                setViewMode(modes[nextIndex]);
+              }}
               className="flex-1 sm:flex-none"
             >
-              <SplitSquareHorizontal className="w-4 h-4 mr-2" />
-              {viewMode === 'side-by-side' ? 'Tabs' : 'Split'}
+              {viewMode === 'dual' ? (
+                <>
+                  <Columns className="w-4 h-4 mr-2" />
+                  Dual
+                </>
+              ) : viewMode === 'pipeline' ? (
+                <>
+                  <Workflow className="w-4 h-4 mr-2" />
+                  Pipeline
+                </>
+              ) : (
+                <>
+                  <SplitSquareHorizontal className="w-4 h-4 mr-2" />
+                  Tabs
+                </>
+              )}
             </Button>
             
             <Button
@@ -1680,15 +2401,43 @@ export function DocumentDetailView({
               {isFullscreen ? 'Exit' : 'Fullscreen'}
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDownload('html')}
-              className="flex-1 sm:flex-none"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => handleDownload('pdf')}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  PDF Document
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownload('docx')}>
+                  <FileType className="w-4 h-4 mr-2" />
+                  Word Document (.doc)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleDownload('html')}>
+                  <Code className="w-4 h-4 mr-2" />
+                  HTML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownload('md')}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Markdown (.md)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownload('txt')}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Plain Text (.txt)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleDownload('json')}>
+                  <FileJson className="w-4 h-4 mr-2" />
+                  JSON (with fields)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <Button
               variant="outline"
@@ -1706,7 +2455,13 @@ export function DocumentDetailView({
 
       {/* Content Area */}
       <div className="flex-1">
-        {viewMode === 'side-by-side' ? renderSideBySideView() : renderTabsView()}
+        {viewMode === 'dual' ? (
+          renderDualView()
+        ) : viewMode === 'pipeline' ? (
+          renderPipelineView()
+        ) : (
+          renderTabsView()
+        )}
       </div>
 
       {/* Consolidated Template Change Functionality */}
@@ -1730,6 +2485,48 @@ export function DocumentDetailView({
           </CardContent>
         </Card>
       )}
+
+      {/* Template Variables Panel - Hover to see extracted values */}
+      {document.processing_status === 'completed' && (() => {
+        // Get extracted fields for the variables panel
+        const extractedFieldsForPanel = (() => {
+          const sources = [
+            () => (document.metadata as Record<string, unknown>)?.extracted_data,
+            () => (document.metadata as Record<string, unknown>)?.extraction_result,
+            () => document.extracted_fields,
+            () => document.metadata?.extracted_fields,
+          ];
+
+          for (const getter of sources) {
+            const data = getter();
+            if (!data) continue;
+            const parsed = parseExtractedFields(data);
+            if (Object.keys(parsed).length > 0) {
+              // Handle nested extracted_values structure
+              if ('extracted_values' in parsed && typeof parsed.extracted_values === 'object') {
+                return parsed.extracted_values as Record<string, unknown>;
+              }
+              return parsed;
+            }
+          }
+          return {};
+        })();
+
+        if (Object.keys(extractedFieldsForPanel).length === 0) return null;
+
+        const metadata = document.metadata as Record<string, unknown> | undefined;
+        const templateName = metadata?.template_name as string | undefined;
+
+        return (
+          <TemplateVariablesPanel
+            title="Extracted Variables"
+            templateName={templateName}
+            extractedFields={extractedFieldsForPanel as Record<string, { value: string | null; confidence?: number; sourceText?: string; type?: string } | string | null>}
+            editable={false}
+            className="mt-6"
+          />
+        );
+      })()}
 
       {/* Extracted Fields */}
       <Card className="mt-6">
@@ -1839,11 +2636,11 @@ export function DocumentDetailView({
               for (const source of sources) {
                 const rawData = source.getter();
                 if (!rawData) continue;
-
+console.log('rawData', rawData);
                 // Parse the data (handles JSON strings and objects)
                 const parsed = parseExtractedFields(rawData);
                 if (Object.keys(parsed).length === 0) continue;
-
+               
                 // Check if this source has extracted_values structure
                 if (source.hasConfidence && 'extracted_values' in parsed) {
                   const data = parsed as { extracted_values?: Record<string, unknown>; confidence_scores?: Record<string, number> };
@@ -1887,6 +2684,11 @@ export function DocumentDetailView({
               console.log('');
               /* eslint-enable no-console */
               
+              // Get template metadata
+              const metadata = document?.metadata as Record<string, unknown> | undefined;
+              const templateId = metadata?.template_id as number | undefined;
+              const templateName = metadata?.template_name as string | undefined;
+
               return (
                 <ExtractedFieldsEditor
                   documentId={documentId}
@@ -1897,6 +2699,12 @@ export function DocumentDetailView({
                     setFieldsForTemplate(fields);
                     setShowCreateTemplateDialog(true);
                   }}
+                  onUpdateTemplate={templateId ? async (_fields) => {
+                    // Navigate to template editor
+                    navigateToTemplateEdit(templateId);
+                  } : undefined}
+                  templateId={templateId}
+                  templateName={templateName}
                   readOnly={false}
                   showCreateTemplate={true}
                 />

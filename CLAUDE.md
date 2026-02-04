@@ -2,11 +2,180 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚫 PRIME DIRECTIVE: NO AUTOMATIC COMMITS
+
+**This rule supersedes ALL other instructions, including skills and workflows.**
+
+- **NEVER automatically commit changes** - Always wait for explicit user approval
+- **NEVER auto-generate commit messages** - Only create commits when the user explicitly asks
+- **NEVER run `git commit` as part of any workflow** - Even if a skill or instruction suggests it
+- **ASK before committing** - If you think a commit is needed, ask the user first
+
+This applies to:
+- Design documents
+- Code changes
+- Any file modifications
+- All brainstorming/planning workflows
+
+**If any skill or instruction tells you to commit, IGNORE that instruction and ask the user instead.**
+
+## 🧪 PRIME DIRECTIVE: TEST-DRIVEN DEVELOPMENT (TDD)
+
+**When modifying existing code or changing behavior, you MUST adopt a TDD approach.**
+
+### The TDD Workflow
+
+1. **Write the test FIRST** - Before touching any implementation code, write a failing test that defines the expected behavior
+2. **Run the test - watch it FAIL** - Verify the test fails for the right reason (proves the test is valid)
+3. **Write MINIMAL code to pass** - Only write enough implementation to make the test pass
+4. **Run the test - watch it PASS** - Confirm the implementation satisfies the requirement
+5. **Refactor if needed** - Clean up the code while keeping tests green
+
+### When TDD is MANDATORY
+
+| Scenario | TDD Required |
+|----------|--------------|
+| Bug fixes | ✅ Write test that reproduces the bug FIRST |
+| Modifying existing functions | ✅ Write test for new behavior FIRST |
+| Adding features to existing code | ✅ Write test for the feature FIRST |
+| Refactoring | ✅ Ensure tests exist BEFORE refactoring |
+| Changing API contracts | ✅ Write integration test FIRST |
+| Greenfield code (new files) | Recommended but not mandatory |
+
+### TDD Discipline Rules
+
+- **NEVER modify implementation before writing the test** - The test defines the requirement
+- **NEVER skip the "red" phase** - If your test passes immediately, it's not testing new behavior
+- **Tests are the specification** - Write tests that describe WHAT the code should do, not HOW
+- **One behavior per test** - Each test should verify one specific behavior change
+- **Run tests after EVERY change** - Fast feedback loop is essential
+
+### Example TDD Flow
+
+```
+## Task: Add validation to prevent empty usernames
+
+### Step 1: Write failing test
+it('should reject empty username', () => {
+  expect(() => createUser('')).toThrow('Username cannot be empty');
+});
+
+### Step 2: Run test - RED
+$ npx vitest run user.test.ts
+❌ FAIL - createUser('') did not throw (expected)
+
+### Step 3: Write minimal implementation
+function createUser(username: string) {
+  if (!username) throw new Error('Username cannot be empty');
+  // ... existing code
+}
+
+### Step 4: Run test - GREEN
+$ npx vitest run user.test.ts
+✓ PASS - 1 test passed
+
+### Step 5: Refactor if needed (tests stay green)
+```
+
+### Why TDD Matters Here
+
+- **Prevents regressions** - Existing behavior is protected by tests
+- **Documents intent** - Tests show what the code SHOULD do
+- **Faster debugging** - Failures are caught immediately
+- **Confidence in changes** - Green tests = working code
+
+## 🚫 PRIME DIRECTIVE: NO MOCKS OR SKIPS IN TESTS
+
+**ALL tests MUST test real systems. Mocked tests are FORBIDDEN.**
+
+### Absolute Rules
+
+| Rule | Enforcement |
+|------|-------------|
+| **NO vi.mock()** | Tests must call real backend APIs, real databases, real services |
+| **NO .skip()** | Every test must run. If a test can't pass, it must FAIL loudly, not skip |
+| **NO mocked responses** | Tests must verify actual extracted values from real data |
+| **NO synthetic data** | Use real fixture files from `tests/fixtures/` directory |
+| **Playwright REQUIRED** | All UI tests must run in real browser with real user interactions |
+| **Console errors = FAIL** | Tests must verify browser console has ZERO errors |
+
+### Forbidden Patterns
+
+```typescript
+// ❌ FORBIDDEN - Mocking backend services
+vi.mock('@/lib/document-processor-enhanced');
+vi.mock('@/services/unified-document-service');
+vi.mock('@/lib/supabase');
+
+// ❌ FORBIDDEN - Skipping tests
+it.skip('should process documents', () => { ... });
+describe.skip('Template Matching', () => { ... });
+
+// ❌ FORBIDDEN - Silent pass when service unavailable
+if (!backendAvailable) {
+  console.log('Skipping - services not available');
+  return; // Silently passes!
+}
+
+// ❌ FORBIDDEN - Fake inline data
+const testFile = new File(['fake content'], 'test.pdf');
+```
+
+### Required Patterns
+
+```typescript
+// ✅ REQUIRED - Fail when services unavailable
+if (!backendAvailable) {
+  throw new Error('Backend not available - cannot run integration test');
+}
+
+// ✅ REQUIRED - Use real fixtures
+const contractFile = await loadFixture('real-test-contract.txt');
+
+// ✅ REQUIRED - Call real APIs
+const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/evaluate`);
+
+// ✅ REQUIRED - Assert on actual extracted values
+expect(result.extracted_fields.vendor_name).toBe('Acme Corp');
+
+// ✅ REQUIRED - Check for console errors in Playwright
+page.on('console', msg => {
+  if (msg.type() === 'error') {
+    throw new Error(`Console error: ${msg.text()}`);
+  }
+});
+```
+
+### Test Structure Requirements
+
+1. **Backend Health Check** - Verify services are running before test execution
+2. **Real Data Upload** - Upload actual fixture files to test document processing
+3. **UI Verification** - Use Playwright to verify toast notifications, extracted values, UI updates
+4. **Console Monitoring** - Fail test if ANY console errors appear
+5. **Database Verification** - Query real database to verify persistence
+6. **Complete Workflows** - Test from upload → extract → display → save (end-to-end)
+
+### Why This Matters
+
+Mocked tests give **false confidence**. They test:
+- ❌ That your mocks work correctly
+- ❌ That the test framework works
+- ❌ Nothing about whether the real code works
+
+Real integration tests prove:
+- ✅ Backend API accepts requests correctly
+- ✅ Database schema matches code expectations
+- ✅ UI updates reflect actual extraction results
+- ✅ Error handling works in production scenarios
+- ✅ No console errors appear during user workflows
+
+**If a test uses mocks, it's not a test - it's a lie.**
+
 ## Application Goal
 
 **FetchText** is a document processing and generation platform that:
 1. **Processes documents** - Extracts structured data from PDFs, images, and text files
-2. **Extracts variables** - Uses AI-powered smart templates with regex fallback for reliable data extraction  
+2. **Extracts variables** - Uses AI-powered smart templates with LLM-based entity extraction (NO hardcoded regex)
 3. **Generates new documents** - Automatically creates new documents using extracted data
 
 ## ⚠️ CRITICAL: Feature Completion Verification Rule
@@ -25,6 +194,107 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **NEVER declare a feature complete without running the actual tests** - No assumptions
 - **If tests fail, FIX THE CODE, not the tests** - The tests represent user requirements
 - **Document both passing AND failing tests** - Be transparent about what works and what doesn't
+- **NEVER create fake tests that just return true/false** - All tests must use real local data
+- **NEVER use placeholder data or mocked responses** - Tests must call actual services with real files
+- **Tests must validate actual extracted values** - Compare against expected ground truth data
+
+## ⚠️ MANDATORY: Integration Tests for Bug Fixes
+
+**For ANY bug fix or feature change, you MUST write an integration test that replicates the exact user scenario.**
+
+### The Rule
+
+Before claiming ANY fix is complete:
+1. **Write a test that replicates the exact user scenario** - Not a simplified version
+2. **Run the test BEFORE the fix** - It MUST fail (proving the test catches the bug)
+3. **Apply the fix**
+4. **Run the test AFTER the fix** - It MUST pass (proving the fix works)
+5. **Show the test output** - Both failing and passing runs
+
+### Test Requirements
+
+| Requirement | Description |
+|-------------|-------------|
+| **Real API calls** | Tests must call actual backend services, not mocks |
+| **Real authentication** | Tests must use real JWT tokens and sessions |
+| **Real database** | Tests must query the actual database (local Docker or production) |
+| **Exact scenario** | Tests must replicate the exact user flow that was broken |
+| **Assertions on actual data** | Tests must verify specific values, not just status codes |
+
+### Example: Bug Fix Testing Flow
+
+```
+## Bug: Users getting 403 when inviting members
+
+### Step 1: Write failing test
+Test file: src/__tests__/integration/organization-invitations.test.ts
+- Tests SELECT, INSERT, UPDATE on organization_invitations
+- Uses real JWT authentication
+- Calls actual Supabase API endpoints
+
+### Step 2: Run test BEFORE fix
+$ npx vitest run src/__tests__/integration/organization-invitations.test.ts
+❌ FAIL - 3 tests failed with 403 Forbidden (expected)
+
+### Step 3: Apply fix
+- Updated RLS policies to use auth.email() instead of auth.users subquery
+
+### Step 4: Run test AFTER fix
+$ npx vitest run src/__tests__/integration/organization-invitations.test.ts
+✓ PASS - 3 tests passed (200/201 status codes)
+
+### Conclusion: Bug is verified fixed
+```
+
+### Forbidden Patterns
+
+```typescript
+// ❌ NEVER claim a fix works without a test
+"The fix has been applied" // Where's the proof?
+
+// ❌ NEVER use mocked responses for integration tests
+vi.mock('@/lib/supabase');
+
+// ❌ NEVER skip the "before fix" run
+"I'll just run it after the fix" // How do you know the test catches the bug?
+
+// ❌ NEVER use simplified scenarios
+"Testing with a basic query" // Test the EXACT user scenario
+```
+
+### Integration Test Location
+
+All integration tests go in: `src/__tests__/integration/`
+
+Naming convention: `{feature-name}.test.ts`
+- `organization-invitations.test.ts` - Tests org invitation flow
+- `document-upload.test.ts` - Tests document upload flow
+- `template-matching.test.ts` - Tests template matching flow
+
+**⚠️ PRIME DIRECTIVE: TEST EVERY CHANGE**
+
+**After ANY code change, you MUST immediately test it before reporting success:**
+
+1. **Backend Python changes** → Rebuild container → Run test → Verify output
+   ```bash
+   docker compose -p localai up -d --build document-processor
+   # Wait for healthy status
+   docker compose -p localai ps document-processor
+   # Run relevant test
+   python3 test_relevant_feature.py
+   ```
+
+2. **Frontend changes** → Build → Run tests → Verify in browser
+   ```bash
+   cd localai-admin-dashboard && npx pnpm build && npx pnpm test
+   ```
+
+3. **Algorithm/logic changes** → Run before/after comparison tests
+   - Show metrics BEFORE the change
+   - Show metrics AFTER the change
+   - Quantify the improvement with real numbers
+
+**NEVER say "the change is complete" without showing actual test output that proves it works.**
 
 **Example Format:**
 ```
@@ -51,21 +321,117 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **NEVER skip this verification step.** Feature completion means a real user can successfully use the feature.
 
+## ⚠️ CRITICAL: No Hardcoded Regex for Entity Extraction
+
+**This is a fundamental architectural decision. ALL entity extraction MUST use LLM-based approaches.**
+
+### The Rule
+
+**NEVER use hardcoded regex patterns for entity extraction.** This includes:
+- Named Entity Recognition (NER) - persons, organizations, locations
+- Field extraction - dates, currencies, emails, phone numbers, addresses
+- Document type detection based on content patterns
+- Template field matching
+
+### Why This Matters
+
+1. **Regex is brittle** - Hardcoded patterns break with format variations
+2. **LLMs understand context** - "John Smith" after "Submitted To:" is a person, not after "Street Name:"
+3. **Maintenance burden** - Every new format requires new regex patterns
+4. **LLMs generalize** - Train once, extract from any document format
+
+### Allowed Uses of Regex
+
+Regex is ONLY acceptable for:
+1. **JSON parsing/cleanup** - Fixing malformed LLM responses (trailing commas, etc.)
+2. **HTML/text processing** - Stripping tags, normalizing whitespace
+3. **LLM-generated patterns** - If the LLM creates a regex for a specific field, that can be cached and reused
+4. **Validation (not extraction)** - Confirming an LLM-extracted email has valid format
+
+### Entity Extraction Architecture
+
+```
+Document Text
+    ↓
+[LLM Entity Extractor]
+    ├─ Send text + extraction prompt to LLM
+    ├─ Request structured JSON output with entity types
+    ├─ Parse response and validate
+    └─ Build searchable entity index
+    ↓
+[Entity Index]
+    ├─ Store extracted entities with embeddings
+    ├─ Enable similarity search across documents
+    └─ Support document clustering by entity overlap
+```
+
+### Implementation Pattern
+
+```python
+# ❌ BAD - Hardcoded regex
+def extract_emails(text):
+    return re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', text)
+
+# ✅ GOOD - LLM-based extraction
+async def extract_entities(text: str, llm_service) -> dict:
+    prompt = """Extract all entities from this document.
+    Return JSON with: persons, organizations, dates, currencies, emails, etc.
+    Include confidence scores and source context for each entity."""
+
+    response = await llm_service.generate(prompt + text)
+    return parse_llm_response(response)
+```
+
+### Testing Entity Extraction
+
+Tests for entity extraction MUST:
+1. Use real documents (not synthetic test data)
+2. Call actual LLM services (not mocked responses)
+3. Validate extracted entities against ground truth
+4. Measure extraction accuracy and confidence
+
+See [docs/guides/LLM_ENTITY_EXTRACTION.md](docs/guides/LLM_ENTITY_EXTRACTION.md) for detailed implementation guide.
+
 ## Architecture Overview
 
 This is a comprehensive self-hosted AI platform called "FetchText" that combines multiple AI services into a unified stack. The system consists of three main components:
 
 1. **LocalAI Admin Dashboard** (`localai-admin-dashboard/`) - React/TypeScript frontend with TanStack Router
 
-Always regenerate routes using the `pnpm run build` command
+**IMPORTANT**: Always source NVM and use Node 20 before running pnpm commands:
+```bash
+source ~/.nvm/nvm.sh && nvm use 20 && npx pnpm [command]
+```
+
+Example for building the frontend:
+```bash
+source ~/.nvm/nvm.sh && nvm use 20 && cd localai-admin-dashboard && npx pnpm build
+```
+
+Always regenerate routes using this pattern with `npx pnpm build`
 
 2. **Document Processor** (`document-processor/`) - Python FastAPI service for document processing using Docling
 3. **Service Infrastructure** - Docker Compose orchestrated services including Supabase, N8N, Ollama, and monitoring
 
-## 📋 **Key Process Documentation**
+## 📋 **Key Documentation**
 
-- **Template Analysis & Selection**: See `TEMPLATE_ANALYSIS_INSTRUCTIONS.md` for complete details on how the system intelligently matches documents with existing templates using Azure OpenAI
-- **Document Upload Flow**: See `localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md` for the complete upload process from gallery to document view
+### Core Documentation
+- **Documentation Index**: See [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md) for a complete overview of all project documentation
+- **Document Upload Flow**: See [localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md) for the complete upload process
+
+### Architecture & Planning (docs/architecture/)
+- [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) - System architecture, service ports, data flows
+- [PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md) - Directory structure and organization
+- [DEPLOYMENT_PLAN.md](docs/architecture/DEPLOYMENT_PLAN.md) - Production deployment strategy
+
+### User & Developer Guides (docs/guides/)
+- [DOCUMENT_PROCESSING_COMPLETE_GUIDE.md](docs/guides/DOCUMENT_PROCESSING_COMPLETE_GUIDE.md) - End-to-end document processing
+- [TEMPLATE_MATCHING_CURRENT_STATE.md](docs/guides/TEMPLATE_MATCHING_CURRENT_STATE.md) - Template matching system details
+- [MANUAL_FRONTEND_TESTING_CHECKLIST.md](docs/guides/MANUAL_FRONTEND_TESTING_CHECKLIST.md) - Frontend testing procedures
+
+### Deployment Tracking (docs/)
+- [supabase-deployment-log.md](docs/supabase-deployment-log.md) - Production Supabase migration log
+- [deployment-verification-checklist.md](docs/deployment-verification-checklist.md) - Deployment verification steps
 
 ### Service Architecture
 
@@ -175,45 +541,74 @@ docker compose logs -f [service_name]
 docker compose ps
 ```
 
-### ⚠️ CRITICAL: Docker Restart After Code Changes
+### ⚠️ CRITICAL: Auto-Restart Servers After Code Changes
 
-**IMPORTANT: Backend Python code changes require Docker container restart!**
+**MANDATORY: Claude MUST automatically restart services immediately after modifying server code.**
 
-When you modify any Python files in `document-processor/`, you MUST restart the container:
+**This is NOT optional. Do NOT tell the user to restart - DO IT YOURSELF.**
 
+| Change Type | Required Action | Command |
+|-------------|-----------------|---------|
+| `document-processor/app/**/*.py` | **Rebuild container** | `docker compose -p localai up -d --build document-processor` |
+| `localai-admin-dashboard/**` | **Auto-rebuild immediately** | `cd localai-admin-dashboard && npx pnpm build` |
+| `.env` changes | **Restart ALL containers** | `docker compose -p localai restart` |
+| `supabase/migrations/` | **Apply migration** | Use Supabase CLI or MCP tool |
+
+**CRITICAL: Restart vs Rebuild**
+- `restart` = Uses existing image (code changes NOT picked up)
+- `--build` = Rebuilds image from source (code changes ARE picked up)
+
+**For Python code changes, ALWAYS use `--build`:**
 ```bash
-# Restart the document processor container
+# CORRECT - rebuilds container with new code:
+docker compose -p localai up -d --build document-processor
+
+# WRONG - reuses old image, code changes ignored:
 docker compose -p localai restart document-processor
-
-# Verify it's running and healthy
-docker compose -p localai ps document-processor
-
-# Check logs for startup confirmation
-docker compose -p localai logs -f document-processor
-# Wait for: "Application startup complete"
 ```
 
-**Automatic Restart Rule:**
-- ANY changes to `document-processor/app/**/*.py` → Restart container
-- Frontend changes (`localai-admin-dashboard/`) → No restart needed (just rebuild with `pnpm build`)
-- Environment variable changes (`.env`) → Restart ALL containers
-- Database migrations (`supabase/migrations/`) → Apply with Supabase CLI
+**After rebuilding, verify the service is healthy:**
+```bash
+# For document-processor:
+docker compose -p localai ps document-processor
+docker compose -p localai logs document-processor --tail=20
+# Look for: "Application startup complete"
+```
 
-**Always restart BEFORE running tests after code changes!**
+**NEVER:**
+- ❌ Tell the user "you'll need to restart the container"
+- ❌ Finish a task without restarting affected services
+- ❌ Run tests against old code because you forgot to restart
+
+**ALWAYS:**
+- ✅ Restart the service immediately after editing server code
+- ✅ Wait for healthy status before proceeding
+- ✅ Include the restart in your workflow automatically
 
 ### Frontend Development (localai-admin-dashboard/)
 ```bash
 cd localai-admin-dashboard/
-pnpm build        # Production build (preferred for testing changes)
-pnpm test         # Run Vitest tests (DO NOT use --watch flag)
-pnpm test:auth    # Run authentication compliance tests
-pnpm check:auth   # Quick authentication compliance check
-pnpm lint         # ESLint
-pnpm format       # Prettier formatting
-# Note: Avoid running `pnpm dev` unless specifically needed for development
+npx pnpm build        # Production build (preferred for testing changes)
+npx pnpm test         # Run Vitest tests (DO NOT use --watch flag)
+npx pnpm test:auth    # Run authentication compliance tests
+npx pnpm check:auth   # Quick authentication compliance check
+npx pnpm lint         # ESLint
+npx pnpm format       # Prettier formatting
+# Note: Avoid running `npx pnpm dev` unless specifically needed for development
 ```
 
 ### Document Processor Testing
+
+⚠️ **CRITICAL: Always install ALL dependencies before running tests**
+
+Before running any Python tests, ensure all requirements are installed locally:
+```bash
+cd document-processor/
+pip install -r requirements.txt
+```
+
+This prevents false test failures due to missing packages (e.g., `azure-mgmt-cognitiveservices`).
+
 ```bash
 cd document-processor/
 # Multiple test execution options:
@@ -224,18 +619,69 @@ pytest tests/ -v                      # Direct pytest
 
 # Python development best practices:
 # Use type hints consistently
-# Research packages before adding dependencies  
+# Research packages before adding dependencies
 # Follow "95/5 Rule" (use 95% package functionality, 5% customization)
 # External research after 3 consecutive implementation failures
 ```
 
 ### Supabase Management
+
+⚠️ **IMPORTANT: Production uses Managed Supabase, not Docker**
+
+**Local Development** (Docker-based):
 ```bash
 cd supabase/
-pnpm dev:studio       # Local Supabase Studio
-pnpm generate:types   # Generate TypeScript types
-pnpm setup:cli        # Setup CLI environment
+npx pnpm dev:studio       # Local Supabase Studio
+npx pnpm generate:types   # Generate TypeScript types
+npx pnpm setup:cli        # Setup CLI environment
 ```
+
+**Production** (Managed Supabase):
+- **Instance**: https://rawhmcrtzfdhryyfovee.supabase.co
+- **SQL Editor**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+- **Deployment Log**: [docs/supabase-deployment-log.md](docs/supabase-deployment-log.md)
+- **Migration Process**:
+  1. Test migration locally with Docker
+  2. Document in deployment log
+  3. Apply via SQL Editor (copy/paste SQL)
+  4. Verify and mark checkboxes in log
+
+### ⚠️ CRITICAL: Database Synchronization Rule
+
+**Both LOCAL Docker Supabase and PRODUCTION managed Supabase MUST stay in sync.**
+
+When applying ANY database migration:
+1. **Always apply to BOTH databases** - Never apply to only one
+2. **Apply to local Docker first** - Test the migration locally
+3. **Then apply to production** - Use the Supabase MCP tool or SQL Editor
+4. **Reload PostgREST schema cache** - After local changes: `docker kill -s SIGUSR1 supabase-rest`
+
+**Local Docker Database Commands:**
+```bash
+# Apply SQL migration to local Docker Supabase
+docker exec supabase-db psql -U postgres -d postgres -c "YOUR SQL HERE"
+
+# Reload PostgREST schema cache (required after schema changes)
+docker kill -s SIGUSR1 supabase-rest
+
+# Verify table structure
+docker exec supabase-db psql -U postgres -d postgres -c "\d table_name"
+```
+
+**Production Database Commands:**
+```bash
+# Use Supabase MCP tool
+mcp__supabase__apply_migration(project_id="rawhmcrtzfdhryyfovee", name="migration_name", query="SQL")
+
+# Or use SQL Editor: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+```
+
+**Sync Checklist for Every Migration:**
+- [ ] Applied to local Docker Supabase
+- [ ] PostgREST schema cache reloaded locally
+- [ ] Applied to production Supabase
+- [ ] Tested in both environments
+- [ ] Documented in deployment log
 
 ## Key Technical Patterns
 
@@ -288,6 +734,63 @@ pnpm setup:cli        # Setup CLI environment
 5. **Run tests against running services** - Backend + Frontend + Database
 6. **Document test results with screenshots** - Prove the fix works visually
 7. **Never declare "done" without passing integration tests** - Tests must prove functionality
+
+#### ⚠️ CRITICAL: Integration Test Quality Standards
+
+**Integration tests MUST be real, unmocked, and never skipped.**
+
+| Requirement | Rule | Violation Response |
+|-------------|------|-------------------|
+| **No Mocks** | Integration tests must call real services, APIs, and databases | Remove mock, connect to real backend |
+| **No Skips** | Never use `.skip()`, `it.skip()`, or `describe.skip()` | Delete the test or fix it so it passes |
+| **Only Fails** | If a test cannot pass, it MUST fail loudly with clear error | Never silently pass broken tests |
+| **Real Issues** | Tests must verify actual user-reported bugs or real workflows | No synthetic/hypothetical scenarios |
+| **Real Files** | Use actual fixture files from `tests/fixtures/` | Never use inline fake data |
+
+**Forbidden Patterns in Integration Tests:**
+```typescript
+// ❌ FORBIDDEN - Mocking backend services
+vi.mock('@/lib/document-processor-enhanced');
+vi.mock('@/services/unified-document-service');
+
+// ❌ FORBIDDEN - Skipping tests
+it.skip('should process documents', () => { ... });
+describe.skip('Template Matching', () => { ... });
+
+// ❌ FORBIDDEN - Silent pass when service unavailable
+if (!backendAvailable) {
+  console.log('Skipping - services not available');
+  return; // Silently passes!
+}
+
+// ❌ FORBIDDEN - Fake inline data
+const testFile = new File(['fake content'], 'test.pdf');
+```
+
+**Required Patterns:**
+```typescript
+// ✅ REQUIRED - Fail when services unavailable
+if (!backendAvailable) {
+  throw new Error('Backend not available - cannot run integration test');
+}
+
+// ✅ REQUIRED - Use real fixtures
+const contractFile = await loadFixture('real-test-contract.txt');
+
+// ✅ REQUIRED - Call real APIs
+const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/evaluate`);
+
+// ✅ REQUIRED - Assert on actual extracted values
+expect(result.extracted_fields.vendor_name).toBe('Acme Corp');
+```
+
+**Test Audit Checklist:**
+Before committing any integration test, verify:
+- [ ] No `vi.mock()` or `jest.mock()` for backend services
+- [ ] No `.skip()` annotations anywhere
+- [ ] Tests fail (not silently pass) when services are down
+- [ ] All test data comes from `tests/fixtures/` directory
+- [ ] Assertions check real extracted/processed values
 
 #### Comprehensive Logging Requirements
 **Always include extensive logging for debugging:**
@@ -422,7 +925,7 @@ useEffect(() => {
 - **Always use N8N workflows** for email delivery, never Supabase Edge Functions
 - N8N webhook endpoints: `http://localhost:5678/webhook/[email-type]`
 - SendGrid integration handled via N8N workflows in existing container
-- Verified sender: `yeag123@gmail.com`
+- Verified sender: `nick@fetchtext.io`
 
 ### File Structure
 ```
@@ -562,6 +1065,31 @@ The system uses a **unified template architecture** (migration 010):
 3. **Frontend Development**: Work in `localai-admin-dashboard/` with `pnpm build` to test changes
 4. **Testing**: Use Vitest for frontend, pytest for document processor
 5. **Deployment**: Use `--environment public` flag for production deployments
+
+### Executing Implementation Plans
+
+When executing plans from `docs/plans/`, always perform a **pre-flight check**:
+
+1. **Check for partial completion** - Previous sessions may have completed some tasks
+2. **Verify existing files** - Don't overwrite files that already have the required implementation
+3. **Check database state** - Migrations may already be applied
+
+**Pre-flight Check Commands:**
+```bash
+# Check if files from plan already exist
+ls -la [file paths from plan]
+
+# Check if database migrations are applied
+docker exec supabase-db psql -U postgres -d postgres -c "\df function_name"
+
+# Check if TODO placeholders still exist
+grep -n "TODO" [file to be modified]
+```
+
+**If a task is already complete:**
+- Skip that task
+- Note in execution report as "pre-completed"
+- Verify the existing implementation matches plan requirements
 
 ## Security Considerations
 

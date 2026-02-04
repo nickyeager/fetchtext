@@ -1,40 +1,62 @@
-import {
-  IconCash,
-  IconShield,
-  IconUsersGroup,
-  IconUserShield,
-} from '@tabler/icons-react'
-import { UserStatus } from './schema'
+import { IconCrown, IconShield, IconUser } from '@tabler/icons-react'
+import type { MemberStatus } from '../types/member-table'
+import type { OrganizationRole } from '@/types/organization'
 
-export const callTypes = new Map<UserStatus, string>([
+/**
+ * Status badge styles for member table rows
+ */
+export const statusStyles = new Map<MemberStatus, string>([
   ['active', 'bg-teal-100/30 text-teal-900 dark:text-teal-200 border-teal-200'],
-  ['inactive', 'bg-neutral-300/40 border-neutral-300'],
   ['invited', 'bg-sky-200/40 text-sky-900 dark:text-sky-100 border-sky-300'],
-  [
-    'suspended',
-    'bg-destructive/10 dark:bg-destructive/50 text-destructive dark:text-primary border-destructive/10',
-  ],
 ])
 
-export const userTypes = [
+/**
+ * Member status options for filtering
+ */
+export const memberStatuses: { label: string; value: MemberStatus }[] = [
+  { label: 'Active', value: 'active' },
+  { label: 'Invited', value: 'invited' },
+]
+
+/**
+ * Organization role definitions with icons
+ */
+export const organizationRoles: {
+  label: string
+  value: OrganizationRole
+  icon: typeof IconCrown
+  description: string
+}[] = [
   {
-    label: 'Superadmin',
-    value: 'superadmin',
-    icon: IconShield,
+    label: 'Owner',
+    value: 'owner',
+    icon: IconCrown,
+    description: 'Full control over organization',
   },
   {
     label: 'Admin',
     value: 'admin',
-    icon: IconUserShield,
+    icon: IconShield,
+    description: 'Manage members and content',
   },
   {
-    label: 'Manager',
-    value: 'manager',
-    icon: IconUsersGroup,
+    label: 'Member',
+    value: 'member',
+    icon: IconUser,
+    description: 'View and create content',
   },
-  {
-    label: 'Cashier',
-    value: 'cashier',
-    icon: IconCash,
-  },
-] as const
+]
+
+/**
+ * Roles available for invitation (excludes owner)
+ */
+export const invitableRoles = organizationRoles.filter(
+  (role) => role.value !== 'owner'
+)
+
+/**
+ * Get role configuration by value
+ */
+export function getRoleConfig(role: OrganizationRole) {
+  return organizationRoles.find((r) => r.value === role)
+}

@@ -188,3 +188,34 @@ export interface BackendResponse {
   processing_time?: number;
   status?: string;
 }
+
+// Real-time field extraction types
+
+/**
+ * Field extraction state - discriminated union for type-safe state transitions
+ */
+export type FieldExtractionState =
+  | { status: 'pending' }
+  | { status: 'extracting'; progress: number; toastId?: string | number }
+  | { status: 'success'; value: unknown; confidence: number; toastId?: string | number }
+  | { status: 'failed'; error: string; canRetry: boolean; toastId?: string | number };
+
+/**
+ * Actions for field extraction state reducer
+ */
+export type FieldExtractionAction =
+  | { type: 'EXTRACTION_START'; fieldName: string; toastId?: string | number }
+  | { type: 'EXTRACTION_PROGRESS'; fieldName: string; progress: number }
+  | { type: 'EXTRACTION_SUCCESS'; fieldName: string; value: unknown; confidence: number }
+  | { type: 'EXTRACTION_FAILED'; fieldName: string; error: string; canRetry: boolean };
+
+/**
+ * Event emitted when a field is successfully extracted
+ */
+export interface ExtractedFieldUpdate {
+  fieldName: string;
+  value: unknown;
+  confidence: number;
+  sourceText?: string;
+  location?: { page?: number; position?: number };
+}

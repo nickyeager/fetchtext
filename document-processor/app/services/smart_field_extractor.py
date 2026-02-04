@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from .llm_service import llm_service
+from .semantic_variable_parser import semantic_variable_parser
 from ..config import provider_config, AIProvider
 
 logger = logging.getLogger(__name__)
@@ -20,26 +21,54 @@ class SmartFieldExtractor:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.llm_service = llm_service
-        
+
+    def _get_semantic_field_info(self, field_name: str) -> Dict[str, Any]:
+        """
+        Get semantic information about a field name.
+
+        Args:
+            field_name: The variable/field name to analyze
+
+        Returns:
+            Dict with semantic_description, field_type_hint, search_keywords, related_fields
+        """
+        return semantic_variable_parser.parse_variable_name(field_name)
+
     async def extract_fields_intelligently(
         self,
         text_content: str,
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float = 0.6,
-        provider: str = "azure"
+        provider: str = "azure",
+        existing_context: Optional[Dict[str, Dict[str, Any]]] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Use LLM to intelligently extract field values from text content
+        Use LLM to intelligently extract field values from text content.
+
+        Args:
+            text_content: The document text to extract from
+            template_variables: List of field definitions to extract
+            confidence_threshold: Minimum confidence for extracted values
+            provider: LLM provider to use (azure, ollama)
+            existing_context: Optional dict of already extracted fields to provide context.
+                             Format: {"field_name": {"value": "extracted value", "confidence": 0.95}}
+            organization_id: Optional organization ID for org-specific LLM config
+
+        Returns:
+            Dict with extraction results including extracted_values, method, and metadata
         """
         import time
         start_time = time.time()
-        
+
         self.logger.info(f"Starting smart extraction for {len(template_variables)} fields with provider: {provider}")
-        
+        if existing_context:
+            self.logger.info(f"Using {len(existing_context)} existing context fields for enhanced extraction")
+
         try:
-            # Build the smart extraction prompt
+            # Build the smart extraction prompt with optional context
             extraction_prompt = self._build_smart_extraction_prompt(
-                text_content, template_variables
+                text_content, template_variables, existing_context=existing_context
             )
             self.logger.debug(f"Built extraction prompt (length: {len(extraction_prompt)})")
             
@@ -51,15 +80,17 @@ class SmartFieldExtractor:
             self.logger.info(f"LLM params: {llm_params}, max_tokens type: {type(llm_params.get('max_tokens'))}")
             
             # Call LLM for intelligent extraction
-            self.logger.info(f"Calling LLM service with provider: {llm_params.get('provider', provider)}")
+            self.logger.info(f"Calling LLM service with provider: {llm_params.get('provider', provider)}, org_id: {organization_id}")
             response = await self.llm_service.complete(
                 extraction_prompt,
+                organization_id=organization_id,
                 **llm_params
             )
             self.logger.info(f"LLM response received (length: {len(response)})")
             self.logger.debug(f"LLM response preview: {response[:200]}...")
             
             # Parse and validate the LLM response
+            self.logger.debug(f"Raw LLM response preview: {response[:500]}...")
             extracted_data = self._parse_llm_response(response, template_variables)
             self.logger.info(f"Parsed {len(extracted_data)} fields from LLM response")
             
@@ -91,29 +122,57 @@ class SmartFieldExtractor:
     def _build_smart_extraction_prompt(
         self,
         text_content: str,
-        template_variables: List[Dict[str, Any]]
+        template_variables: List[Dict[str, Any]],
+        existing_context: Optional[Dict[str, Dict[str, Any]]] = None
     ) -> str:
         """
-        Build an intelligent prompt for LLM-based field extraction with examples and variations
+        Build an intelligent prompt for LLM-based field extraction with examples and variations.
+
+        Args:
+            text_content: The document text to extract from
+            template_variables: List of field definitions to extract
+            existing_context: Optional dict of already extracted fields to provide context.
+                             Format: {"field_name": {"value": "extracted value", "confidence": 0.95}}
+
+        Returns:
+            The formatted prompt string for LLM extraction
         """
-        # Create enhanced field descriptions with examples and variations
+        # Create enhanced field descriptions with semantic understanding
         field_descriptions = []
         field_examples = {}
-        
+
         for var in template_variables:
             field_name = var.get('name', var.get('id', 'unknown'))
             field_type = var.get('type', 'text')
             description = var.get('description', f'{field_name} field')
-            
+
+            # Get semantic info for better extraction
+            semantic_info = self._get_semantic_field_info(field_name)
+
             # Add field-specific examples and variations
             examples, variations = self._get_field_examples_and_variations(field_name, field_type)
-            
+
+            # Build enhanced field description with semantic understanding
             field_desc = f'- {field_name} ({field_type}): {description}'
-            if variations:
-                field_desc += f'\n  Look for: {", ".join(variations)}'
+
+            # Add semantic meaning
+            if semantic_info.get('semantic_description'):
+                field_desc += f'\n  Semantic meaning: "{semantic_info["semantic_description"]}"'
+
+            # Add search keywords from semantic analysis
+            semantic_keywords = semantic_info.get('search_keywords', [])
+            all_variations = list(set(variations + semantic_keywords))
+            if all_variations:
+                field_desc += f'\n  Look for: {", ".join(all_variations[:8])}'
+
             if examples:
                 field_desc += f'\n  Examples: {", ".join(examples)}'
-            
+
+            # Add relationship hints
+            related = semantic_info.get('related_fields', [])
+            if related:
+                field_desc += f'\n  Often found near: {", ".join(related[:3])}'
+
             field_descriptions.append(field_desc)
             field_examples[field_name] = examples
         
@@ -133,11 +192,22 @@ SPECIAL {doc_type.upper()} EXTRACTION GUIDELINES:
 - Reference numbers can appear anywhere in the document structure
 """
 
+        # Build context section if existing fields were provided
+        context_section = ""
+        if existing_context:
+            context_section = "\n\n## ALREADY EXTRACTED FIELDS (use as context)\n"
+            context_section += "These fields have already been extracted from this document. Use them to help locate related fields:\n"
+            for field_name, field_data in existing_context.items():
+                value = field_data.get('value', 'N/A')
+                confidence = field_data.get('confidence', 0)
+                context_section += f"- {field_name}: \"{value}\" (confidence: {confidence:.0%})\n"
+            context_section += "\nUse this context to find related fields. For example, if 'vendor_name' is 'Acme Corp', look for 'Acme Corp' when finding vendor_address.\n"
+
         prompt = f"""You are an expert document data extractor specializing in {doc_type} documents. Extract the following fields from this document text.
 
 DOCUMENT TEXT:
 {text_content[:2500]}
-
+{context_section}
 FIELDS TO EXTRACT:
 {chr(10).join(field_descriptions)}
 {receipt_guidance}
@@ -192,24 +262,26 @@ Return ONLY this JSON format (no markdown, no explanations):
         }
         
         # Adjust based on document complexity
+        # Each field needs ~100 tokens (value + confidence + reasoning)
+        # Add buffer for JSON structure and edge cases
         if doc_type in ['receipt', 'invoice']:
             # Receipts and invoices are more structured
             params['temperature'] = 0.05  # Very low for structured docs
-            params['max_tokens'] = min(400 + field_count * 50, 800)
+            params['max_tokens'] = min(300 + field_count * 100, 2000)
         elif doc_type == 'report':
             # Reports are more complex
             params['temperature'] = 0.15  # Slightly higher for flexibility
-            params['max_tokens'] = min(600 + field_count * 80, 1200)
+            params['max_tokens'] = min(400 + field_count * 120, 2500)
         else:
             # General documents
             params['temperature'] = 0.1
-            params['max_tokens'] = min(500 + field_count * 60, 1000)
+            params['max_tokens'] = min(350 + field_count * 110, 2200)
         
         # Adjust for text length
         if text_length > 2000:
-            params['max_tokens'] = min(int(params['max_tokens'] * 1.2), 1500)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.2), 3000)
         elif text_length < 500:
-            params['max_tokens'] = max(int(params['max_tokens'] * 0.8), 300)
+            params['max_tokens'] = max(int(params['max_tokens'] * 0.8), 500)
         
         # Provider-specific optimizations
         if provider == 'azure':
@@ -217,7 +289,7 @@ Return ONLY this JSON format (no markdown, no explanations):
             params['temperature'] = min(params['temperature'] + 0.02, 0.2)
         elif provider == 'ollama':
             # Ollama local models might need more tokens
-            params['max_tokens'] = min(int(params['max_tokens'] * 1.1), 1000)
+            params['max_tokens'] = min(int(params['max_tokens'] * 1.1), 3000)
         
         self.logger.debug(f"Optimized LLM params for {doc_type} with {field_count} fields: {params}")
         return params
@@ -318,7 +390,8 @@ Return ONLY this JSON format (no markdown, no explanations):
         """Parse clean JSON response"""
         cleaned_response = response.strip()
         parsed_response = json.loads(cleaned_response)
-        return self._format_extracted_fields(parsed_response.get('extracted_fields', {}))
+        extracted_fields = parsed_response.get('extracted_fields', {})
+        return self._format_extracted_fields(extracted_fields)
     
     def _parse_markdown_json(self, response: str, template_variables: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         """Parse JSON wrapped in markdown code blocks"""
@@ -383,18 +456,29 @@ Return ONLY this JSON format (no markdown, no explanations):
         
         return extracted_fields
     
-    def _format_extracted_fields(self, extracted_fields: Dict) -> Dict[str, Dict[str, Any]]:
-        """Format extracted fields to standard format"""
+    def _format_extracted_fields(self, extracted_fields: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Format extracted fields to standard format with location data"""
         formatted_fields = {}
         for field_name, field_data in extracted_fields.items():
             if isinstance(field_data, dict) and field_data.get('value') is not None:
                 value = str(field_data['value']).strip()
                 if value and value.lower() not in ['null', 'none', '']:
+                    # Safe confidence conversion with error handling
+                    try:
+                        confidence = float(field_data.get('confidence', 0.5))
+                    except (ValueError, TypeError):
+                        confidence = 0.5
                     formatted_fields[field_name] = {
                         'value': value,
-                        'confidence': float(field_data.get('confidence', 0.5)),
+                        'confidence': confidence,
                         'source_text': field_data.get('reasoning', 'AI extracted'),
-                        'location': 'llm_intelligent'
+                        'location': {
+                            'page': field_data.get('page', 1),
+                            'bbox': field_data.get('bbox'),
+                            'char_start': field_data.get('char_start'),
+                            'char_end': field_data.get('char_end'),
+                            'extraction_method': 'llm_intelligent'
+                        }
                     }
         return formatted_fields
     
@@ -566,9 +650,9 @@ Return ONLY this JSON format (no markdown, no explanations):
             # Apply threshold
             if adjusted_confidence >= confidence_threshold:
                 filtered_data[field_name] = field_data
-                self.logger.debug(f"Field {field_name} passed threshold: {adjusted_confidence:.2f}")
+                self.logger.debug(f"Field {field_name} passed: {adjusted_confidence:.2f} >= {confidence_threshold}")
             else:
-                self.logger.debug(f"Field {field_name} filtered out: {adjusted_confidence:.2f} < {confidence_threshold}")
+                self.logger.debug(f"Field {field_name} filtered: {adjusted_confidence:.2f} < {confidence_threshold}")
         
         return filtered_data
     
@@ -648,11 +732,19 @@ Return ONLY this JSON format (no markdown, no explanations):
         content: str,
         template_variables: List[Dict[str, Any]],
         confidence_threshold: float = 0.6,
-        provider: str = "azure"
+        provider: str = "azure",
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Test extraction with a template to validate field extractability.
         This performs REAL extraction to determine if template fields can be extracted.
+
+        Args:
+            content: The document text to extract from
+            template_variables: List of field definitions to extract
+            confidence_threshold: Minimum confidence for extracted values
+            provider: LLM provider to use (azure, ollama)
+            organization_id: Optional organization ID for org-specific LLM config
 
         Returns:
             ExtractionTestResult with:
@@ -671,7 +763,8 @@ Return ONLY this JSON format (no markdown, no explanations):
                 text_content=content,
                 template_variables=template_variables,
                 confidence_threshold=confidence_threshold,
-                provider=provider
+                provider=provider,
+                organization_id=organization_id
             )
 
             # Analyze results
@@ -787,6 +880,107 @@ Return ONLY this JSON format (no markdown, no explanations):
             "success_rate": len(extracted_fields) / len(template_variables) if template_variables else 0,
             "processing_time_ms": 50
         }
+
+    def _chunk_document(
+        self,
+        text: str,
+        chunk_size: int = 2500,
+        overlap: int = 200
+    ) -> List[str]:
+        """
+        Split long document into overlapping chunks for processing.
+
+        Args:
+            text: Document text to chunk
+            chunk_size: Maximum characters per chunk
+            overlap: Characters to overlap between chunks
+
+        Returns:
+            List of text chunks with overlap
+        """
+        # Input validation
+        if not text:
+            return []
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if overlap < 0:
+            raise ValueError("overlap must be non-negative")
+        if overlap >= chunk_size:
+            raise ValueError("overlap must be less than chunk_size")
+
+        if len(text) <= chunk_size:
+            return [text]
+
+        chunks = []
+        start = 0
+
+        while start < len(text):
+            # Find the end of this chunk
+            end = start + chunk_size
+
+            if end >= len(text):
+                # Last chunk - take everything remaining
+                chunks.append(text[start:])
+                break
+
+            # Try to break at a sentence or word boundary
+            # Look for sentence end (.!?) in the last 100 chars of the chunk
+            search_start = max(end - 100, start)
+            best_break = end
+
+            # Check for sentence breaks (. ! ? \n) - search backwards from end
+            for i in range(end - 1, search_start - 1, -1):
+                if text[i] in '.!?\n':
+                    best_break = i + 1  # Break after the punctuation
+                    break
+
+            # If no sentence break, try word break (space)
+            if best_break == end:
+                for i in range(end - 1, search_start - 1, -1):
+                    if text[i] == ' ':
+                        best_break = i + 1  # Break after the space
+                        break
+
+            chunks.append(text[start:best_break])
+
+            # Next chunk starts with overlap
+            # Ensure we're making progress to avoid infinite loop
+            next_start = max(best_break - overlap, 0)
+            if next_start <= start:
+                next_start = start + 1
+            start = next_start
+
+        return chunks
+
+    def _merge_chunk_extractions(
+        self,
+        chunk_results: List[Dict[str, Dict[str, Any]]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Merge extraction results from multiple chunks.
+
+        Keeps the highest-confidence value for each field.
+
+        Args:
+            chunk_results: List of extraction results from each chunk
+
+        Returns:
+            Merged results with best confidence values
+        """
+        merged = {}
+
+        for chunk_result in chunk_results:
+            for field_name, field_data in chunk_result.items():
+                existing = merged.get(field_name)
+                new_confidence = field_data.get("confidence", 0)
+
+                if existing is None:
+                    merged[field_name] = field_data
+                elif new_confidence > existing.get("confidence", 0):
+                    merged[field_name] = field_data
+
+        return merged
+
 
 # Global instance
 smart_field_extractor = SmartFieldExtractor()

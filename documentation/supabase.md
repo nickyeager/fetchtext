@@ -82,6 +82,34 @@ Use these steps whenever you rotate the primary database password (currently `**
 
 Document the rotation (time, operator, reason) in your internal runbook so auditors can trace when the password changed.
 
+## Deployment Tracking
+
+All changes to the managed Supabase instance are tracked in `docs/supabase-deployment-log.md`.
+
+**Before making schema changes:**
+1. Test migration locally: `docker compose restart supabase-db`
+2. Document the change in deployment log (use template)
+3. Apply migration via Supabase SQL Editor
+4. Verify changes and mark checkboxes in log
+5. Commit deployment log: `git add docs/supabase-deployment-log.md && git commit -m "docs: record Supabase deployment YYYY-MM-DD"`
+
+**Migration Workflow:**
+```mermaid
+graph TD
+    A[Create Migration File] --> B[Test Locally]
+    B --> C[Document in Log]
+    C --> D[Apply to Managed Supabase]
+    D --> E[Verify Deployment]
+    E --> F[Update Log Checkboxes]
+    F --> G[Commit Log to Git]
+```
+
+**Quick Reference:**
+- Deployment Log: `docs/supabase-deployment-log.md`
+- Migration Files: `supabase/migrations/`
+- Consolidated Script: `SUPABASE_MIGRATION.sql`
+- SQL Editor: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+
 ## Next Steps
 
 - Follow Task 1.2 to make Bicep ingest the managed Supabase secrets automatically.

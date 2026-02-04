@@ -1,8 +1,17 @@
 import { useState } from 'react'
+import { WorkflowTemplate } from '@/types/workflows'
 import { Clock, Users, Play, Eye, MoreVertical } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { WorkflowTemplate } from '@/types/workflows'
-import { cn } from '@/lib/utils'
 
 interface TemplateCardProps {
   template: WorkflowTemplate
@@ -65,70 +72,72 @@ export function TemplateCard({
   return (
     <Card
       className={cn(
-        'group relative overflow-hidden transition-all duration-200 hover:shadow-lg hover:shadow-black/10 hover:scale-[1.02]',
+        'group relative overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-lg hover:shadow-black/10',
         className
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Thumbnail/Preview Image */}
-      <div className="relative h-48 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
+      <div className='relative h-48 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900'>
         {template.thumbnailUrl ? (
           <img
             src={template.thumbnailUrl}
             alt={template.name}
-            className="w-full h-full object-cover"
+            className='h-full w-full object-cover'
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-12 h-12 mx-auto mb-2 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
+          <div className='flex h-full w-full items-center justify-center'>
+            <div className='text-center'>
+              <div className='mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-gray-800'>
                 {template.templateType === 'n8n' && (
-                  <div className="w-6 h-6 bg-blue-500 rounded"></div>
+                  <div className='h-6 w-6 rounded bg-blue-500'></div>
                 )}
                 {template.templateType === 'flowise' && (
-                  <div className="w-6 h-6 bg-purple-500 rounded"></div>
+                  <div className='h-6 w-6 rounded bg-purple-500'></div>
                 )}
                 {template.templateType === 'hybrid' && (
-                  <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded"></div>
+                  <div className='h-6 w-6 rounded bg-gradient-to-r from-blue-500 to-purple-500'></div>
                 )}
                 {template.templateType === 'other' && (
-                  <div className="w-6 h-6 bg-gray-500 rounded"></div>
+                  <div className='h-6 w-6 rounded bg-gray-500'></div>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">{template.templateType.toUpperCase()}</p>
+              <p className='text-muted-foreground text-xs'>
+                {template.templateType.toUpperCase()}
+              </p>
             </div>
           </div>
         )}
-        
+
         {/* Overlay with quick actions */}
         <div
           className={cn(
-            'absolute inset-0 bg-black/50 flex items-center justify-center space-x-2 transition-opacity duration-200',
+            'absolute inset-0 flex items-center justify-center space-x-2 bg-black/50 transition-opacity duration-200',
             isHovered ? 'opacity-100' : 'opacity-0'
           )}
         >
           <Button
-            size="sm"
-            variant="secondary"
+            size='sm'
+            variant='secondary'
             onClick={() => onPreview?.(template)}
-            className="bg-white/90 hover:bg-white text-black"
+            className='bg-white/90 text-black hover:bg-white'
           >
-            <Eye className="w-4 h-4 mr-1" />
+            <Eye className='mr-1 h-4 w-4' />
             Preview
           </Button>
           <Button
-            size="sm"
+            size='sm'
             onClick={() => onUse?.(template)}
-            className="bg-primary/90 hover:bg-primary text-primary-foreground"
+            className='bg-primary/90 hover:bg-primary text-primary-foreground'
           >
-            <Play className="w-4 h-4 mr-1" />
+            <Play className='mr-1 h-4 w-4' />
             Use
           </Button>
         </div>
 
         {/* Top badges */}
-        <div className="absolute top-2 left-2 flex items-center space-x-1">
+        <div className='absolute top-2 left-2 flex items-center space-x-1'>
           <Badge className={getTemplateTypeColor(template.templateType)}>
             {template.templateType}
           </Badge>
@@ -141,18 +150,18 @@ export function TemplateCard({
 
         {/* Actions menu */}
         {(isOwner || onDuplicate) && (
-          <div className="absolute top-2 right-2">
+          <div className='absolute top-2 right-2'>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-8 p-0 bg-white/90 hover:bg-white text-black"
+                  size='sm'
+                  variant='ghost'
+                  className='h-8 w-8 bg-white/90 p-0 text-black hover:bg-white'
                 >
-                  <MoreVertical className="w-4 h-4" />
+                  <MoreVertical className='h-4 w-4' />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align='end'>
                 {onDuplicate && (
                   <DropdownMenuItem onClick={() => onDuplicate(template)}>
                     Duplicate
@@ -168,7 +177,7 @@ export function TemplateCard({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => onDelete(template)}
-                      className="text-destructive focus:text-destructive"
+                      className='text-destructive focus:text-destructive'
                     >
                       Delete
                     </DropdownMenuItem>
@@ -180,30 +189,30 @@ export function TemplateCard({
         )}
       </div>
 
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="text-lg font-semibold line-clamp-1">
+      <CardHeader className='pb-2'>
+        <div className='flex items-start justify-between'>
+          <div className='flex-1'>
+            <CardTitle className='line-clamp-1 text-lg font-semibold'>
               {template.name}
             </CardTitle>
-            <CardDescription className="text-sm text-muted-foreground line-clamp-2 mt-1">
+            <CardDescription className='text-muted-foreground mt-1 line-clamp-2 text-sm'>
               {template.description || 'No description available'}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="py-2">
+      <CardContent className='py-2'>
         {/* Tags */}
         {template.tags && template.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
+          <div className='mb-3 flex flex-wrap gap-1'>
             {template.tags.slice(0, 3).map((tag, index) => (
-              <Badge key={index} variant="outline" className="text-xs">
+              <Badge key={index} variant='outline' className='text-xs'>
                 {tag}
               </Badge>
             ))}
             {template.tags.length > 3 && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant='outline' className='text-xs'>
                 +{template.tags.length - 3}
               </Badge>
             )}
@@ -211,44 +220,43 @@ export function TemplateCard({
         )}
 
         {/* Stats */}
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center space-x-3">
-            
+        <div className='text-muted-foreground flex items-center justify-between text-sm'>
+          <div className='flex items-center space-x-3'>
             {template.usageCount !== undefined && (
-              <div className="flex items-center space-x-1">
-                <Users className="w-3 h-3" />
+              <div className='flex items-center space-x-1'>
+                <Users className='h-3 w-3' />
                 <span>{template.usageCount}</span>
               </div>
             )}
           </div>
-          
+
           {template.estimatedTimeMinutes && (
-            <div className="flex items-center space-x-1">
-              <Clock className="w-3 h-3" />
+            <div className='flex items-center space-x-1'>
+              <Clock className='h-3 w-3' />
               <span>{template.estimatedTimeMinutes}m</span>
             </div>
           )}
         </div>
       </CardContent>
 
-      <CardFooter className="pt-2">
-        <div className="flex w-full space-x-2">
+      <CardFooter className='pt-2'>
+        <div className='flex w-full space-x-2'>
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             onClick={() => onPreview?.(template)}
-            className="flex-1"
+            className='flex-1'
           >
-            <Eye className="w-4 h-4 mr-1" />
+            <Eye className='mr-1 h-4 w-4' />
             Preview
           </Button>
           <Button
-            size="sm"
+            size='sm'
             onClick={() => onUse?.(template)}
-            className="flex-1"
+            className='flex-1'
           >
-            <Play className="w-4 h-4 mr-1" />
-            Use Template 
+            <Play className='mr-1 h-4 w-4' />
+            Use Template
           </Button>
         </div>
       </CardFooter>

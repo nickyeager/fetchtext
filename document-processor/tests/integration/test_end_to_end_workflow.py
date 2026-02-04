@@ -11,7 +11,6 @@ from pathlib import Path
 import tempfile
 from typing import Dict, Any
 import aiofiles
-from unittest.mock import patch, Mock
 
 class TestEndToEndWorkflow:
     """Integration tests for complete document processing workflow."""
@@ -141,14 +140,15 @@ class TestAPIIntegrationWorkflow:
         assert isinstance(result, dict)
     
     @pytest.mark.integration
-    def test_health_check_integration(self):
+    @pytest.mark.asyncio
+    async def test_health_check_integration(self):
         """Test health check endpoint integration."""
-        # Import health check function
-        from app.routers.health import get_health
-        
-        # Call health check
-        health_status = get_health()
-        
+        # Import health check function (renamed from get_health to health_check)
+        from app.routers.health import health_check
+
+        # Call health check (it's async now)
+        health_status = await health_check()
+
         # Verify health check response
         assert health_status["status"] == "healthy"
         assert health_status["service"] == "document-processor"
@@ -367,32 +367,3 @@ class TestPerformanceIntegration:
         
         # Should complete without memory errors
         assert len(results) == 5
-
-# Future real Docling integration tests
-class TestRealDoclingIntegration:
-    """Integration tests for real Docling functionality (to be implemented)."""
-    
-    @pytest.mark.integration
-    @pytest.mark.skip(reason="Real Docling integration not yet implemented")
-    @pytest.mark.asyncio
-    async def test_real_docling_pdf_processing(self, temp_dir):
-        """Test real Docling PDF processing (placeholder)."""
-        # This test will be implemented when real Docling is integrated
-        
-        # TODO: Create real PDF file for testing
-        # TODO: Use real DocumentConverter
-        # TODO: Verify advanced PDF features (tables, images, etc.)
-        pass
-    
-    @pytest.mark.integration
-    @pytest.mark.skip(reason="Real Docling integration not yet implemented")
-    @pytest.mark.asyncio
-    async def test_real_docling_advanced_features(self, temp_dir):
-        """Test advanced Docling features (placeholder)."""
-        # This test will be implemented when real Docling is integrated
-        
-        # TODO: Test table extraction
-        # TODO: Test image extraction  
-        # TODO: Test layout analysis
-        # TODO: Test multi-format export
-        pass

@@ -3,4 +3,10 @@ import SignUp from '@/features/auth/sign-up'
 
 export const Route = createFileRoute('/(auth)/sign-up')({
   component: SignUp,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      redirect: (search.redirect as string) || '',
+      email: (search.email as string) || '',
+    };
+  },
 })

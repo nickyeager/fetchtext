@@ -2,6 +2,8 @@
  * Ollama service for managing AI models
  */
 
+import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config';
+
 export interface OllamaModel {
   name: string;
   size: string;
@@ -29,7 +31,7 @@ export interface CurrentModelResponse {
 }
 
 class OllamaService {
-  private baseUrl = 'http://localhost:8090'; // Document processor URL
+  private baseUrl = DOCUMENT_PROCESSOR_URL;
 
   /**
    * Fetch all available Ollama models

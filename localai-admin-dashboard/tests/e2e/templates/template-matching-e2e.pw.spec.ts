@@ -187,19 +187,23 @@ describe('Template Matching End-to-End Tests', () => {
 
   beforeAll(async () => {
     console.log('🔍 Checking template matching services...');
-    
+
     const documentProcessorOk = await TemplateMatchingE2EChecker.checkDocumentProcessor();
     const templateAPIok = await TemplateMatchingE2EChecker.checkTemplateMatchingAPI();
-    
+
     servicesAvailable = documentProcessorOk && templateAPIok;
-    
+
     console.log(`Document Processor: ${documentProcessorOk ? '✅' : '❌'}`);
     console.log(`Template Matching API: ${templateAPIok ? '✅' : '❌'}`);
-    
+
     if (!servicesAvailable) {
-      console.warn('⚠️ Template matching services not available');
-      console.warn('To start services: python start_services.py --profile cpu');
-      console.warn('Tests will be skipped or run with limited functionality');
+      throw new Error(
+        '[TEST SETUP FAILED] Template matching services not available.\n' +
+        `Document Processor (${E2E_CONFIG.services.documentProcessor}): ${documentProcessorOk ? 'OK' : 'FAILED'}\n` +
+        `Template API: ${templateAPIok ? 'OK' : 'FAILED'}\n` +
+        'Integration tests REQUIRE running services.\n' +
+        'Start services with: python start_services.py --profile cpu'
+      );
     }
   }, 30000);
 
@@ -217,21 +221,11 @@ describe('Template Matching End-to-End Tests', () => {
 
   describe('🧪 Service Health Checks', () => {
     it('should verify document processor is running', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping service health check - services not available');
-        return;
-      }
-
       const isHealthy = await TemplateMatchingE2EChecker.checkDocumentProcessor();
       expect(isHealthy).toBe(true);
     });
 
     it('should verify template matching API is accessible', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping API check - services not available');
-        return;
-      }
-
       const isAccessible = await TemplateMatchingE2EChecker.checkTemplateMatchingAPI();
       expect(isAccessible).toBe(true);
     });
@@ -249,11 +243,6 @@ describe('Template Matching End-to-End Tests', () => {
 
     testCases.forEach(({ file, expectedType, description }) => {
       it(`should analyze ${file} (${description})`, async () => {
-        if (!servicesAvailable) {
-          console.log(`Skipping ${file} - services not available`);
-          return;
-        }
-
         try {
           // Load test document
           const { content } = DocumentProcessingHelper.loadTestDocument(file);
@@ -291,11 +280,6 @@ describe('Template Matching End-to-End Tests', () => {
 
   describe('📋 Real Document Template Matching', () => {
     it('should handle PDF documents from data folder', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping real document test - services not available');
-        return;
-      }
-
       // Test with a real PDF if available
       const pdfFile = 'Receipt-2975-4330.pdf';
       
@@ -348,11 +332,6 @@ describe('Template Matching End-to-End Tests', () => {
 
   describe('🎯 Template Matching Quality Tests', () => {
     it('should provide high-quality template suggestions for invoices', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping quality test - services not available');
-        return;
-      }
-
       const { content } = DocumentProcessingHelper.loadTestDocument('sample_invoice.txt');
       const { evaluation } = await DocumentProcessingHelper.evaluateDocumentWithTemplates(
         'sample_invoice.txt',
@@ -386,11 +365,6 @@ describe('Template Matching End-to-End Tests', () => {
     }, E2E_CONFIG.timeouts.templateMatching);
 
     it('should provide different suggestions for different document types', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping differentiation test - services not available');
-        return;
-      }
-
       // Test invoice vs receipt to ensure they get different suggestions
       const invoiceTest = DocumentProcessingHelper.loadTestDocument('sample_invoice.txt');
       const receiptTest = DocumentProcessingHelper.loadTestDocument('sample_receipt.txt');
@@ -443,11 +417,6 @@ describe('Template Matching End-to-End Tests', () => {
 
   describe('🔄 Workflow Integration Tests', () => {
     it('should recommend correct workflows based on template availability', async () => {
-      if (!servicesAvailable) {
-        console.log('Skipping workflow test - services not available');
-        return;
-      }
-
       const testCases = [
         { file: 'sample_invoice.txt', expectedType: 'invoice' },
         { file: 'sample_form.txt', expectedType: 'form' }

@@ -6,6 +6,9 @@ import { MoreHorizontal, FileText, Download, RefreshCw, Eye, Trash2, File, FileS
 import { format } from 'date-fns';
 import { useState } from 'react';
 
+// Shared utilities - DRY refactor
+import { formatFileSize, getStatusColor, getStatusLabel } from '@/lib/document-utils';
+
 interface DocumentMeta {
   pages?: number;
   language?: string;
@@ -43,38 +46,8 @@ export function DocumentCard({
 }: DocumentCardProps) {
   // Track thumbnail load errors to gracefully fallback to icon (avoids direct DOM mutation in tests)
   const [thumbnailError, setThumbnailError] = useState(false);
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': 
-        return 'bg-green-50 text-green-700 border-green-200';
-      case 'analyzing': 
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'failed': 
-        return 'bg-red-50 text-red-700 border-red-200';
-      case 'pending':
-      default: 
-        return 'bg-gray-50 text-gray-700 border-gray-200';
-    }
-  };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Completed';
-      case 'analyzing': return 'Processing';
-      case 'failed': return 'Failed';
-      case 'pending': return 'Pending';
-      default: return status;
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    const value = (bytes / Math.pow(k, i)).toFixed(1); // Keep trailing .0 for test determinism
-    return `${value} ${sizes[i]}`;
-  };
+  // Status utilities now imported from @/lib/document-utils
 
   const getFileTypeIcon = (fileType: string) => {
     const type = fileType.toLowerCase();

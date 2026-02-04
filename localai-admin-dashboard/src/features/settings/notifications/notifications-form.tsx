@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from '@tanstack/react-router'
-import { showSubmittedData } from '@/utils/show-submitted-data'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { settingsService } from '@/lib/services/settings-service'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -16,50 +16,99 @@ import {
 } from '@/components/ui/form'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const notificationsFormSchema = z.object({
-  type: z.enum(['all', 'mentions', 'none'], {
+  notification_type: z.enum(['all', 'mentions', 'none'], {
     required_error: 'You need to select a notification type.',
   }),
-  mobile: z.boolean().default(false).optional(),
-  communication_emails: z.boolean().default(false).optional(),
-  social_emails: z.boolean().default(false).optional(),
-  marketing_emails: z.boolean().default(false).optional(),
-  security_emails: z.boolean(),
+  email_communication: z.boolean().default(false),
+  email_marketing: z.boolean().default(false),
+  email_social: z.boolean().default(false),
+  email_security: z.boolean().default(true),
 })
 
 type NotificationsFormValues = z.infer<typeof notificationsFormSchema>
 
-// This can come from your database or API.
-const defaultValues: Partial<NotificationsFormValues> = {
-  communication_emails: false,
-  marketing_emails: false,
-  social_emails: true,
-  security_emails: true,
-}
-
 export function NotificationsForm() {
+  const queryClient = useQueryClient()
+
+  const { data: preferences, isLoading } = useQuery({
+    queryKey: ['user-preferences'],
+    queryFn: () => settingsService.getUserPreferences(),
+  })
+
+  const mutation = useMutation({
+    mutationFn: (values: NotificationsFormValues) =>
+      settingsService.updateUserPreferences({
+        notification_type: values.notification_type,
+        email_communication: values.email_communication,
+        email_marketing: values.email_marketing,
+        email_social: values.email_social,
+        email_security: values.email_security,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-preferences'] })
+      toast.success('Notification preferences updated successfully')
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to update notification preferences')
+    },
+  })
+
   const form = useForm<NotificationsFormValues>({
     resolver: zodResolver(notificationsFormSchema),
-    defaultValues,
+    values: {
+      notification_type: preferences?.notification_type ?? 'all',
+      email_communication: preferences?.email_communication ?? false,
+      email_marketing: preferences?.email_marketing ?? false,
+      email_social: preferences?.email_social ?? false,
+      email_security: preferences?.email_security ?? true,
+    },
+    mode: 'onChange',
   })
+
+  if (isLoading) {
+    return (
+      <div className='space-y-8'>
+        {/* Radio group skeleton */}
+        <div className='space-y-3'>
+          <Skeleton className='h-4 w-32' />
+          <div className='space-y-2'>
+            <Skeleton className='h-6 w-40' />
+            <Skeleton className='h-6 w-56' />
+            <Skeleton className='h-6 w-24' />
+          </div>
+        </div>
+        {/* Email notifications skeleton */}
+        <div className='space-y-4'>
+          <Skeleton className='h-5 w-40' />
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-20 w-full' />
+        </div>
+        <Skeleton className='h-10 w-40' />
+      </div>
+    )
+  }
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit((data) => showSubmittedData(data))}
+        onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
         className='space-y-8'
       >
         <FormField
           control={form.control}
-          name='type'
+          name='notification_type'
           render={({ field }) => (
             <FormItem className='relative space-y-3'>
               <FormLabel>Notify me about...</FormLabel>
               <FormControl>
                 <RadioGroup
                   onValueChange={field.onChange}
-                  defaultValue={field.value}
+                  value={field.value}
                   className='flex flex-col space-y-1'
                 >
                   <FormItem className='flex items-center space-y-0 space-x-3'>
@@ -95,7 +144,7 @@ export function NotificationsForm() {
           <div className='space-y-4'>
             <FormField
               control={form.control}
-              name='communication_emails'
+              name='email_communication'
               render={({ field }) => (
                 <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                   <div className='space-y-0.5'>
@@ -117,7 +166,7 @@ export function NotificationsForm() {
             />
             <FormField
               control={form.control}
-              name='marketing_emails'
+              name='email_marketing'
               render={({ field }) => (
                 <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                   <div className='space-y-0.5'>
@@ -139,7 +188,7 @@ export function NotificationsForm() {
             />
             <FormField
               control={form.control}
-              name='social_emails'
+              name='email_social'
               render={({ field }) => (
                 <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                   <div className='space-y-0.5'>
@@ -159,7 +208,7 @@ export function NotificationsForm() {
             />
             <FormField
               control={form.control}
-              name='security_emails'
+              name='email_security'
               render={({ field }) => (
                 <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                   <div className='space-y-0.5'>
@@ -181,36 +230,9 @@ export function NotificationsForm() {
             />
           </div>
         </div>
-        <FormField
-          control={form.control}
-          name='mobile'
-          render={({ field }) => (
-            <FormItem className='relative flex flex-row items-start space-y-0 space-x-3'>
-              <FormControl>
-                <Checkbox
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                />
-              </FormControl>
-              <div className='space-y-1 leading-none'>
-                <FormLabel>
-                  Use different settings for my mobile devices
-                </FormLabel>
-                <FormDescription>
-                  You can manage your mobile notifications in the{' '}
-                  <Link
-                    to='/settings'
-                    className='underline decoration-dashed underline-offset-4 hover:decoration-solid'
-                  >
-                    mobile settings
-                  </Link>{' '}
-                  page.
-                </FormDescription>
-              </div>
-            </FormItem>
-          )}
-        />
-        <Button type='submit'>Update notifications</Button>
+        <Button type='submit' disabled={mutation.isPending}>
+          {mutation.isPending ? 'Updating...' : 'Update notifications'}
+        </Button>
       </form>
     </Form>
   )

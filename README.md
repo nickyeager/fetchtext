@@ -8,6 +8,8 @@ This is Cole's version with a couple of improvements and the addition of Supabas
 Also, the local RAG AI Agent workflows from the video will be automatically in your 
 n8n instance if you use this setup instead of the base one provided by n8n!
 
+**IMPORANT**: Supabase has updated a couple environment variables so you may have to add some new default values in your .env that I have in my .env.example if you have had this project up and running already and are just pulling new changes. Specifically, you need to add "POOLER_DB_POOL_SIZE=5" to your .env. This is required if you have had the package running before June 14th.
+
 ## Important Links
 
 - [Local AI community](https://thinktank.ottomator.ai/c/local-ai/18) forum over in the oTTomator Think Tank
@@ -237,13 +239,22 @@ Before running the above commands to pull the repo and install everything:
 2. Run the **start-services.py** script with the environment argument **public** to indicate you are going to run the package in a public environment. The script will make sure that all ports, except for 80 and 443, are closed down, e.g.
 
 ```bash
-   python start_services.py --profile gpu-nvidia --environment public
+   python3 start_services.py --profile gpu-nvidia --environment public
    ```
 
 3. Set up A records for your DNS provider to point your subdomains you'll set up in the .env file for Caddy
 to the IP address of your cloud instance.
 
    For example, A record to point n8n to [cloud instance IP] for n8n.yourdomain.com
+
+
+**NOTE**: If you are using a cloud machine without the "docker compose" command available by default, such as a Ubuntu GPU instance on DigitalOcean, run these commands before running start_services.py:
+
+- DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\\" -f4)
+- sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+- sudo chmod +x /usr/local/bin/docker-compose
+- sudo mkdir -p /usr/local/lib/docker/cli-plugins
+- sudo ln -s /usr/local/bin/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 
 ## ⚡️ Quick start and usage
 
@@ -335,6 +346,10 @@ Here are solutions to common issues you might encounter:
 - **If using Docker Desktop**: Go into the Docker settings and make sure "Expose daemon on tcp://localhost:2375 without TLS" is turned on
 
 - **Supabase Service Unavailable** - Make sure you don't have an "@" character in your Postgres password! If the connection to the kong container is working (the container logs say it is receiving requests from n8n) but n8n says it cannot connect, this is generally the problem from what the community has shared. Other characters might not be allowed too, the @ symbol is just the one I know for sure!
+
+- **SearXNG Restarting**: If the SearXNG container keeps restarting, run the command "chmod 755 searxng" within the local-ai-packaged folder so SearXNG has the permissions it needs to create the uwsgi.ini file.
+
+- **Files not Found in Supabase Folder** - If you get any errors around files missing in the supabase/ folder like .env, docker/docker-compose.yml, etc. this most likely means you had a "bad" pull of the Supabase GitHub repository when you ran the start_services.py script. Delete the supabase/ folder within the Local AI Package folder entirely and try again.
 
 ### GPU Support Issues
 

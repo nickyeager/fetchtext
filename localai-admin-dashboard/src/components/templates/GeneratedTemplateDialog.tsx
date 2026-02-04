@@ -19,6 +19,8 @@ import { SmartVariable } from '@/lib/template-validator';
 import { useMutation } from '@tanstack/react-query';
 import { templateService } from '@/services/template-service';
 import { useNavigate } from '@tanstack/react-router';
+import { useOrganization } from '@/context/organization-context';
+import { toast } from 'sonner';
 
 interface GeneratedTemplate {
   template_id: string;
@@ -91,6 +93,7 @@ export function GeneratedTemplateDialog({
   isLoading = false
 }: GeneratedTemplateDialogProps) {
   const navigate = useNavigate();
+  const { activeOrganization } = useOrganization();
   const [templateData, setTemplateData] = useState<GeneratedTemplate | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -112,6 +115,10 @@ export function GeneratedTemplateDialog({
   // Save template mutation
   const saveTemplateMutation = useMutation({
     mutationFn: async (template: GeneratedTemplate) => {
+      if (!activeOrganization) {
+        throw new Error('Please select an organization first');
+      }
+
       const savedTemplate = await templateService.createTemplate({
         name: template.template.name,
         description: template.template.description || '',
@@ -130,9 +137,13 @@ export function GeneratedTemplateDialog({
           model: 'azure_openai',
           temperature: 0.3,
           max_tokens: 1000
-        }
+        },
+        organization_id: activeOrganization.id,
       });
       return savedTemplate;
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save template');
     },
     onSuccess: (savedTemplate) => {
       // Navigate to template editor
