@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuth } from '@/context/auth-context';
+import { useOrganization } from '@/context/organization-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +76,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
   
   const navigate = useNavigate();
   const { user, session } = useAuth();
+  const { activeOrganization, isLoading: isLoadingOrg } = useOrganization();
   const queryClient = useQueryClient();
   const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
@@ -205,11 +207,20 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       return;
     }
 
+    // Verify organization is selected
+    if (!activeOrganization) {
+      console.error('❌ No organization selected');
+      setError('Please select an organization before uploading documents');
+      setIsEvaluating(false);
+      return;
+    }
+
     try {
       // Step 1: Create document record immediately
       const documentRecord = await documentManager.createDocument({
         file,
         uploadSource: UploadSource.SMART_UPLOAD,
+        organizationId: activeOrganization.id,
       });
       setDocumentId(documentRecord.id);
 
@@ -271,11 +282,13 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       });
 
       // Step 3: Call the /decide-template endpoint with 2-way validation
+      // Pass user ID to include their private saved templates in matching
       console.log('🎯 Using intelligent template decision with 2-way validation...');
       const decisionResult = await documentProcessor.decideTemplate(file, {
         minMatchConfidence: 0.6,
         allowGeneration: true,
-        autoSave: false
+        autoSave: false,
+        userId: user?.id // Include user's private templates in matching
       });
 
       setEvaluation(decisionResult.evaluation);
@@ -289,21 +302,25 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       const processedContent = await documentProcessor.processDocumentWithDocling(file);
       console.log('✅ Content extracted:', processedContent.content?.substring(0, 100) + '...');
 
-      // Step 5: Check if we should auto-apply template based on 2-way validation
+      // Step 5: Auto-apply best matching template (user can change later)
+      // Changed: Always auto-apply if a template was found, regardless of confidence level
       let extractedData = null;
       let finalStatus: any = 'uploaded'; // Default: Ready for user action
+      const MIN_AUTO_APPLY_SCORE = 0.6; // Require 60% match for auto-apply
 
       if (
         decisionResult.action === 'use_existing' &&
         decisionResult.chosen_template &&
-        decisionResult.decision_metadata.validation_level === 'high_confidence'
+        (decisionResult.decision_metadata.match_score || 0) >= MIN_AUTO_APPLY_SCORE
       ) {
-        // Auto-extract fields with high-confidence template
-        console.log('✨ High confidence match detected - auto-extracting fields...', {
+        // Auto-extract fields with the best matching template
+        // User can change template later if extraction isn't satisfactory
+        console.log('✨ Auto-applying best matching template...', {
           template: decisionResult.chosen_template.template_name,
           match_score: decisionResult.decision_metadata.match_score,
           extraction_quality: decisionResult.decision_metadata.extraction_quality,
-          combined_score: decisionResult.decision_metadata.combined_score
+          combined_score: decisionResult.decision_metadata.combined_score,
+          confidence_level: decisionResult.decision_metadata.validation_level
         });
 
         try {
@@ -314,26 +331,107 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
 
           // Get extracted fields (backend returns extractedFields, not extracted_data)
           const rawExtractedFields = extractionResult.extractedFields || extractionResult.extracted_data;
+          const fieldsExtractedCount = Object.keys(rawExtractedFields || {}).length;
 
-          // Transform to the format DocumentDetailView expects
-          extractedData = {
-            extracted_values: rawExtractedFields,
-            confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
-              acc[key] = field.confidence || 0;
-              return acc;
-            }, {} as Record<string, number>)
-          };
+          // FALLBACK: If existing template extracted 0 fields, generate a new template
+          if (fieldsExtractedCount === 0) {
+            console.log('⚠️ Existing template extracted 0 fields, falling back to template generation...');
+
+            // Trigger template generation via backend
+            const primaryType = decisionResult.evaluation?.type_evaluation?.primary_type || 'document';
+            const generationResult = await documentProcessor.generateTemplate(
+              file,
+              `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
+              primaryType
+            );
+
+            if (generationResult?.template || generationResult?.generated_template) {
+              const generatedTemplate = generationResult.template || generationResult.generated_template;
+              const templateVariables = generatedTemplate.smart_variables || generatedTemplate.variables || [];
+
+              if (templateVariables.length > 0) {
+                console.log('📝 Saving fallback-generated template...', {
+                  name: generatedTemplate.name,
+                  variables_count: templateVariables.length
+                });
+
+                // Save the generated template
+                const savedTemplate = await withAuthentication(async (user) => {
+                  const { data, error } = await supabase
+                    .from('smart_templates')
+                    .insert({
+                      name: generatedTemplate.name || `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
+                      description: generatedTemplate.description || `Auto-generated template for ${primaryType} documents`,
+                      category: generatedTemplate.category || primaryType,
+                      smart_variables: templateVariables,
+                      extraction_rules: generatedTemplate.extraction_rules || [],
+                      is_public: false,
+                      created_by: user.id,
+                      template_type: 'smart',
+                      tags: ['ai-generated', 'fallback', primaryType]
+                    })
+                    .select()
+                    .single();
+
+                  if (error) throw error;
+                  return data;
+                }, 'Save Fallback Generated Template');
+
+                console.log('✅ Fallback template saved, extracting fields...');
+
+                // Extract with the new template
+                const fallbackExtraction = await documentProcessor.processWithExistingTemplate(
+                  file,
+                  savedTemplate.id
+                );
+
+                const fallbackFields = fallbackExtraction.extractedFields || fallbackExtraction.extracted_data;
+
+                extractedData = {
+                  extracted_values: fallbackFields,
+                  confidence_scores: Object.entries(fallbackFields || {}).reduce((acc, [key, field]: [string, any]) => {
+                    acc[key] = field.confidence || 0;
+                    return acc;
+                  }, {} as Record<string, number>)
+                };
+
+                // Update the chosen template to the generated one
+                decisionResult.chosen_template = {
+                  template_id: savedTemplate.id,
+                  template_name: savedTemplate.name,
+                  match_score: 1.0, // Perfect match since we generated it
+                  extraction_quality: Object.keys(fallbackFields || {}).length > 0 ? 0.8 : 0
+                };
+
+                console.log('✅ Fallback extraction completed:', {
+                  fields_extracted: Object.keys(fallbackFields || {}).length,
+                  template_id: savedTemplate.id,
+                  template_name: savedTemplate.name
+                });
+              }
+            }
+          } else {
+            // Transform to the format DocumentDetailView expects
+            extractedData = {
+              extracted_values: rawExtractedFields,
+              confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
+                acc[key] = field.confidence || 0;
+                return acc;
+              }, {} as Record<string, number>)
+            };
+
+            console.log('✅ Auto-extraction completed:', {
+              fields_extracted: fieldsExtractedCount,
+              template_used: decisionResult.chosen_template.template_name,
+              extracted_data_format: extractedData
+            });
+          }
 
           finalStatus = 'completed'; // Fully processed
-
-          console.log('✅ Auto-extraction completed:', {
-            fields_extracted: Object.keys(rawExtractedFields || {}).length,
-            template_used: decisionResult.chosen_template.template_name,
-            extracted_data_format: extractedData
-          });
         } catch (extractError) {
-          console.error('⚠️ Auto-extraction failed, falling back to manual selection:', extractError);
-          // Still save document but let user manually select template
+          console.error('⚠️ Auto-extraction failed, continuing without extraction:', extractError);
+          // Still save document - user can retry or change template
+          finalStatus = 'completed'; // Mark as completed so user sees the document
         }
       } else if (decisionResult.action === 'generate_new' && decisionResult.generated_template) {
         // Auto-generate new template and extract fields
@@ -421,12 +519,16 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
           // User can manually select template or retry later
         }
       } else {
-        console.log('📋 Medium/low confidence - user will select template manually', {
-          validation_level: decisionResult.decision_metadata.validation_level,
-          match_score: decisionResult.decision_metadata.match_score,
-          extraction_quality: decisionResult.decision_metadata.extraction_quality
+        console.log('📋 No suitable template found or match too low - document saved without extraction', {
+          action: decisionResult.action,
+          match_score: decisionResult.decision_metadata?.match_score,
+          threshold: MIN_AUTO_APPLY_SCORE
         });
+        finalStatus = 'completed'; // Still mark as completed
       }
+
+      // Determine if a template was applied
+      const appliedTemplate = extractedData ? decisionResult.chosen_template : null;
 
       // Step 6: Update document with content, decision results, and optional extracted fields
       await documentManager.finalizeDocument(documentRecord.id, {
@@ -441,6 +543,9 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
             confidence_score: decisionResult.evaluation.type_evaluation.confidence,
             detection_method: decisionResult.evaluation.type_evaluation.detection_method,
           },
+          // Store applied template info for easy access
+          template_id: appliedTemplate?.template_id,
+          template_name: appliedTemplate?.template_name,
           template_decision: {
             action: decisionResult.action,
             validation_level: decisionResult.decision_metadata.validation_level,
@@ -448,7 +553,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
             extraction_quality: decisionResult.decision_metadata.extraction_quality,
             combined_score: decisionResult.decision_metadata.combined_score,
             extraction_tested: decisionResult.decision_metadata.extraction_tested,
-            auto_applied: finalStatus === 'completed',
+            auto_applied: !!extractedData,
             chosen_template: decisionResult.chosen_template
           },
           template_suggestions: decisionResult.alternatives || [],
@@ -478,7 +583,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       setIsEvaluating(false);
       setIsProcessing(false);
     }
-  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate]);
+  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate, activeOrganization]);
 
   const resetUpload = useCallback(() => {
     setSelectedFile(null);
@@ -566,6 +671,16 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         </Alert>
       )}
 
+      {/* Organization Status */}
+      {user && !isLoadingOrg && !activeOrganization && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            No organization selected. Please select or create an organization to upload documents.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
@@ -581,7 +696,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
             onFileSelect={handleFileSelect}
             isEvaluating={isEvaluating}
             evaluationResult={evaluation || undefined}
-            disabled={isProcessing}
+            disabled={isProcessing || !user || isLoadingOrg || !activeOrganization}
           />
         </CardContent>
       </Card>

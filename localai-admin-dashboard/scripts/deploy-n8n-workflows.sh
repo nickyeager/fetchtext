@@ -110,7 +110,7 @@ echo "4. Create credential with name: 'SendGrid API'"
 echo "5. Enter your SendGrid API Key: ${SENDGRID_API_KEY:-<your-api-key>}"
 echo "6. Save the credential"
 echo ""
-echo "Your SendGrid verified sender: yeag123@gmail.com"
+echo "Your SendGrid verified sender: nick@fetchtext.io"
 
 # Test webhook endpoint
 echo ""

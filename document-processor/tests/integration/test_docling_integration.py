@@ -14,7 +14,6 @@ from pathlib import Path
 import tempfile
 from typing import Dict, Any
 import aiofiles
-from unittest.mock import patch, Mock
 import time
 
 class TestDoclingIntegration:
@@ -353,31 +352,3 @@ class TestDoclingPerformanceBaseline:
         print(f"✅ Performance baseline: {processing_time:.3f}s for {len(standard_content)} characters")
         print(f"   Processing method: {result['processing_method']}")
         print(f"   Service status: {result['status']}")
-
-# Future advanced Docling tests
-class TestAdvancedDoclingFeatures:
-    """Advanced Docling feature tests (to be implemented)."""
-    
-    @pytest.mark.integration
-    @pytest.mark.skip(reason="Advanced features not yet implemented")
-    @pytest.mark.asyncio
-    async def test_docling_pdf_advanced_features(self, temp_dir):
-        """Test advanced PDF features with Docling (placeholder)."""
-        # TODO: Test PDF-specific features
-        # - Table extraction
-        # - Image extraction
-        # - Layout analysis
-        # - Multi-page processing
-        pass
-    
-    @pytest.mark.integration
-    @pytest.mark.skip(reason="Advanced features not yet implemented")
-    @pytest.mark.asyncio
-    async def test_docling_office_document_features(self, temp_dir):
-        """Test Office document features with Docling (placeholder)."""
-        # TODO: Test Office document features
-        # - DOCX processing
-        # - PPTX processing
-        # - XLSX processing
-        # - Complex formatting
-        pass 

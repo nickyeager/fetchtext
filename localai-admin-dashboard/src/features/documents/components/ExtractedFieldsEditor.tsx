@@ -17,16 +17,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Edit3, 
-  Save, 
-  X, 
-  Plus, 
-  Trash2, 
+import {
+  Edit3,
+  Save,
+  X,
+  Plus,
+  Trash2,
   FileText,
   AlertTriangle,
   CheckCircle
 } from 'lucide-react';
+
+// Shared utilities - DRY refactor
+import { formatFieldName } from '@/lib/document-utils';
+import { getConfidenceColor } from '@/lib/confidence-utils';
 
 interface ExtractedField {
   id: string;
@@ -44,6 +48,9 @@ interface ExtractedFieldsEditorProps {
   confidenceScores?: Record<string, number>;
   onSave?: (fields: Record<string, unknown>) => Promise<void>;
   onCreateTemplate?: (fields: ExtractedField[]) => Promise<void>;
+  onUpdateTemplate?: (fields: ExtractedField[]) => Promise<void>;
+  templateId?: number;
+  templateName?: string;
   readOnly?: boolean;
   showCreateTemplate?: boolean;
 }
@@ -54,6 +61,9 @@ export function ExtractedFieldsEditor({
   confidenceScores = {},
   onSave,
   onCreateTemplate,
+  onUpdateTemplate,
+  templateId,
+  templateName,
   readOnly = false,
   showCreateTemplate = true
 }: ExtractedFieldsEditorProps) {
@@ -267,23 +277,28 @@ export function ExtractedFieldsEditor({
       await onCreateTemplate(fields);
       setSaveMessage({ type: 'success', text: 'Template created successfully!' });
     } catch (error) {
-      setSaveMessage({ 
-        type: 'error', 
-        text: `Failed to create template: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      setSaveMessage({
+        type: 'error',
+        text: `Failed to create template: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400';
-    if (confidence >= 0.6) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-400';
-    if (confidence > 0) return 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400';
-    return 'bg-gray-100 text-gray-600';
+  const handleUpdateTemplate = async () => {
+    if (!onUpdateTemplate || fields.length === 0) return;
+
+    try {
+      await onUpdateTemplate(fields);
+      setSaveMessage({ type: 'success', text: `Template "${templateName}" updated successfully!` });
+    } catch (error) {
+      setSaveMessage({
+        type: 'error',
+        text: `Failed to update template: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
   };
 
-  const formatFieldName = (name: string) => {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  // Utilities now imported from @/lib/document-utils and @/lib/confidence-utils
 
   if (fields.length === 0) {
     return (
@@ -369,7 +384,7 @@ export function ExtractedFieldsEditor({
                 )}
               </>
             )}
-            {showCreateTemplate && (
+            {showCreateTemplate && !templateId && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -379,6 +394,18 @@ export function ExtractedFieldsEditor({
               >
                 <FileText className="w-4 h-4" />
                 Create Template
+              </Button>
+            )}
+            {templateId && onUpdateTemplate && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleUpdateTemplate}
+                disabled={fields.length === 0}
+                className="flex items-center gap-2"
+              >
+                <Edit3 className="w-4 h-4" />
+                Update Template
               </Button>
             )}
           </div>

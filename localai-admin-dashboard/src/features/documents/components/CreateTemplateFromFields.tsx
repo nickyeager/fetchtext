@@ -5,7 +5,7 @@
  * Allows users to configure template properties and field definitions.
  */
 
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,13 @@ import {
   FileText,
   Save,
   AlertTriangle,
-  CheckCircle,
-  Settings,
   Eye,
   EyeOff
 } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Shared utilities - DRY refactor
+import { formatFieldName } from '@/lib/document-utils';
 
 interface ExtractedField {
   id: string;
@@ -49,6 +51,7 @@ interface ExtractedField {
 }
 
 interface TemplateField {
+  id: string;  // Required for TemplateEditor compatibility
   name: string;
   type: string;
   description: string;
@@ -110,11 +113,12 @@ export function CreateTemplateFromFields({
   
   const [isPublic, setIsPublic] = useState(false);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(
-    new Set(fields.filter(f => f.confidence > 0.3).map(f => f.id))
+    new Set(fields.map(f => f.id))
   );
   const [fieldConfigs, setFieldConfigs] = useState<Record<string, TemplateField>>(() => {
     return fields.reduce((acc, field) => {
       acc[field.id] = {
+        id: field.id,  // Include id for TemplateEditor compatibility
         name: field.name,
         type: field.type || 'text',
         description: `Extracted ${field.name.replace(/_/g, ' ')} field`,
@@ -130,6 +134,43 @@ export function CreateTemplateFromFields({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync selected fields when dialog opens or fields change
+  useEffect(() => {
+    /* eslint-disable no-console */
+    console.log('🎯 [CreateTemplateFromFields] useEffect triggered', {
+      isOpen,
+      fieldsLength: fields.length,
+      fields: fields.map(f => ({ id: f.id, name: f.name }))
+    });
+
+    if (isOpen && fields.length > 0) {
+      console.log('  ✅ Selecting all fields:', fields.map(f => f.id));
+      const fieldIds = new Set(fields.map(f => f.id));
+      console.log('  📦 Created Set with IDs:', Array.from(fieldIds));
+      setSelectedFields(fieldIds);
+
+      // Update field configs for any new fields
+      setFieldConfigs(prev => {
+        const updated = { ...prev };
+        fields.forEach(field => {
+          if (!updated[field.id]) {
+            updated[field.id] = {
+              id: field.id,  // Include id for TemplateEditor compatibility
+              name: field.name,
+              type: field.type || 'text',
+              description: `Extracted ${field.name.replace(/_/g, ' ')} field`,
+              required: field.required || false,
+              extraction_hints: generateExtractionHints(field),
+              default_value: '',
+              confidence_threshold: Math.max(0.5, field.confidence || 0.3)
+            };
+          }
+        });
+        return updated;
+      });
+    }
+  }, [isOpen, fields]);
 
   function generateExtractionHints(field: ExtractedField): string[] {
     const hints: string[] = [];
@@ -177,7 +218,11 @@ export function CreateTemplateFromFields({
     });
   };
 
-  const handleFieldConfigChange = (fieldId: string, property: keyof TemplateField, value: any) => {
+  const handleFieldConfigChange = (
+    fieldId: string,
+    property: keyof TemplateField,
+    value: string | number | boolean | string[]
+  ) => {
     setFieldConfigs(prev => ({
       ...prev,
       [fieldId]: {
@@ -194,10 +239,12 @@ export function CreateTemplateFromFields({
     try {
       // Validate inputs
       if (!templateName.trim()) {
+        toast.error('Template name is required');
         throw new Error('Template name is required');
       }
-      
+
       if (selectedFields.size === 0) {
+        toast.error('At least one field must be selected');
         throw new Error('At least one field must be selected');
       }
 
@@ -206,7 +253,7 @@ export function CreateTemplateFromFields({
         .map(fieldId => {
           const field = fields.find(f => f.id === fieldId);
           if (!field) return null;
-          
+
           return fieldConfigs[fieldId];
         })
         .filter(Boolean) as TemplateField[];
@@ -220,17 +267,28 @@ export function CreateTemplateFromFields({
         is_public: isPublic
       });
 
+      // Show success toast
+      toast.success('Template created successfully!', {
+        description: `"${templateName.trim()}" is now available in your templates.`
+      });
+
       onClose();
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to create template');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create template';
+      setError(errorMessage);
+
+      // Show error toast (only if it's not a validation error we already showed)
+      if (!errorMessage.includes('required') && !errorMessage.includes('must be selected')) {
+        toast.error('Failed to create template', {
+          description: errorMessage
+        });
+      }
     } finally {
       setIsCreating(false);
     }
   };
 
-  const formatFieldName = (name: string) => {
-    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  // formatFieldName now imported from @/lib/document-utils
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -330,22 +388,34 @@ export function CreateTemplateFromFields({
               </div>
 
               <div className="space-y-4">
-                {fields.map(field => (
-                  <div key={field.id} className="border rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={selectedFields.has(field.id)}
-                        onCheckedChange={(checked) => handleFieldToggle(field.id, !!checked)}
-                        className="mt-1"
-                      />
+                {fields.map(field => {
+                  const isChecked = selectedFields.has(field.id);
+                  /* eslint-disable no-console */
+                  if (fields.length <= 5) { // Only log for small field sets to avoid spam
+                    console.log(`  🔲 Checkbox for "${field.name}" (${field.id}):`, {
+                      isChecked,
+                      selectedFieldsSize: selectedFields.size,
+                      selectedFieldsArray: Array.from(selectedFields)
+                    });
+                  }
+                  /* eslint-enable no-console */
+
+                  return (
+                    <div key={field.id} className="border rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => handleFieldToggle(field.id, !!checked)}
+                          className="mt-1"
+                        />
                       <div className="flex-1 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{formatFieldName(field.name)}</span>
                             <Badge variant="outline">{field.type}</Badge>
-                            {field.confidence > 0 && (
+                            {(field.confidence ?? 0) > 0 && (
                               <Badge variant="secondary">
-                                {Math.round(field.confidence * 100)}% confident
+                                {Math.round((field.confidence ?? 0) * 100)}% confident
                               </Badge>
                             )}
                             {field.required && (
@@ -399,7 +469,8 @@ export function CreateTemplateFromFields({
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-4 text-sm text-gray-500 text-center">

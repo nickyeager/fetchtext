@@ -29,6 +29,9 @@ import {
 import { UnifiedDocumentService } from '@/services/unified-document-service';
 import { toast } from 'sonner';
 
+// Shared utilities - DRY refactor
+import { getMatchScoreColor, getMatchScoreBadgeVariant } from '@/lib/confidence-utils';
+
 interface TemplateSuggestion {
   template_id: number;
   template_name: string;
@@ -135,17 +138,8 @@ export default function TemplateSelector({
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 0.8) return 'text-green-600 dark:text-green-400';
-    if (score >= 0.6) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
-  };
-
-  const getScoreBadgeVariant = (score: number) => {
-    if (score >= 0.8) return 'default';
-    if (score >= 0.6) return 'secondary';
-    return 'outline';
-  };
+  // Score utilities now imported from @/lib/confidence-utils
+  // Using getMatchScoreColor and getMatchScoreBadgeVariant
 
   if (suggestions.length === 0) {
     return (
@@ -184,7 +178,7 @@ export default function TemplateSelector({
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-blue-600" />
               <span className="font-medium text-sm">Recommended: {bestTemplate.template_name}</span>
-              <Badge variant={getScoreBadgeVariant(bestTemplate.match_score)} className="text-xs">
+              <Badge variant={getMatchScoreBadgeVariant(bestTemplate.match_score)} className="text-xs">
                 {Math.round(bestTemplate.match_score * 100)}% match
               </Badge>
             </div>
@@ -226,7 +220,7 @@ export default function TemplateSelector({
                   <div className="flex items-center justify-between w-full">
                     <span>{template.template_name}</span>
                     <Badge 
-                      variant={getScoreBadgeVariant(template.match_score)} 
+                      variant={getMatchScoreBadgeVariant(template.match_score)} 
                       className="ml-2 text-xs"
                     >
                       {Math.round(template.match_score * 100)}%
@@ -286,7 +280,7 @@ export default function TemplateSelector({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className={`font-medium text-sm ${getScoreColor(template.match_score)}`}>
+                  <div className={`font-medium text-sm ${getMatchScoreColor(template.match_score)}`}>
                     {Math.round(template.match_score * 100)}%
                   </div>
                 </div>

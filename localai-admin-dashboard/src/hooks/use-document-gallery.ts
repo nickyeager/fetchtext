@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { withAuthentication } from '@/lib/supabase-auth-utils'
+import { getDocumentEndpoint } from '@/lib/api-config'
 
 // Helper function to format file sizes
 function formatFileSize(bytes: number): string {
@@ -390,7 +391,7 @@ export function useDocumentActions() {
 
         // Trigger reprocessing via document processor API
         const response = await fetch(
-          `http://localhost:8090/api/documents/${documentId}/reprocess`,
+          getDocumentEndpoint(documentId, 'reprocess'),
           {
             method: 'POST',
             headers: {
@@ -583,7 +584,7 @@ export function useDocumentActions() {
 
         // Download via document processor API
         const response = await fetch(
-          `http://localhost:8090/api/documents/${documentId}/download`
+          getDocumentEndpoint(documentId, 'download')
         )
 
         if (!response.ok) {

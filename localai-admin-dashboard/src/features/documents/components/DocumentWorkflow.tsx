@@ -4,6 +4,7 @@ import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { WorkflowClient } from '@/lib/workflow-client';
 import { templateService } from '@/services/template-service';
 import { UnifiedTemplate, isSmartTemplate } from '@/types/unified-template';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 // Define TemplateSource type
 type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery';
@@ -117,7 +118,8 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
   // --- Logging helper (gated) ---
   const debugLog = useCallback((...args: unknown[]) => {
     const viteEnv = (import.meta as unknown as { env?: Record<string, string> }).env;
-    if (viteEnv?.VITE_E2E_DEBUG || (process.env && (process.env as Record<string, string | undefined>).E2E_DEBUG)) {
+    // Only use Vite env vars (process.env doesn't exist in browser)
+    if (viteEnv?.VITE_E2E_DEBUG) {
       // eslint-disable-next-line no-console
       console.log('[DocumentWorkflow]', ...args);
     }
@@ -228,7 +230,7 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
   // Backend health probe
   const checkBackendHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch('http://localhost:8090/health', { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const res = await fetch(API_ENDPOINTS.health, { method: 'GET', signal: AbortSignal.timeout(3000) });
       return res.ok;
     } catch {
       return false;

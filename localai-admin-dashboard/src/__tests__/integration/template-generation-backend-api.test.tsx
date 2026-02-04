@@ -5,14 +5,16 @@
  * new /api/enhanced-documents/decide-template flow. They are written
  * to be resilient to either using an existing template or generating a
  * new one, and they use the test-documents/ fixtures in this repo.
+ *
+ * @vitest-environment node
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 
-// Test configuration
-const BACKEND_URL = 'http://localhost:8090';
+// Test configuration - use environment variables with fallbacks
+const BACKEND_URL = process.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
 const TEST_TIMEOUT = 120000; // 2 minutes for AI processing
 let backendAvailable = false;
 

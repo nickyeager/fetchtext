@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
+// Use environment variable with fallback
+const BACKEND_URL = process.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
+
 describe('Backend Connectivity Test', () => {
   it('should be able to reach backend health endpoint', async () => {
-    const healthUrl = 'http://localhost:8090/health/';
+    const healthUrl = `${BACKEND_URL}/health/`;
     
     try {
       const response = await fetch(healthUrl, {
@@ -29,17 +32,17 @@ describe('Backend Connectivity Test', () => {
 
   it('should test DocumentProcessorEnhanced isBackendAvailable method', () => {
     // Create a mock test to verify the URL construction
-    const baseUrl = 'http://localhost:8090/documents';
+    const baseUrl = `${BACKEND_URL}/documents`;
     const healthUrl = baseUrl.replace('/documents', '') + '/health/';
     
     console.log('Base URL:', baseUrl);
     console.log('Constructed health URL:', healthUrl);
     
-    expect(healthUrl).toBe('http://localhost:8090/health/');
+    expect(healthUrl).toBe(`${BACKEND_URL}/health/`);
   });
 
   it('should test direct backend call using DocumentProcessorEnhanced pattern', async () => {
-    const baseUrl = 'http://localhost:8090/documents';
+    const baseUrl = `${BACKEND_URL}/documents`;
     const healthUrl = `${baseUrl.replace('/documents', '')}/health/`;
     
     console.log('Testing URL:', healthUrl);

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
+import { useOrganization } from '@/context/organization-context';
 import { useDocumentManager } from '@/hooks/use-document-manager';
 import { UploadSource, DocumentStatus } from '@/services/unified-document-service';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ export function DragDropUpload({
   
   const navigate = useNavigate();
   const { user, session } = useAuth();
+  const { activeOrganization } = useOrganization();
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
 
   // Dev-safe logger to avoid lint errors in production builds
@@ -78,11 +80,19 @@ export function DragDropUpload({
     // Check authentication
     if (!user || !session) {
       devLog('🔴 UPLOAD ERROR: User not authenticated');
-  toast.error('Please sign in to upload documents');
+      toast.error('Please sign in to upload documents');
       navigate({ to: '/sign-in' });
       return;
     }
     devLog('🔵 UPLOAD: Authentication verified', { userId: user.id });
+
+    // Check organization is selected
+    if (!activeOrganization) {
+      devLog('🔴 UPLOAD ERROR: No organization selected');
+      toast.error('Please select an organization before uploading documents');
+      return;
+    }
+    devLog('🔵 UPLOAD: Organization verified', { organizationId: activeOrganization.id });
 
     setIsUploading(true);
     onUploadStart?.();
@@ -94,6 +104,7 @@ export function DragDropUpload({
       const documentRecord = await documentManager.createDocument({
         file,
         uploadSource: UploadSource.SMART_UPLOAD,
+        organizationId: activeOrganization.id,
       });
       
       devLog('🔵 UPLOAD: Document record created', {
@@ -136,7 +147,7 @@ export function DragDropUpload({
       setIsUploading(false);
       devLog('🔵 UPLOAD: Upload process completed, isUploading set to false');
     }
-  }, [user, session, navigate, documentManager, validateFile, onUploadStart, onUploadComplete, devError, devLog]);
+  }, [user, session, activeOrganization, navigate, documentManager, validateFile, onUploadStart, onUploadComplete, devError, devLog]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

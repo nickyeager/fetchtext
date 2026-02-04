@@ -3,6 +3,8 @@
  * Integrates with AI-powered content extraction and classification
  */
 
+import { API_ENDPOINTS } from '@/lib/api-config';
+
 export interface AIEnhancedProcessingOptions {
   extractText: boolean
   extractMetadata: boolean
@@ -167,7 +169,7 @@ export interface DocumentCategory {
 }
 
 export class EnhancedDocumentProcessor {
-  private readonly enhancedBaseUrl = 'http://localhost:8090/api/enhanced-documents'
+  private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments
   
   private readonly defaultOptions: AIEnhancedProcessingOptions = {
     extractText: true,

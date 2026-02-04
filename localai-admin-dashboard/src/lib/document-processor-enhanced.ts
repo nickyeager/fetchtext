@@ -4,6 +4,8 @@
  * Integrates with the document-processor backend service for advanced document processing
  */
 
+import { API_ENDPOINTS } from '@/lib/api-config';
+
 interface DocumentMetadata {
   title?: string;
   author?: string;
@@ -92,6 +94,12 @@ interface SmartVariable {
   description: string;
   extraction_hints: string[];
   default_value?: string | number;
+}
+
+interface ExtractionOptions {
+  useTwoPass?: boolean;
+  confidenceThreshold?: number;
+  organizationId?: string;
 }
 
 interface SmartTemplate {
@@ -190,8 +198,8 @@ interface BackendResponse {
 }
 
 export class DocumentProcessorEnhanced {
-  private readonly baseUrl = 'http://localhost:8090/documents';
-  private readonly enhancedBaseUrl = 'http://localhost:8090/api/enhanced-documents';
+  private readonly baseUrl = API_ENDPOINTS.documents;
+  private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments;
   
   private readonly supportedFormats = [
     'application/pdf',
@@ -250,7 +258,8 @@ export class DocumentProcessorEnhanced {
    */
   async *processDocumentWithTemplateProgressive(
     file: File,
-    template: SmartTemplate
+    template: SmartTemplate,
+    organizationId?: string
   ): AsyncGenerator<
     {
       content: string;
@@ -282,7 +291,7 @@ export class DocumentProcessorEnhanced {
     }
 
     // Single-shot extraction only (no mock progressive simulation)
-    const singleShot = await this.processDocumentWithTemplate(file, template);
+    const singleShot = await this.processDocumentWithTemplate(file, template, organizationId);
 
     // Synthesize a single final progress update for UI compatibility
     const synthesizedProgress: Record<string, {
@@ -345,10 +354,12 @@ export class DocumentProcessorEnhanced {
   /**
    * Fast template-guided extraction using the optimized text-based endpoint
    */
-  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6): Promise<Record<string, ExtractedField>> {
+  private async extractWithTemplateFast(textContent: string, template: SmartTemplate, confidenceThreshold: number = 0.6, useTwoPass: boolean = false, organizationId?: string): Promise<Record<string, ExtractedField>> {
     console.log('=== Starting FAST EXTRACTION ===');
     console.log('Text content length:', textContent.length);
     console.log('Template variables:', template.smart_variables.map(v => v.name));
+    console.log('Use two-pass extraction:', useTwoPass);
+    console.log('Organization ID:', organizationId || 'none (using system default)');
 
     try {
       const templateData = JSON.stringify({
@@ -365,6 +376,16 @@ export class DocumentProcessorEnhanced {
         template_data: templateData,
         confidence_threshold: confidenceThreshold.toString()
       });
+
+      // Add two-pass parameter if enabled
+      if (useTwoPass) {
+        params.append('use_two_pass', 'true');
+      }
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
+      }
 
       const extractUrl = `${this.enhancedBaseUrl}/extract-with-text?${params.toString()}`;
       console.log('Calling fast extraction endpoint:', extractUrl.substring(0, 100) + '...');
@@ -423,6 +444,36 @@ export class DocumentProcessorEnhanced {
     }
   }
 
+  /**
+   * Public API: Extract text with template variables
+   * Supports two-pass extraction for improved accuracy
+   */
+  async extractWithText(
+    textContent: string,
+    templateVariables: SmartVariable[],
+    options: ExtractionOptions = {}
+  ): Promise<Record<string, ExtractedField>> {
+    const { useTwoPass = false, confidenceThreshold = 0.6, organizationId } = options;
+
+    console.log('=== extractWithText API called ===');
+    console.log('Text content length:', textContent.length);
+    console.log('Variables count:', templateVariables.length);
+    console.log('Options:', { useTwoPass, confidenceThreshold, organizationId });
+
+    // Create a temporary template structure for extraction
+    const tempTemplate: SmartTemplate = {
+      id: 0,
+      name: 'Temporary Extraction Template',
+      description: 'Auto-generated template for text extraction',
+      template_content: '',
+      smart_variables: templateVariables,
+      category: 'general',
+      tags: []
+    };
+
+    return this.extractWithTemplateFast(textContent, tempTemplate, confidenceThreshold, useTwoPass, organizationId);
+  }
+
   // Removed unused delay helper
 
 
@@ -430,7 +481,7 @@ export class DocumentProcessorEnhanced {
    * Process a document with template-guided extraction
    * Enhanced to handle both smart templates and standard templates
    */
-  async processDocumentWithTemplate(file: File, template: SmartTemplate): Promise<TemplateExtractionResult> {
+  async processDocumentWithTemplate(file: File, template: SmartTemplate, organizationId?: string): Promise<TemplateExtractionResult> {
     // Validate file format using both MIME type and extension
     this.validateFileFormat(file);
 
@@ -468,8 +519,8 @@ export class DocumentProcessorEnhanced {
           try {
             console.log('Using client-side text extraction + fast backend extraction for smart template');
             const textContent = await this.extractTextFromFile(file);
-            const extractedFields = await this.extractWithTemplateFast(textContent, template);
-            
+            const extractedFields = await this.extractWithTemplateFast(textContent, template, 0.6, false, organizationId);
+
             // Create a complete result structure with actual content
             return {
               content: textContent,
@@ -502,6 +553,10 @@ export class DocumentProcessorEnhanced {
         formData.append('processing_mode', 'smart_template');
         formData.append('enable_validation', 'true');
         formData.append('confidence_threshold', '0.7');
+        // Add organization_id for org-specific LLM configuration
+        if (organizationId) {
+          formData.append('organization_id', organizationId);
+        }
 
         const response = await fetch(`${this.enhancedBaseUrl}/extract-with-smart-template`, {
           method: 'POST',
@@ -535,7 +590,7 @@ export class DocumentProcessorEnhanced {
       } else {
         // Standard template processing for backwards compatibility
         console.log('Processing with standard template (no smart variables)');
-        return await this.processWithStandardTemplate(file, template);
+        return await this.processWithStandardTemplate(file, template, organizationId);
       }
     } catch (error) {
       console.error('Template extraction failed, using fallback:', error);
@@ -1292,11 +1347,13 @@ export class DocumentProcessorEnhanced {
     quickScan?: boolean;
     includeConfidenceScores?: boolean;
     suggestTemplates?: boolean;
+    organizationId?: string;
   }): Promise<DocumentEvaluation> {
     const {
       quickScan = true,
       includeConfidenceScores = true,
-      suggestTemplates = true
+      suggestTemplates = true,
+      organizationId
     } = options || {};
 
     try {
@@ -1308,6 +1365,11 @@ export class DocumentProcessorEnhanced {
         include_confidence_scores: includeConfidenceScores.toString(),
         suggest_templates: suggestTemplates.toString()
       });
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
+      }
 
       // Reasonable timeout for Azure OpenAI document evaluation
       const response = await fetch(
@@ -1353,6 +1415,7 @@ export class DocumentProcessorEnhanced {
     allowGeneration?: boolean;
     autoSave?: boolean;
     generationMode?: 'automatic' | 'guided' | 'custom';
+    organizationId?: string;
   }): Promise<{
     action: 'use_existing' | 'generate_new';
     chosen_template?: any;
@@ -1372,7 +1435,8 @@ export class DocumentProcessorEnhanced {
       minMatchConfidence = 0.6,
       allowGeneration = true,
       autoSave = false,
-      generationMode = 'automatic'
+      generationMode = 'automatic',
+      organizationId
     } = options || {};
 
     try {
@@ -1386,6 +1450,11 @@ export class DocumentProcessorEnhanced {
         auto_save: autoSave.toString(),
         generation_mode: generationMode
       });
+
+      // Add organization_id for org-specific LLM configuration
+      if (organizationId) {
+        params.append('organization_id', organizationId);
+      }
 
       console.log('🎯 Calling /decide-template endpoint with 2-way validation...');
 
@@ -1868,15 +1937,19 @@ Template Version: 1.0`;
   /**
    * Process with standard template (backwards compatibility)
    */
-  private async processWithStandardTemplate(file: File, template: SmartTemplate): Promise<TemplateExtractionResult> {
+  private async processWithStandardTemplate(file: File, template: SmartTemplate, organizationId?: string): Promise<TemplateExtractionResult> {
     console.log('Processing with standard template method');
-    
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('template_data', JSON.stringify({
       variables: template.variables || template.smart_variables || []
     }));
     formData.append('confidence_threshold', '0.6');
+    // Add organization_id for org-specific LLM configuration
+    if (organizationId) {
+      formData.append('organization_id', organizationId);
+    }
 
     const response = await fetch(`${this.enhancedBaseUrl}/extract-with-template`, {
       method: 'POST',
@@ -2125,5 +2198,81 @@ Template Version: 1.0`;
       value: correctedValue,
       confidence: adjustedConfidence
     };
+  }
+
+  /**
+   * Find positions of extracted field values in a document.
+   * Returns bounding box coordinates for highlighting extracted values.
+   *
+   * @param fileUrl - URL to fetch the document from (e.g., Supabase signed URL)
+   * @param fieldValues - Array of field values to search for in the document
+   * @returns Object mapping field values to their positions with bounding boxes
+   */
+  async getFieldPositions(
+    fileUrl: string,
+    fieldValues: Array<{ fieldName: string; value: string }>
+  ): Promise<{
+    positions: Array<{
+      text: string;
+      fieldName: string;
+      found_in: string;
+      page: number;
+      bbox: { x: number; y: number; width: number; height: number } | null;
+      element_type: string;
+    }>;
+    total_found: number;
+  }> {
+    try {
+      // Fetch the document from the URL
+      const fileResponse = await fetch(fileUrl);
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to fetch document: ${fileResponse.status}`);
+      }
+
+      const blob = await fileResponse.blob();
+
+      // Extract filename from URL or use default
+      const urlPath = new URL(fileUrl).pathname;
+      const filename = urlPath.split('/').pop() || 'document';
+
+      // Create FormData with file and field values
+      const formData = new FormData();
+      formData.append('file', blob, filename);
+      formData.append('field_values', JSON.stringify(fieldValues.map(f => f.value)));
+
+      // Call the backend endpoint
+      const response = await fetch(API_ENDPOINTS.fieldPositions, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to get field positions: ${error}`);
+      }
+
+      const data = await response.json();
+
+      // Map the positions back to field names
+      const positionsWithFieldNames = data.positions.map((pos: { text: string; found_in: string; page: number; bbox: { x: number; y: number; width: number; height: number } | null; element_type: string }) => {
+        // Find the field that matches this position's text
+        const field = fieldValues.find(f => f.value === pos.text);
+        return {
+          ...pos,
+          fieldName: field?.fieldName || pos.text,
+        };
+      });
+
+      return {
+        positions: positionsWithFieldNames,
+        total_found: data.total_found,
+      };
+    } catch (error) {
+      console.error('Error getting field positions:', error);
+      return {
+        positions: [],
+        total_found: 0,
+      };
+    }
   }
 }

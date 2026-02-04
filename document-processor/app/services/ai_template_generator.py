@@ -516,7 +516,15 @@ Return JSON only:"""
     
     async def generate_template_from_analysis(self, analysis: Dict[str, Any], template_name: str) -> Dict[str, Any]:
         """Generate a complete template based on document analysis."""
-        
+
+        print("=" * 80)
+        print("🔨 generate_template_from_analysis() CALLED")
+        print(f"Template name: {template_name}")
+        print(f"Detected fields count: {len(analysis.get('detected_fields', []))}")
+        for i, field in enumerate(analysis.get('detected_fields', [])[:5]):
+            print(f"  Field {i+1}: {field.get('name')} (type: {field.get('suggested_type')})")
+        print("=" * 80)
+
         # Create smart variables from detected fields
         smart_variables = []
         for field in analysis['detected_fields']:

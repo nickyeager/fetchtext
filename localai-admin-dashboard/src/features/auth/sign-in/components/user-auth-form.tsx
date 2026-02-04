@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { IconBrandFacebook, IconBrandGithub } from '@tabler/icons-react'
+import { IconBrandGithub } from '@tabler/icons-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -73,6 +73,27 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
     }
   }
 
+  async function handleGitHubLogin() {
+    setIsLoading(true)
+    try {
+      const redirectTo = (search as any)?.redirect || '/dashboard'
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}${redirectTo}`,
+        },
+      })
+
+      if (error) {
+        toast.error('GitHub login failed: ' + error.message)
+      }
+    } catch {
+      toast.error('GitHub login failed')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <Form {...form}>
       <form
@@ -127,14 +148,15 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-2'>
-          <Button variant='outline' type='button' disabled={isLoading}>
-            <IconBrandGithub className='h-4 w-4' /> GitHub
-          </Button>
-          <Button variant='outline' type='button' disabled={isLoading}>
-            <IconBrandFacebook className='h-4 w-4' /> Facebook
-          </Button>
-        </div>
+        <Button
+          variant='outline'
+          className='w-full'
+          type='button'
+          disabled={isLoading}
+          onClick={handleGitHubLogin}
+        >
+          <IconBrandGithub className='h-4 w-4' /> GitHub
+        </Button>
       </form>
     </Form>
   )

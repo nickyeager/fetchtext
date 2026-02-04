@@ -1,15 +1,17 @@
-import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useNavigate, useRouter, ErrorComponentProps } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 interface GeneralErrorProps extends React.HTMLAttributes<HTMLDivElement> {
   minimal?: boolean
+  error?: Error
 }
 
 export default function GeneralError({
   className,
   minimal = false,
-}: GeneralErrorProps) {
+  error,
+}: GeneralErrorProps & Partial<ErrorComponentProps>) {
   const navigate = useNavigate()
   const { history } = useRouter()
   return (
@@ -22,6 +24,16 @@ export default function GeneralError({
         <p className='text-muted-foreground text-center'>
           We apologize for the inconvenience. <br /> Please try again later.
         </p>
+        {error && import.meta.env.MODE === 'development' && (
+          <details className='mt-4 max-w-xl text-left text-sm'>
+            <summary className='cursor-pointer text-muted-foreground'>Error Details</summary>
+            <pre className='mt-2 overflow-auto rounded bg-muted p-2 text-xs'>
+              {error.message}
+              {'\n\n'}
+              {error.stack}
+            </pre>
+          </details>
+        )}
         {!minimal && (
           <div className='mt-6 flex gap-4'>
             <Button variant='outline' onClick={() => history.go(-1)}>
