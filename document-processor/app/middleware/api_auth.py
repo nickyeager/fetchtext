@@ -30,7 +30,7 @@ except Exception:
 
 # Security scheme for OpenAPI documentation
 security = HTTPBearer(
-    scheme_name="API Key",
+    scheme_name="APIKey",
     description="API key starting with 'ftxt_'. Example: ftxt_abc123def456..."
 )
 

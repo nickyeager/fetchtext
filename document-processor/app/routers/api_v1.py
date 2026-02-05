@@ -29,6 +29,12 @@ from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..config.database import db_config
+from ..models.api_v1_responses import (
+    ProcessDocumentResponse,
+    JobStatusResponse,
+    TemplateListResponse,
+    HealthResponse
+)
 
 # Safe logger initialization
 try:
@@ -369,7 +375,20 @@ async def _process_with_auto_template(
 # API ENDPOINTS
 # ============================================================================
 
-@router.post("/process")
+@router.post(
+    "/process",
+    status_code=202,
+    response_model=ProcessDocumentResponse,
+    responses={
+        202: {
+            "description": "Document accepted for processing",
+            "model": ProcessDocumentResponse
+        },
+        400: {"description": "Invalid input (unsupported file type, missing file)"},
+        401: {"description": "Invalid or missing API key"},
+        429: {"description": "Rate limit exceeded"}
+    }
+)
 async def process_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Document file to process (PDF, DOCX, images)"),
@@ -482,20 +501,25 @@ async def process_document(
 
     logger.info(f"Created processing job {job_id} for {file.filename}")
 
-    return JSONResponse(
-        content={
-            'job_id': job_id,
-            'status': 'pending',
-            'message': 'Document processing started',
-            'webhook_url': webhook_url,
-            'estimated_completion_seconds': 30 if auto_generate_template else 10,
-            'created_at': datetime.utcnow().isoformat()
-        },
-        status_code=202
+    return ProcessDocumentResponse(
+        job_id=job_id,
+        status='pending',
+        message='Document processing started',
+        webhook_url=webhook_url,
+        estimated_completion_seconds=30 if auto_generate_template else 10,
+        created_at=datetime.utcnow().isoformat()
     )
 
 
-@router.get("/jobs/{job_id}")
+@router.get(
+    "/jobs/{job_id}",
+    response_model=JobStatusResponse,
+    responses={
+        200: {"description": "Job status retrieved successfully", "model": JobStatusResponse},
+        404: {"description": "Job not found"},
+        401: {"description": "Invalid or missing API key"}
+    }
+)
 async def get_job_status(
     job_id: str,
     api_context: dict = Depends(api_key_auth.verify_api_key)
@@ -560,7 +584,15 @@ async def get_job_status(
         raise HTTPException(status_code=500, detail="Failed to retrieve job status")
 
 
-@router.get("/templates")
+@router.get(
+    "/templates",
+    response_model=TemplateListResponse,
+    responses={
+        200: {"description": "Templates retrieved successfully", "model": TemplateListResponse},
+        401: {"description": "Invalid or missing API key"},
+        403: {"description": "API key lacks templates_read permission"}
+    }
+)
 async def list_templates(
     category: Optional[str] = Query(None, description="Filter by category"),
     limit: int = Query(50, ge=1, le=100, description="Maximum templates to return"),
@@ -620,7 +652,13 @@ async def list_templates(
         raise HTTPException(status_code=500, detail="Failed to retrieve templates")
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    responses={
+        200: {"description": "API is healthy", "model": HealthResponse}
+    }
+)
 async def api_health():
     """
     Health check endpoint for the third-party API.
