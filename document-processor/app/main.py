@@ -10,11 +10,29 @@ from app.routers import documents, health, enhanced_documents, models, google_do
 from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing
 
+# Import OpenAPI configuration
+from app.openapi_config import get_openapi_config, get_custom_openapi_schema, API_TAGS
+
+# Get OpenAPI configuration
+_openapi_config = get_openapi_config()
+
 app = FastAPI(
-    title="Document Processor API",
-    description="Advanced document processing service using Docling",
-    version="1.0.0"
+    title=_openapi_config["title"],
+    description=_openapi_config["description"],
+    version=_openapi_config["version"],
+    contact=_openapi_config["contact"],
+    license_info=_openapi_config["license_info"],
+    openapi_tags=API_TAGS,
+    docs_url="/swagger",
+    redoc_url="/docs",
+    openapi_url="/openapi.json"
 )
+
+# Override OpenAPI schema with custom enhancements
+def custom_openapi():
+    return get_custom_openapi_schema(app)
+
+app.openapi = custom_openapi
 
 # Configure CORS
 app.add_middleware(
