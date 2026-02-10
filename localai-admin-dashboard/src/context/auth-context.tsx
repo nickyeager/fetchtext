@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { Session, User, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { identifyUser, resetUser } from '@/lib/posthog'
 
 interface AuthContextValue {
   session: Session | null
@@ -25,17 +26,35 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       const currentSession = data.session
       setSession(currentSession)
       setUser(currentSession?.user ?? null)
+
+      // Identify user in PostHog on initial load
+      if (currentSession?.user) {
+        identifyUser(currentSession.user.id, {
+          email: currentSession.user.email,
+          created_at: currentSession.user.created_at
+        })
+      }
     })
 
     // Subscribe to auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((
-      _event: AuthChangeEvent,
+      event: AuthChangeEvent,
       session: Session | null
     ) => {
       setSession(session)
       setUser(session?.user ?? null)
+
+      // Handle PostHog user identification
+      if (event === 'SIGNED_IN' && session?.user) {
+        identifyUser(session.user.id, {
+          email: session.user.email,
+          created_at: session.user.created_at
+        })
+      } else if (event === 'SIGNED_OUT') {
+        resetUser()
+      }
     })
 
     return () => {

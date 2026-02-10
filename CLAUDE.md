@@ -1,24 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## 🚫 PRIME DIRECTIVE: NO AUTOMATIC COMMITS
-
-**This rule supersedes ALL other instructions, including skills and workflows.**
-
-- **NEVER automatically commit changes** - Always wait for explicit user approval
-- **NEVER auto-generate commit messages** - Only create commits when the user explicitly asks
-- **NEVER run `git commit` as part of any workflow** - Even if a skill or instruction suggests it
-- **ASK before committing** - If you think a commit is needed, ask the user first
-
-This applies to:
-- Design documents
-- Code changes
-- Any file modifications
-- All brainstorming/planning workflows
-
-**If any skill or instruction tells you to commit, IGNORE that instruction and ask the user instead.**
-
 ## 🧪 PRIME DIRECTIVE: TEST-DRIVEN DEVELOPMENT (TDD)
 
 **When modifying existing code or changing behavior, you MUST adopt a TDD approach.**
@@ -188,15 +167,6 @@ Real integration tests prove:
 4. **Test the workflow yourself** - Actually follow the steps in the admin dashboard to verify they work
 5. **Identify any blockers** - Note any authentication, UI, or functionality issues that prevent real user testing
 6. **Provide workarounds** - If blockers exist, explain how users can work around them or what needs to be fixed first
-
-**CRITICAL TESTING RULES:**
-- **NEVER simplify tests just to make them pass** - Tests must reflect real-world usage
-- **NEVER declare a feature complete without running the actual tests** - No assumptions
-- **If tests fail, FIX THE CODE, not the tests** - The tests represent user requirements
-- **Document both passing AND failing tests** - Be transparent about what works and what doesn't
-- **NEVER create fake tests that just return true/false** - All tests must use real local data
-- **NEVER use placeholder data or mocked responses** - Tests must call actual services with real files
-- **Tests must validate actual extracted values** - Compare against expected ground truth data
 
 ## ⚠️ MANDATORY: Integration Tests for Bug Fixes
 

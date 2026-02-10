@@ -21,7 +21,9 @@ from ..services.integrations.registry import (
     INTEGRATION_REGISTRY,
 )
 from ..services.integrations.oauth_manager import OAuthManager
+from ..services.vault_service import vault_service
 from ..config.database import db_config
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
@@ -31,6 +33,16 @@ router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 # Response Models
 # =============================================================================
 
+class CredentialField(BaseModel):
+    """Definition of a credential field for non-OAuth integrations"""
+    name: str
+    label: str
+    type: str  # text, password, textarea
+    required: str = "true"
+    placeholder: Optional[str] = None
+    help: Optional[str] = None
+
+
 class IntegrationInfo(BaseModel):
     """Information about an available integration"""
     id: str
@@ -38,8 +50,27 @@ class IntegrationInfo(BaseModel):
     description: str
     icon: str
     configured: bool
+    auth_mode: str = "oauth"
+    auth_modes: Optional[List[str]] = None  # For dual-mode integrations: ["credential", "oauth"]
+    credential_fields: Optional[List[CredentialField]] = None
     scope_presets: List[str]
     features: Dict[str, bool]
+
+
+class CredentialConnectRequest(BaseModel):
+    """Request to connect an integration using credentials"""
+    organization_id: str
+    credentials: Dict[str, str]
+    user_id: Optional[str] = None
+
+
+class PerAccountOAuthInitiateRequest(BaseModel):
+    """Request to initiate OAuth for a per-account provider (e.g., Snowflake)"""
+    organization_id: str
+    account_identifier: str  # e.g., "uzdboxw-snb92059"
+    client_id: str           # from DESCRIBE INTEGRATION in Snowflake
+    client_secret: str       # from DESCRIBE INTEGRATION in Snowflake
+    redirect_uri: str
 
 
 class IntegrationStatus(BaseModel):
@@ -104,13 +135,14 @@ async def get_integration_info(integration: str):
     """
     try:
         config = get_integration(integration)
-        return {
+        result = {
             "id": integration,
             "type": config.type.value,
             "name": config.display_name,
             "description": config.description,
             "icon": config.icon,
             "configured": config.is_configured,
+            "auth_mode": config.auth_mode,
             "scope_presets": list(config.scopes.keys()),
             "default_scope_preset": config.default_scope_preset,
             "features": {
@@ -119,6 +151,11 @@ async def get_integration_info(integration: str):
                 "pkce": config.uses_pkce,
             },
         }
+        if config.auth_mode in ("credential", "dual") and config.credential_fields:
+            result["credential_fields"] = config.credential_fields
+        if config.auth_mode == "dual":
+            result["auth_modes"] = ["credential", "oauth"]
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -228,6 +265,204 @@ async def oauth_callback(
         return RedirectResponse(f"{FRONTEND_URL}/settings/integrations?success=true&provider={integration}")
     else:
         return RedirectResponse(f"{FRONTEND_URL}/settings/integrations?error={error_msg}&provider={integration}")
+
+
+# =============================================================================
+# Per-Account OAuth Flow (for Snowflake and similar per-tenant providers)
+# =============================================================================
+
+@router.post("/{integration}/oauth/initiate-with-account", response_model=OAuthInitiateResponse)
+async def initiate_oauth_with_account(
+    integration: str,
+    request: PerAccountOAuthInitiateRequest,
+):
+    """
+    Initiate OAuth flow for a per-account provider like Snowflake.
+
+    Unlike standard OAuth where client_id/secret come from env vars,
+    per-account OAuth requires the customer to provide their own
+    client_id and client_secret from their Snowflake Security Integration.
+
+    The customer's Snowflake admin must first create a Security Integration:
+        CREATE SECURITY INTEGRATION fetchtext_oauth
+          TYPE = OAUTH ENABLED = TRUE OAUTH_CLIENT = CUSTOM ...
+
+    Then run DESCRIBE INTEGRATION to get client_id and client_secret.
+    """
+    try:
+        config = get_integration(integration)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if config.auth_mode not in ("oauth", "dual"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration '{integration}' does not support OAuth.",
+        )
+
+    if not config.auth_url_template:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration '{integration}' does not support per-account OAuth.",
+        )
+
+    try:
+        # Store client_id and client_secret in Vault (needed for token exchange during callback)
+        client_id_vault_id = await vault_service.store_secret(
+            name=f"integration_{request.organization_id}_{integration}_oauth_client_id",
+            secret=request.client_id,
+            description=f"{integration} OAuth client_id for org {request.organization_id}",
+        )
+        client_secret_vault_id = await vault_service.store_secret(
+            name=f"integration_{request.organization_id}_{integration}_oauth_client_secret",
+            secret=request.client_secret,
+            description=f"{integration} OAuth client_secret for org {request.organization_id}",
+        )
+
+        if not client_id_vault_id or not client_secret_vault_id:
+            raise HTTPException(status_code=500, detail="Failed to store OAuth credentials securely")
+
+        # Initiate the flow with per-account URLs
+        auth_url, state = await OAuthManager.initiate_flow_with_account(
+            config=config,
+            organization_id=request.organization_id,
+            account=request.account_identifier,
+            client_id=request.client_id,
+            redirect_uri=request.redirect_uri,
+        )
+
+        # Store account identifier and vault IDs in metadata for the callback
+        if db_config.client:
+            db_config.client.table("organization_integrations").upsert(
+                {
+                    "organization_id": request.organization_id,
+                    "integration_type": integration,
+                    "metadata": {
+                        "account_identifier": request.account_identifier,
+                        "oauth_client_id_vault_id": client_id_vault_id,
+                        "oauth_client_secret_vault_id": client_secret_vault_id,
+                        "auth_method": "oauth",
+                    },
+                },
+                on_conflict="organization_id,integration_type",
+            ).execute()
+
+        return OAuthInitiateResponse(authorization_url=auth_url, state=state)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to initiate per-account OAuth for {integration}")
+        error_msg = str(e)
+        if "foreign key" in error_msg.lower() or "23503" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Organization '{request.organization_id}' not found. Create the organization first.",
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to initiate OAuth: {error_msg}")
+
+
+# =============================================================================
+# Credential-Based Connection
+# =============================================================================
+
+@router.post("/{integration}/connect-credentials")
+async def connect_with_credentials(
+    integration: str,
+    request: CredentialConnectRequest,
+):
+    """
+    Connect an integration using direct credentials (non-OAuth).
+
+    Used for integrations like Snowflake that use key-pair auth
+    instead of OAuth flows. Stores credentials securely in Vault.
+    """
+    try:
+        config = get_integration(integration)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if config.auth_mode not in ("credential", "dual"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration '{integration}' uses OAuth, not credentials. Use the OAuth flow instead.",
+        )
+
+    # Validate required fields
+    required_fields = [
+        f["name"] for f in config.credential_fields
+        if f.get("required", "true") == "true"
+    ]
+    missing = [f for f in required_fields if not request.credentials.get(f)]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required credential fields: {', '.join(missing)}",
+        )
+
+    organization_id = request.organization_id
+
+    # Store each credential in Vault
+    stored_fields = {}
+    for field_def in config.credential_fields:
+        field_name = field_def["name"]
+        value = request.credentials.get(field_name)
+        if not value:
+            continue
+
+        vault_key = f"integration_{organization_id}_{integration}_{field_name}"
+        vault_id = await vault_service.store_secret(
+            name=vault_key,
+            secret=value,
+            description=f"{integration} {field_name} for org {organization_id}",
+        )
+        if vault_id:
+            stored_fields[field_name] = vault_id
+        else:
+            logger.error(f"Failed to store credential '{field_name}' in Vault")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to store credential '{field_name}' securely",
+            )
+
+    # Build non-sensitive metadata for the integration record
+    metadata = {
+        "account_identifier": request.credentials.get("account_identifier", ""),
+        "username": request.credentials.get("username", ""),
+        "warehouse": request.credentials.get("warehouse", ""),
+        "database": request.credentials.get("database", ""),
+        "role": request.credentials.get("role", ""),
+        "credential_vault_ids": stored_fields,
+    }
+
+    # Upsert organization_integrations row
+    if not db_config.client:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    db_config.client.table("organization_integrations").upsert(
+        {
+            "organization_id": organization_id,
+            "integration_type": integration,
+            "status": "connected",
+            "connected_at": datetime.utcnow().isoformat(),
+            "connected_by": request.user_id,
+            "metadata": metadata,
+            "last_error": None,
+        },
+        on_conflict="organization_id,integration_type",
+    ).execute()
+
+    logger.info(f"Snowflake credentials stored for org {organization_id}")
+
+    return {
+        "success": True,
+        "message": f"{config.display_name} connected successfully",
+        "metadata": {
+            "account_identifier": metadata["account_identifier"],
+            "username": metadata["username"],
+            "warehouse": metadata["warehouse"],
+        },
+    }
 
 
 # =============================================================================
@@ -386,7 +621,32 @@ async def test_connection(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    # Get access token
+    # Handle credential-based integrations (e.g., Snowflake key-pair)
+    # For dual-mode integrations, check if this org used credentials or OAuth
+    if config.auth_mode in ("credential", "dual"):
+        try:
+            if integration == "snowflake":
+                from ..services.snowflake_service import snowflake_service
+                result = await snowflake_service.test_connection(organization_id)
+                return result
+            else:
+                return {
+                    "success": False,
+                    "message": f"No test handler for credential integration '{integration}'",
+                }
+        except ImportError:
+            return {
+                "success": False,
+                "message": "Snowflake service not available",
+            }
+        except Exception as e:
+            logger.exception(f"Connection test failed for {integration}")
+            return {
+                "success": False,
+                "message": f"Connection test failed: {str(e)}",
+            }
+
+    # Get access token (OAuth integrations)
     token = await OAuthManager.get_access_token(organization_id, integration)
     if not token:
         return {

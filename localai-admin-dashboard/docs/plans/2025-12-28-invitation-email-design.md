@@ -62,7 +62,7 @@ Tests:
 
 Prerequisites:
 - `VITE_SENDGRID_API_KEY` set
-- Verified sender: `yeag123@gmail.com`
+- Verified sender: `nick@fetchtext.io`
 
 ## Environment
 
@@ -80,9 +80,9 @@ Add these to your deployment environment:
 ```bash
 # SendGrid Configuration
 VITE_SENDGRID_API_KEY=SG.xxx...  # Get from SendGrid dashboard
-VITE_SENDGRID_FROM_EMAIL=yeag123@gmail.com
-VITE_SENDGRID_FROM_NAME=FetchText Support
-VITE_SENDGRID_REPLY_TO=yeag123@gmail.com
+VITE_SENDGRID_FROM_EMAIL=nick@fetchtext.io
+VITE_SENDGRID_FROM_NAME=FetchText
+VITE_SENDGRID_REPLY_TO=nick@fetchtext.io
 
 # Application URL for email links
 VITE_APP_URL=https://app.fetchtext.io  # Production URL
@@ -90,7 +90,7 @@ VITE_APP_URL=https://app.fetchtext.io  # Production URL
 
 ### SendGrid Account Requirements
 
-- **Verified Sender**: `yeag123@gmail.com` must be verified in SendGrid
+- **Verified Sender**: `nick@fetchtext.io` must be verified in SendGrid
 - **API Key Permissions**: Full Access or at minimum Mail Send permission
 - **Plan**: Paid plan (upgraded 2025-12-29)
 
@@ -103,10 +103,10 @@ VITE_APP_URL=https://app.fetchtext.io  # Production URL
 
 | Variable | Value |
 |----------|-------|
-| `VITE_SENDGRID_API_KEY` | `***REMOVED-SENDGRID-KEY-2***` |
-| `VITE_SENDGRID_FROM_EMAIL` | `yeag123@gmail.com` |
-| `VITE_SENDGRID_FROM_NAME` | `FetchText Support` |
-| `VITE_SENDGRID_REPLY_TO` | `yeag123@gmail.com` |
+| `VITE_SENDGRID_API_KEY` | `(get from SendGrid dashboard)` |
+| `VITE_SENDGRID_FROM_EMAIL` | `nick@fetchtext.io` |
+| `VITE_SENDGRID_FROM_NAME` | `FetchText` |
+| `VITE_SENDGRID_REPLY_TO` | `nick@fetchtext.io` |
 | `VITE_APP_URL` | `https://app.fetchtext.io` |
 
 5. Trigger a redeploy for changes to take effect
