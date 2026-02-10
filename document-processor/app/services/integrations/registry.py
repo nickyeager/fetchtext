@@ -1,7 +1,7 @@
 """
 Integration Registry
 
-Central configuration for all OAuth integrations.
+Central configuration for all integrations (OAuth and credential-based).
 To add a new integration, simply add a new IntegrationConfig to INTEGRATION_REGISTRY.
 """
 
@@ -21,18 +21,27 @@ class IntegrationType(str, Enum):
     SALESFORCE = "salesforce"
     HUBSPOT = "hubspot"
     XERO = "xero"
+    SNOWFLAKE = "snowflake"
 
 
 @dataclass
 class IntegrationConfig:
     """
-    Configuration for an OAuth integration.
+    Configuration for an integration.
 
-    This config defines everything needed to perform OAuth flows:
+    Supports two auth modes:
+    - "oauth": Standard OAuth2 flow with auth/token endpoints
+    - "credential": Direct credential entry (e.g., API keys, private keys)
+
+    For OAuth integrations, this config defines:
     - OAuth endpoints (auth, token, revoke)
     - Available scopes and presets
     - Environment variable names for credentials
     - Provider-specific behavior flags
+
+    For credential integrations, this config defines:
+    - credential_fields: Dynamic form field definitions
+    - No OAuth endpoints needed
     """
 
     # Basic identification
@@ -41,11 +50,22 @@ class IntegrationConfig:
     description: str = ""
     icon: str = ""  # Icon name or URL
 
+    # Auth mode: "oauth", "credential", or "dual" (supports both)
+    auth_mode: str = "oauth"
+
+    # Credential-based auth fields (for auth_mode="credential")
+    # Each dict has: name, label, type (text/password/textarea), required, placeholder, help
+    credential_fields: List[Dict[str, str]] = field(default_factory=list)
+
     # OAuth endpoints
     auth_url: str = ""
     token_url: str = ""
     revoke_url: Optional[str] = None
     userinfo_url: Optional[str] = None  # For fetching user/account info
+
+    # URL templates with placeholders (e.g., {account} for Snowflake OAuth)
+    auth_url_template: Optional[str] = None
+    token_url_template: Optional[str] = None
 
     # Scopes configuration
     # Keys are preset names, values are lists of scope strings
@@ -85,17 +105,37 @@ class IntegrationConfig:
     @property
     def client_id(self) -> str:
         """Get client ID from environment"""
+        if not self.client_id_env:
+            return ""
         return os.getenv(self.client_id_env, "")
 
     @property
     def client_secret(self) -> str:
         """Get client secret from environment"""
+        if not self.client_secret_env:
+            return ""
         return os.getenv(self.client_secret_env, "")
 
     @property
     def is_configured(self) -> bool:
         """Check if integration has required credentials configured"""
+        if self.auth_mode in ("credential", "dual"):
+            # Credential-based and dual integrations are always "configured" on the backend
+            # (credentials are provided by the user at connect time, not env vars)
+            return True
         return bool(self.client_id and self.client_secret)
+
+    def get_auth_url_for_account(self, account: str) -> str:
+        """Get auth URL with account placeholder filled in (for OAuth mode)"""
+        if self.auth_url_template:
+            return self.auth_url_template.replace("{account}", account)
+        return self.auth_url
+
+    def get_token_url_for_account(self, account: str) -> str:
+        """Get token URL with account placeholder filled in (for OAuth mode)"""
+        if self.token_url_template:
+            return self.token_url_template.replace("{account}", account)
+        return self.token_url
 
     def get_scopes(self, preset: Optional[str] = None) -> List[str]:
         """Get scopes for a preset, or default if not specified"""
@@ -350,6 +390,87 @@ INTEGRATION_REGISTRY: Dict[str, IntegrationConfig] = {
         supports_refresh=True,
         supports_revoke=True,
     ),
+
+    # -------------------------------------------------------------------------
+    # Snowflake (Stages - file storage and data exports)
+    # -------------------------------------------------------------------------
+    "snowflake": IntegrationConfig(
+        type=IntegrationType.SNOWFLAKE,
+        display_name="Snowflake Stages",
+        description="Browse and import documents from Snowflake Stages for processing",
+        icon="snowflake",
+
+        # Dual mode: supports both key-pair credentials and OAuth
+        auth_mode="dual",
+
+        credential_fields=[
+            {
+                "name": "account_identifier",
+                "label": "Account Identifier",
+                "type": "text",
+                "required": "true",
+                "placeholder": "xy12345.us-east-1",
+                "help": "Your Snowflake account identifier (e.g., xy12345.us-east-1)",
+            },
+            {
+                "name": "username",
+                "label": "Username",
+                "type": "text",
+                "required": "true",
+                "placeholder": "my_user",
+                "help": "Snowflake username for authentication",
+            },
+            {
+                "name": "private_key",
+                "label": "Private Key (PEM)",
+                "type": "textarea",
+                "required": "true",
+                "placeholder": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+                "help": "RSA private key in PEM format for key-pair authentication",
+            },
+            {
+                "name": "warehouse",
+                "label": "Warehouse",
+                "type": "text",
+                "required": "true",
+                "placeholder": "COMPUTE_WH",
+                "help": "Default warehouse to use for queries",
+            },
+            {
+                "name": "database",
+                "label": "Database",
+                "type": "text",
+                "required": "false",
+                "placeholder": "MY_DATABASE",
+                "help": "Default database (optional, can be selected later)",
+            },
+            {
+                "name": "role",
+                "label": "Role",
+                "type": "text",
+                "required": "false",
+                "placeholder": "SYSADMIN",
+                "help": "Snowflake role to use (optional, defaults to user's default role)",
+            },
+        ],
+
+        # Per-account OAuth endpoints (Snowflake is per-account, not global)
+        auth_url_template="https://{account}.snowflakecomputing.com/oauth/authorize",
+        token_url_template="https://{account}.snowflakecomputing.com/oauth/token-request",
+
+        scopes={
+            "default": ["session:role:PUBLIC"],
+        },
+
+        # Client credentials come from the customer's Snowflake Security Integration,
+        # not from our env vars - but keep env vars for optional pre-configuration
+        client_id_env="SNOWFLAKE_OAUTH_CLIENT_ID",
+        client_secret_env="SNOWFLAKE_OAUTH_CLIENT_SECRET",
+
+        token_endpoint_auth_method="client_secret_post",
+        supports_refresh=True,
+        supports_revoke=False,
+    ),
 }
 
 
@@ -403,19 +524,25 @@ def list_integrations(configured_only: bool = False) -> List[Dict[str, Any]]:
     for key, config in INTEGRATION_REGISTRY.items():
         if configured_only and not config.is_configured:
             continue
-        result.append({
+        entry = {
             "id": key,
             "type": config.type.value,
             "name": config.display_name,
             "description": config.description,
             "icon": config.icon,
             "configured": config.is_configured,
+            "auth_mode": config.auth_mode,
             "scope_presets": list(config.scopes.keys()),
             "features": {
                 "refresh": config.supports_refresh,
                 "revoke": config.supports_revoke,
             },
-        })
+        }
+        if config.auth_mode in ("credential", "dual") and config.credential_fields:
+            entry["credential_fields"] = config.credential_fields
+        if config.auth_mode == "dual":
+            entry["auth_modes"] = ["credential", "oauth"]
+        result.append(entry)
     return result
 
 

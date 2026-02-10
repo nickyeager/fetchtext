@@ -394,45 +394,28 @@ class TemplateService {
    * Extract variables from document text using AI-first, regex fallback approach
    */
   async extractVariables(
-    documentText: string, 
+    documentText: string,
     template: SmartTemplate
   ): Promise<ExtractionResult[]> {
     const results: ExtractionResult[] = [];
-    
+
     for (const variable of template.smart_variables) {
-      try {
-        // Try AI extraction first (if available)
-        const aiResult = await this.extractWithAI(documentText, variable);
-        if (aiResult && aiResult.confidence >= (variable.confidence_threshold || 0.6)) {
-          results.push({
-            field_name: variable.name,
-            value: aiResult.value,
-            extraction_method: 'ai',
-            confidence: aiResult.confidence
-          });
-          continue;
-        }
-      } catch (error) {
-        console.warn(`AI extraction failed for ${variable.name}:`, error);
-      }
-      
-      // Fallback to regex extraction
+      // Use regex extraction (AI extraction is handled by the backend document processor)
       const regexResult = this.extractWithRegex(
-        documentText, 
+        documentText,
         variable.name,
         variable.regex_fallback || template.regex_fallback?.[variable.name]
       );
-      
+
       if (regexResult) {
         results.push({
           field_name: variable.name,
           value: regexResult.value,
           extraction_method: 'regex',
-          confidence: 0.8, // High confidence for successful regex match
+          confidence: 0.8,
           source_pattern: regexResult.pattern
         });
       } else {
-        // Extraction failed completely
         results.push({
           field_name: variable.name,
           value: null,
@@ -441,20 +424,8 @@ class TemplateService {
         });
       }
     }
-    
-    return results;
-  }
 
-  /**
-   * Extract using AI/LLM (placeholder - integrate with document processor API)
-   */
-  private async extractWithAI(
-    text: string, 
-    variable: SmartVariableWithFallback
-  ): Promise<{ value: any; confidence: number } | null> {
-    // TODO: Integrate with document processor's smart extraction endpoint
-    // For now, return null to always fall back to regex
-    return null;
+    return results;
   }
 
   /**
@@ -489,29 +460,6 @@ class TemplateService {
     }
     
     return null;
-  }
-
-  /**
-   * Generate a new document using extracted variables and template
-   */
-  async generateDocument(
-    template: SmartTemplate,
-    extractedVariables: Record<string, any>,
-    outputFormat: 'html' | 'markdown' | 'pdf' = 'html'
-  ): Promise<string> {
-    // Simple template substitution for now
-    let generatedContent: string = template.template_content ?? '';
-    
-    // Replace {{variable_name}} placeholders with extracted values
-    Object.entries(extractedVariables).forEach(([fieldName, value]) => {
-      const placeholder = new RegExp(`\\{\\{\\s*${fieldName}\\s*\\}\\}`, 'g');
-      generatedContent = generatedContent.replace(placeholder, value || '');
-    });
-    
-    // TODO: Integrate with more sophisticated template engines (handlebars, mustache)
-    // TODO: Add workflow-based generation for templates with generation_settings.type === 'workflow'
-    
-    return generatedContent;
   }
 
   /**

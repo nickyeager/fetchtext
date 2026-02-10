@@ -1633,23 +1633,4 @@ async def _generate_template_improvements(
         ]
     }
 
-async def _extract_template_fields_DEPRECATED(
-    text_content: str,
-    template_variables: List[Dict[str, Any]],
-    confidence_threshold: float = 0.6,
-    organization_id: Optional[str] = None
-) -> Dict[str, Any]:
-    """FIXED: Now properly calling smart_field_extractor"""
-
-    # Call the smart field extractor directly
-    result = await smart_field_extractor.extract_fields_intelligently(
-        text_content, template_variables, confidence_threshold, provider="azure",
-        organization_id=organization_id
-    )
-    
-    # FORCE the method to be correct if it's still showing wrong
-    if result.get('extraction_method') in ['fallback_pattern', 'template_guided_regex']:
-        result['extraction_method'] = 'smart_field_extraction_fixed'
-    
-    return result
 

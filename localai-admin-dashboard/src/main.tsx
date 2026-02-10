@@ -15,9 +15,13 @@ import { ThemeProvider } from './context/theme-context'
 import { AuthProvider } from './context/auth-context'
 import { OrganizationProvider } from './context/organization-context'
 import { SearchProvider } from './context/search-context'
+import { initPostHog } from '@/lib/posthog'
 import './index.css'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
+
+// Initialize PostHog analytics (disabled on localhost)
+initPostHog()
 
 const queryClient = new QueryClient({
   defaultOptions: {
