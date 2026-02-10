@@ -1,12 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
-import os
-from pathlib import Path
 
 # Import routers
-from app.routers import documents, health, enhanced_documents, models, google_docs, email
+from app.routers import health, enhanced_documents, models, google_docs, email
 from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing, snowflake
 
@@ -45,7 +42,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router)
-app.include_router(documents.router)
 app.include_router(enhanced_documents.router)
 app.include_router(models.router)
 app.include_router(google_docs.router)

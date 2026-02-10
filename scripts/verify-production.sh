@@ -2,7 +2,8 @@
 # Production Deployment Verification Script
 # Checks all production services: Supabase, Azure, GitHub Actions, Local Docker
 
-set -e
+# Don't use set -e as it breaks arithmetic operations and curl checks
+# We handle errors manually with check_fail
 
 # Colors for output
 RED='\033[0;31m'
@@ -55,20 +56,20 @@ print_section() {
 
 check_pass() {
     echo -e "  ${GREEN}✓${NC} $1"
-    ((PASSED_CHECKS++))
-    ((TOTAL_CHECKS++))
+    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
 }
 
 check_fail() {
     echo -e "  ${RED}✗${NC} $1"
-    ((FAILED_CHECKS++))
-    ((TOTAL_CHECKS++))
+    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
 }
 
 check_warn() {
     echo -e "  ${YELLOW}⚠${NC} $1"
-    ((WARNINGS++))
-    ((TOTAL_CHECKS++))
+    WARNINGS=$((WARNINGS + 1))
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
 }
 
 check_info() {
@@ -81,25 +82,38 @@ check_info() {
 check_supabase() {
     print_section "Managed Supabase (${SUPABASE_PROJECT_ID})"
 
-    # Check if Supabase URL is reachable
-    if curl -s --connect-timeout 5 "${SUPABASE_URL}/rest/v1/" > /dev/null 2>&1; then
-        check_pass "Supabase REST API reachable"
+    # Check if Supabase URL is reachable (401 means reachable but needs auth - that's OK)
+    REST_STATUS=$(curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" "${SUPABASE_URL}/rest/v1/" 2>&1)
+    if [ "$REST_STATUS" = "401" ] || [ "$REST_STATUS" = "200" ]; then
+        check_pass "Supabase REST API reachable (HTTP ${REST_STATUS})"
+    elif [ "$REST_STATUS" = "000" ]; then
+        check_fail "Supabase REST API unreachable (connection failed)"
     else
-        check_fail "Supabase REST API unreachable"
+        check_warn "Supabase REST API returned HTTP ${REST_STATUS}"
     fi
 
     # Check auth endpoint
-    if curl -s --connect-timeout 5 "${SUPABASE_URL}/auth/v1/health" > /dev/null 2>&1; then
-        check_pass "Supabase Auth service healthy"
+    AUTH_STATUS=$(curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" "${SUPABASE_URL}/auth/v1/health" 2>&1)
+    if [ "$AUTH_STATUS" = "200" ]; then
+        check_pass "Supabase Auth service healthy (HTTP ${AUTH_STATUS})"
+    elif [ "$AUTH_STATUS" = "401" ] || [ "$AUTH_STATUS" = "403" ]; then
+        check_pass "Supabase Auth service reachable (HTTP ${AUTH_STATUS} - auth required)"
+    elif [ "$AUTH_STATUS" = "000" ]; then
+        check_fail "Supabase Auth service unreachable"
     else
-        check_warn "Supabase Auth health check failed (may require auth)"
+        check_warn "Supabase Auth returned HTTP ${AUTH_STATUS}"
     fi
 
-    # Check storage endpoint
-    if curl -s --connect-timeout 5 "${SUPABASE_URL}/storage/v1/" > /dev/null 2>&1; then
-        check_pass "Supabase Storage service reachable"
+    # Check storage endpoint (use /status for health check)
+    STORAGE_STATUS=$(curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" "${SUPABASE_URL}/storage/v1/status" 2>&1)
+    if [ "$STORAGE_STATUS" = "200" ]; then
+        check_pass "Supabase Storage service healthy (HTTP ${STORAGE_STATUS})"
+    elif [ "$STORAGE_STATUS" = "401" ] || [ "$STORAGE_STATUS" = "400" ]; then
+        check_pass "Supabase Storage service reachable (HTTP ${STORAGE_STATUS})"
+    elif [ "$STORAGE_STATUS" = "000" ]; then
+        check_fail "Supabase Storage unreachable"
     else
-        check_warn "Supabase Storage check failed (may require auth)"
+        check_warn "Supabase Storage returned HTTP ${STORAGE_STATUS}"
     fi
 
     # Check if we can list tables (requires ANON_KEY)

@@ -10,6 +10,8 @@ from typing import Optional, List, Dict, Any
 import logging
 import uuid
 import os
+import gzip
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -177,6 +179,19 @@ async def download_and_process_file(
 
         _download_jobs[job_id]["status"] = "processing"
 
+        # Decompress .gz files (Snowflake auto-compresses stage files)
+        if temp_path and temp_path.lower().endswith(".gz"):
+            decompressed_path = temp_path[:-3]
+            try:
+                with gzip.open(temp_path, "rb") as f_in:
+                    with open(decompressed_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                os.unlink(temp_path)
+                temp_path = decompressed_path
+                logger.info(f"Decompressed .gz file to {temp_path}")
+            except Exception as gz_err:
+                logger.warning(f"Failed to decompress .gz file: {gz_err}, using as-is")
+
         document_data = None
 
         if request.process_immediately:
@@ -195,7 +210,7 @@ async def download_and_process_file(
                 # Process through Docling
                 try:
                     from ..services.docling_service import docling_service
-                    docling_result = await docling_service.process_document(temp_path)
+                    docling_result = await docling_service.process_document(Path(temp_path))
                     document_data = {
                         "text": docling_result.get("text", ""),
                         "metadata": docling_result.get("metadata", {}),
