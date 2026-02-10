@@ -14,11 +14,6 @@ export const DOCUMENT_PROCESSOR_URL =
  * Document Processor API endpoints
  */
 export const API_ENDPOINTS = {
-  // Document processing
-  documents: `${DOCUMENT_PROCESSOR_URL}/documents`,
-  documentsUpload: `${DOCUMENT_PROCESSOR_URL}/documents/upload`,
-  documentsProcess: `${DOCUMENT_PROCESSOR_URL}/documents/process`,
-
   // Enhanced document processing
   enhancedDocuments: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents`,
   smartExtract: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/smart-extract`,

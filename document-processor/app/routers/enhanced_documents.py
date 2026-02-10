@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -30,7 +30,6 @@ except Exception:
     logger = logging.getLogger(__name__)
 
 from ..services.enhanced_docling_service import enhanced_docling_service
-from ..services.ai_content_classifier import ai_classifier
 from ..services.ai_template_generator import ai_template_generator
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
@@ -180,65 +179,6 @@ async def batch_process_with_ai_enhancement(
         # Cleanup all temporary files
         cleanup_tasks = [cleanup_temp_file(temp_path) for temp_path in temp_files]
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-
-@router.get("/enhancement-capabilities")
-async def get_enhancement_capabilities():
-    """
-    Get information about available AI enhancement capabilities.
-    
-    Returns details about:
-    - AI classification capabilities
-    - Structure enhancement features
-    - Data extraction options
-    - Quality assessment metrics
-    - System status
-    """
-    
-    try:
-        capabilities = await enhanced_docling_service.get_enhancement_capabilities()
-        return JSONResponse(content=capabilities)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get capabilities: {str(e)}")
-
-@router.get("/test-extraction")
-async def test_extraction():
-    """Test the template extraction logic without file upload"""
-    try:
-        # Test the extraction function with sample data
-        test_text = """
-        Invoice #12345
-        Date: January 15, 2024
-        Bill To: John Smith
-        Company: ACME Corporation
-        Email: john.smith@acme.com
-        Total: $3,282.13
-        Payment Due: February 15, 2024
-        """
-        
-        template_variables = [
-            {"name": "invoice_number", "type": "text"},
-            {"name": "total_amount", "type": "currency"},
-            {"name": "due_date", "type": "date"},
-            {"name": "customer_email", "type": "email"}
-        ]
-        
-        # Use smart AI extraction for test endpoint too
-        extracted_data = await smart_field_extractor.extract_fields_intelligently(
-            test_text,
-            template_variables,
-            0.6,
-            provider="azure"
-        )
-        
-        return JSONResponse(content={
-            "status": "success",
-            "test_text": test_text,
-            "template_variables": template_variables,
-            "extracted_data": extracted_data
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Test extraction failed: {str(e)}")
 
 @router.post("/extract-with-text")
 async def extract_with_text(
@@ -745,75 +685,6 @@ async def decide_template_strategy(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
-@router.post("/extract-structured-data")
-async def extract_structured_data(
-    file: UploadFile = File(...),
-    target_fields: Optional[str] = Query(None, description="Comma-separated list of fields to extract"),
-    extraction_method: str = Query("ai_guided", description="Extraction method: ai_guided or rule_based")
-):
-    """
-    Extract structured data from document using AI guidance.
-    
-    Provides targeted data extraction based on:
-    - Document type classification
-    - Specified target fields
-    - AI-guided extraction strategies
-    """
-    
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    
-    temp_file_path = None
-    
-    try:
-        # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
-        
-        # Process document with AI enhancement
-        result = await enhanced_docling_service.process_document_with_ai_enhancement(
-            temp_file_path,
-            extract_text=True,
-            extract_metadata=True,
-            extract_structure=True,
-            use_ai_enhancement=(extraction_method == "ai_guided")
-        )
-        
-        if result.get('status') != 'completed':
-            raise HTTPException(status_code=500, detail="Document processing failed")
-        
-        # Extract the structured data
-        extracted_data = result.get('extracted_data', {})
-        classification = result.get('ai_classification', {})
-        
-        # Filter by target fields if specified
-        if target_fields:
-            target_list = [field.strip() for field in target_fields.split(',')]
-            if extracted_data.get('extracted_values'):
-                filtered_data = {
-                    key: value for key, value in extracted_data['extracted_values'].items()
-                    if key in target_list
-                }
-                extracted_data['extracted_values'] = filtered_data
-        
-        return JSONResponse(content={
-            'extraction_result': extracted_data,
-            'document_classification': classification,
-            'extraction_metadata': {
-                'original_filename': file.filename,
-                'extraction_method': extraction_method,
-                'target_fields': target_fields.split(',') if target_fields else None,
-                'extraction_timestamp': datetime.utcnow().isoformat()
-            }
-        })
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Data extraction failed: {str(e)}")
-        
-    finally:
-        # Cleanup temporary file
-        if temp_file_path:
-            await cleanup_temp_file(temp_file_path)
-
 @router.post("/evaluate-document-type")
 async def evaluate_document_type(
     file: UploadFile = File(...),
@@ -1225,67 +1096,6 @@ async def analyze_document_for_template_generation(
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
 
- 
-
-@router.post("/suggest-template-improvements")
-async def suggest_template_improvements(
-    template_id: int = Query(..., description="ID of template to improve"),
-    sample_documents: List[UploadFile] = File(...),
-    improvement_mode: str = Query("enhance", description="Improvement mode: enhance, optimize, validate"),
-    focus_areas: Optional[List[str]] = Query(None, description="Focus areas for improvement")
-):
-    """
-    Analyze multiple sample documents against an existing template to suggest improvements.
-    
-    This endpoint helps optimize templates by identifying:
-    - Missing fields that could be added
-    - Poorly performing fields that need better extraction hints
-    - Structural improvements for better accuracy
-    """
-    
-    if not sample_documents:
-        raise HTTPException(status_code=400, detail="No sample documents provided")
-    
-    if len(sample_documents) > 10:
-        raise HTTPException(status_code=400, detail="Maximum 10 sample documents allowed")
-    
-    if len(sample_documents) < 2:
-        raise HTTPException(status_code=400, detail="Minimum 2 sample documents required for meaningful analysis")
-    
-    if improvement_mode not in ["enhance", "optimize", "validate"]:
-        raise HTTPException(status_code=400, detail="Improvement mode must be enhance, optimize, or validate")
-    
-    temp_files = []
-    
-    try:
-        # Save all sample documents
-        save_tasks = [save_uploaded_file(doc) for doc in sample_documents]
-        temp_files = await asyncio.gather(*save_tasks)
-        
-        # Analyze each document
-        document_analyses = []
-        for temp_path in temp_files:
-            analysis = await ai_template_generator.analyze_document_structure(temp_path)
-            document_analyses.append(analysis)
-        
-        # Generate improvement suggestions
-        improvements = await _generate_template_improvements(
-            template_id, 
-            document_analyses, 
-            improvement_mode,
-            focus_areas or []
-        )
-        
-        return JSONResponse(content=improvements)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Template improvement analysis failed: {str(e)}")
-        
-    finally:
-        # Cleanup all temporary files
-        cleanup_tasks = [cleanup_temp_file(temp_path) for temp_path in temp_files]
-        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-
 @router.post("/save-generated-template")
 async def save_generated_template(
     template_data: str = Query(..., description="JSON string containing generated template data"),
@@ -1559,78 +1369,5 @@ async def get_field_positions(
     finally:
         if temp_file_path:
             await cleanup_temp_file(temp_file_path)
-
-
-async def _generate_template_improvements(
-    template_id: int,
-    document_analyses: List[Dict[str, Any]],
-    improvement_mode: str,
-    focus_areas: List[str]
-) -> Dict[str, Any]:
-    """Generate improvement suggestions for existing template"""
-    
-    # Analyze common fields across documents
-    all_detected_fields = {}
-    for analysis in document_analyses:
-        for field in analysis['detected_fields']:
-            field_name = field['name']
-            if field_name in all_detected_fields:
-                all_detected_fields[field_name]['count'] += 1
-                all_detected_fields[field_name]['total_confidence'] += field['confidence']
-            else:
-                all_detected_fields[field_name] = {
-                    'count': 1,
-                    'total_confidence': field['confidence'],
-                    'field_info': field
-                }
-    
-    # Generate suggestions
-    suggestions = []
-    
-    for field_name, info in all_detected_fields.items():
-        if info['count'] >= len(document_analyses) * 0.7:  # Field appears in 70%+ of documents
-            avg_confidence = info['total_confidence'] / info['count']
-            
-            if avg_confidence >= 0.8:
-                suggestions.append({
-                    'type': 'add_field',
-                    'priority': 'high',
-                    'description': f'Add "{field_name}" field - appears in {info["count"]}/{len(document_analyses)} documents',
-                    'current_state': 'missing',
-                    'suggested_change': f'Add {field_name} field with type {info["field_info"]["suggested_type"]}',
-                    'expected_improvement': f'Increase extraction coverage by ~{info["count"]/len(document_analyses)*100:.0f}%',
-                    'implementation_notes': f'Use extraction hints: {", ".join(info["field_info"]["extraction_hints"])}',
-                    'risk_level': 'low'
-                })
-    
-    # Calculate performance metrics
-    total_fields_detected = sum(len(analysis['detected_fields']) for analysis in document_analyses)
-    avg_fields_per_doc = total_fields_detected / len(document_analyses)
-    
-    return {
-        'improvement_id': str(uuid.uuid4()),
-        'template_id': template_id,
-        'analysis_summary': {
-            'documents_analyzed': len(document_analyses),
-            'current_performance': {
-                'average_extraction_rate': 0.75,  # Simulated
-                'average_confidence': 0.82,  # Simulated
-                'common_failures': ['date_format_variations', 'address_parsing']
-            }
-        },
-        'suggested_improvements': suggestions,
-        'estimated_impact': {
-            'extraction_rate_improvement': 0.15,
-            'confidence_improvement': 0.08,
-            'new_fields_potential': len([s for s in suggestions if s['type'] == 'add_field'])
-        },
-        'implementation_difficulty': 'moderate' if len(suggestions) > 5 else 'easy',
-        'next_steps': [
-            'Review suggested field additions',
-            'Test template with sample documents',
-            'Update extraction hints based on analysis',
-            'Validate improved template performance'
-        ]
-    }
 
 

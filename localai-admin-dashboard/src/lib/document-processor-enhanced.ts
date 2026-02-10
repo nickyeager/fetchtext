@@ -198,8 +198,8 @@ interface BackendResponse {
 }
 
 export class DocumentProcessorEnhanced {
-  private readonly baseUrl = API_ENDPOINTS.documents;
   private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments;
+  private readonly rootUrl = API_ENDPOINTS.health.replace('/health', '');
   
   private readonly supportedFormats = [
     'application/pdf',
@@ -623,13 +623,10 @@ export class DocumentProcessorEnhanced {
       }
 
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('extract_text', 'true');
-      formData.append('extract_metadata', 'true');
-      formData.append('extract_structure', 'true');
+      formData.append('files', file);
 
-      // Use the basic /documents/upload endpoint
-      const endpointUrl = `${this.baseUrl}/upload`;
+      // Use the enhanced batch-process-with-ai endpoint (works for single files)
+      const endpointUrl = `${this.enhancedBaseUrl}/batch-process-with-ai?extract_text=true&extract_metadata=true&extract_structure=true&use_ai_enhancement=false`;
       console.log('Making document processing request to:', endpointUrl);
 
       const response = await fetch(endpointUrl, {
@@ -641,50 +638,22 @@ export class DocumentProcessorEnhanced {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Failed to process document: ${errorData.error || 'Unknown error'}`);
+        throw new Error(`Failed to process document: ${errorData.detail || 'Unknown error'}`);
       }
 
-      const uploadResult = await response.json();
-      console.log('Document processing API upload response:', uploadResult);
+      const batchResult = await response.json();
+      console.log('Document processing API response:', batchResult);
 
-      // The /documents/upload endpoint returns a job_id for async processing
-      // We need to poll for the result
-      if (uploadResult.job_id) {
-        console.log('⏳ Polling for document processing result, job_id:', uploadResult.job_id);
-
-        const resultEndpoint = `${this.baseUrl.replace('/documents', '')}/documents/result/${uploadResult.job_id}`;
-        let attempts = 0;
-        const maxAttempts = 30; // 30 seconds max (1 second intervals)
-
-        while (attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-          attempts++;
-
-          const resultResponse = await fetch(resultEndpoint, {
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'omit'
-          });
-
-          if (resultResponse.ok) {
-            const result = await resultResponse.json();
-            console.log(`📊 Polling attempt ${attempts}: status =`, result.status);
-
-            if (result.status === 'completed') {
-              console.log('✅ Document processing completed, content length:', result.content?.text?.length);
-              return this.transformBackendResponse(result as BackendResponse, file);
-            } else if (result.status === 'failed') {
-              throw new Error(`Document processing failed: ${result.error || 'Unknown error'}`);
-            }
-            // Otherwise status is 'processing', continue polling
-          }
-        }
-
-        throw new Error('Document processing timeout - exceeded 30 seconds');
+      // Extract the first (and only) result from the batch response
+      const results = batchResult.results || [];
+      if (results.length > 0 && results[0].status === 'completed') {
+        console.log('Document processing completed, content length:', results[0].content?.text?.length);
+        return this.transformBackendResponse(results[0] as BackendResponse, file);
+      } else if (results.length > 0 && results[0].status === 'failed') {
+        throw new Error(`Document processing failed: ${results[0].error_message || 'Unknown error'}`);
       }
 
-      // Fallback: if no job_id, assume synchronous response (shouldn't happen with current backend)
-      return this.transformBackendResponse(uploadResult as BackendResponse, file);
+      throw new Error('Document processing returned no results');
     } catch (_error) {
       // Backend not available, use mock data for development
       return await this.createMockProcessedDocument(file);
@@ -696,28 +665,14 @@ export class DocumentProcessorEnhanced {
    */
   private async isEnhancedApiAvailable(): Promise<boolean> {
     try {
-      const capabilitiesUrl = `${this.enhancedBaseUrl}/enhancement-capabilities`;
-      console.log('Checking enhanced API availability at:', capabilitiesUrl);
-      
-      const response = await fetch(capabilitiesUrl, {
+      const healthUrl = `${this.rootUrl}/health`;
+      const response = await fetch(healthUrl, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         mode: 'cors',
         credentials: 'omit'
       });
-      
-      console.log('Enhanced API capabilities response:', {
-        url: capabilitiesUrl,
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText
-      });
-      
       return response.ok;
-    } catch (error) {
-      console.error('Enhanced API availability check failed:', error);
+    } catch {
       return false;
     }
   }
@@ -727,7 +682,7 @@ export class DocumentProcessorEnhanced {
    */
   private async isBackendAvailable(): Promise<boolean> {
     try {
-      const healthUrl = `${this.baseUrl.replace('/documents', '')}/health/`;
+      const healthUrl = `${this.rootUrl}/health`;
       console.log('Checking backend availability at:', healthUrl);
       
       const response = await fetch(healthUrl, {
@@ -759,7 +714,7 @@ export class DocumentProcessorEnhanced {
    */
   async getBackendStatus(): Promise<{ status: string; docling_available: boolean; version?: string }> {
     try {
-      const healthUrl = `${this.baseUrl.replace('/documents', '')}/health/`;
+      const healthUrl = `${this.rootUrl}/health`;
       console.log('Getting backend status from:', healthUrl);
       
       const response = await fetch(healthUrl, {
