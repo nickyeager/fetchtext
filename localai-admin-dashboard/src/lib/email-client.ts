@@ -22,8 +22,12 @@ interface N8NWebhookPayload {
 }
 
 // N8N webhook endpoints for different email types
-// Use environment variable for N8N URL, fallback to localhost for development
-const N8N_BASE_URL = import.meta.env.VITE_N8N_URL || 'http://localhost:5678';
+// MUST be set via VITE_N8N_URL environment variable - no localhost fallback
+const N8N_BASE_URL = import.meta.env.VITE_N8N_URL || '';
+
+if (!N8N_BASE_URL && import.meta.env.DEV) {
+  console.warn('[Email Client] VITE_N8N_URL is not set. Email delivery will not work.');
+}
 
 const N8N_WEBHOOKS = {
   'password-reset': `${N8N_BASE_URL}/webhook/password-reset-email`,

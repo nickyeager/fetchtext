@@ -5,13 +5,22 @@ export class N8nClient {
   private baseUrl: string;
   private apiKey?: string;
 
-  constructor(config: { baseUrl: string; apiKey?: string } | string = 'http://localhost:5678/api/v1', apiKey?: string) {
+  /**
+   * Create N8N client
+   * @param config - Either a config object with baseUrl, or just the baseUrl string
+   * @param apiKey - API key (only used when config is a string)
+   */
+  constructor(config: { baseUrl: string; apiKey?: string } | string, apiKey?: string) {
     if (typeof config === 'object') {
       this.baseUrl = config.baseUrl.replace(/\/$/, ''); // Remove trailing slash
       this.apiKey = config.apiKey;
     } else {
       this.baseUrl = config.replace(/\/$/, ''); // Remove trailing slash
       this.apiKey = apiKey;
+    }
+
+    if (!this.baseUrl) {
+      throw new Error('N8nClient: baseUrl is required. Set VITE_N8N_URL environment variable.');
     }
   }
 

@@ -18,7 +18,11 @@ router = APIRouter(prefix="/api/email", tags=["email"])
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL", "nick@fetchtext.io")
 FROM_NAME = os.getenv("SENDGRID_FROM_NAME", "FetchText")
-APP_URL = os.getenv("APP_URL", "http://localhost:5173")
+APP_URL = os.getenv("APP_URL", "")
+
+if not APP_URL:
+    import logging
+    logging.warning("APP_URL environment variable not set - email links will be broken")
 
 
 class InvitationEmailRequest(BaseModel):

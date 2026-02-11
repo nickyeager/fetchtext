@@ -505,37 +505,6 @@ Return ONLY JSON:
         self.logger.info(f"AI-enhanced batch processing completed: {len(results)} results")
         return results
     
-    async def get_enhancement_capabilities(self) -> Dict[str, Any]:
-        """Get information about AI enhancement capabilities"""
-        
-        # Check if LLM is available
-        ollama_available = await self.ai_classifier._is_llm_available()
-        
-        return {
-            'ai_classification': {
-                'available': True,
-                'method': 'ai_powered' if ollama_available else 'rule_based',
-                'supported_categories': [cat.value for cat in ContentCategory],
-                'confidence_threshold': 0.5
-            },
-            'structure_enhancement': {
-                'available': True,
-                'category_specific': True,
-                'pattern_detection': True
-            },
-            'data_extraction': {
-                'available': ollama_available,
-                'guided_extraction': ollama_available,
-                'fallback_available': True
-            },
-            'quality_assessment': {
-                'available': True,
-                'metrics': ['completeness', 'readability', 'structure'],
-                'insights_provided': True
-            },
-            'llm_status': self.llm_service.get_current_provider_info()
-        }
-    
     async def _process_text_file_enhanced(
         self,
         file_path: Path,
