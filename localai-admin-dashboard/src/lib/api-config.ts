@@ -5,10 +5,17 @@
 
 /**
  * Document Processor backend URL
- * Configurable via VITE_DOCUMENT_PROCESSOR_URL environment variable
+ * MUST be set via VITE_DOCUMENT_PROCESSOR_URL environment variable
+ * No localhost fallback - production builds must have this configured
  */
-export const DOCUMENT_PROCESSOR_URL =
-  import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
+export const DOCUMENT_PROCESSOR_URL = import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || '';
+
+// Warn in development if not configured
+if (!DOCUMENT_PROCESSOR_URL && import.meta.env.DEV) {
+  console.warn(
+    '[API Config] VITE_DOCUMENT_PROCESSOR_URL is not set. Document processing features will not work.'
+  );
+}
 
 /**
  * Document Processor API endpoints

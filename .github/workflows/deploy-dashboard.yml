@@ -44,8 +44,10 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_DOCUMENT_PROCESSOR_URL: ${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
           VITE_N8N_URL: ${{ secrets.VITE_N8N_URL }}
           VITE_OLLAMA_URL: ${{ secrets.VITE_OLLAMA_URL }}
+          VITE_APP_URL: https://fetchtext.io
         run: pnpm build
 
       - name: Deploy to Azure Static Web Apps

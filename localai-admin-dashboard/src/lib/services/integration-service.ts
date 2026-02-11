@@ -88,8 +88,12 @@ export interface ConnectionTestResult {
 // Configuration
 // =============================================================================
 
-const DOCUMENT_PROCESSOR_URL =
-  import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090'
+// MUST be set via VITE_DOCUMENT_PROCESSOR_URL - no localhost fallback
+const DOCUMENT_PROCESSOR_URL = import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || ''
+
+if (!DOCUMENT_PROCESSOR_URL && import.meta.env.DEV) {
+  console.warn('[Integration Service] VITE_DOCUMENT_PROCESSOR_URL is not set. Integration features will not work.')
+}
 
 // =============================================================================
 // Integration Service Class

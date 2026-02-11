@@ -58,8 +58,17 @@ class SnowflakeService:
     def __init__(self):
         self._connections: Dict[str, Any] = {}
 
+    # Credential fields stored in Vault (looked up by deterministic name)
+    VAULT_CREDENTIAL_FIELDS = [
+        "account_identifier", "username", "private_key", "warehouse", "database",
+    ]
+
     async def _get_credentials(self, organization_id: str) -> Dict[str, str]:
-        """Retrieve Snowflake credentials from Vault for an organization."""
+        """Retrieve Snowflake credentials from Vault for an organization.
+
+        Uses deterministic name-based vault lookup instead of stored vault IDs,
+        which eliminates stale-ID failures after vault upsert cycles.
+        """
         if not db_config.client:
             raise RuntimeError("Database not configured")
 
@@ -73,33 +82,25 @@ class SnowflakeService:
             raise ValueError("Snowflake integration not found for this organization")
 
         metadata = result.data.get("metadata", {})
-        vault_ids = metadata.get("credential_vault_ids", {})
 
-        if not vault_ids:
-            raise ValueError("No Snowflake credentials stored")
-
-        # Retrieve each credential from Vault
+        # Retrieve credentials from Vault using deterministic name pattern.
+        # Names follow: integration_{org_id}_snowflake_{field_name}
         credentials = {}
-        for field_name, vault_id in vault_ids.items():
-            secret = await vault_service.get_secret(vault_id)
+        for field_name in self.VAULT_CREDENTIAL_FIELDS:
+            vault_key = f"integration_{organization_id}_snowflake_{field_name}"
+            secret = await vault_service.get_secret_by_name(vault_key)
             if secret:
                 credentials[field_name] = secret
-            else:
-                # Vault ID may be stale from a previous upsert cycle.
-                # Fall back to name-based lookup using the deterministic key pattern.
-                vault_key = f"integration_{organization_id}_snowflake_{field_name}"
-                logger.info(f"Vault ID lookup failed for '{field_name}', trying name-based lookup: {vault_key}")
-                secret = await vault_service.get_secret_by_name(vault_key)
-                if secret:
-                    credentials[field_name] = secret
-                else:
-                    logger.warning(f"Failed to retrieve credential '{field_name}' from Vault by both ID and name")
 
-        # Add non-sensitive metadata fields
-        credentials["account_identifier"] = metadata.get("account_identifier", "")
-        credentials["username"] = metadata.get("username", "")
-        credentials["warehouse"] = metadata.get("warehouse", "")
-        credentials["database"] = metadata.get("database", "")
+        if not credentials:
+            raise ValueError("No Snowflake credentials found in Vault")
+
+        # Add non-sensitive metadata fields (override vault values with metadata
+        # for fields that are also stored as non-sensitive metadata)
+        credentials["account_identifier"] = metadata.get("account_identifier", "") or credentials.get("account_identifier", "")
+        credentials["username"] = metadata.get("username", "") or credentials.get("username", "")
+        credentials["warehouse"] = metadata.get("warehouse", "") or credentials.get("warehouse", "")
+        credentials["database"] = metadata.get("database", "") or credentials.get("database", "")
         credentials["role"] = metadata.get("role", "")
 
         # Detect auth method (OAuth vs key-pair)

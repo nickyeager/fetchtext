@@ -13,7 +13,10 @@ import logging
 import os
 
 # Frontend URL for OAuth redirects
-FRONTEND_URL = os.getenv("APP_URL", "http://localhost:5173")
+FRONTEND_URL = os.getenv("APP_URL", "")
+
+if not FRONTEND_URL:
+    logging.warning("APP_URL environment variable not set - OAuth redirects will fail")
 
 from ..services.integrations.registry import (
     get_integration,
@@ -402,8 +405,8 @@ async def connect_with_credentials(
 
     organization_id = request.organization_id
 
-    # Store each credential in Vault
-    stored_fields = {}
+    # Store each credential in Vault using deterministic name pattern.
+    # Retrieval uses name-based lookup, so we don't need to store vault IDs.
     for field_def in config.credential_fields:
         field_name = field_def["name"]
         value = request.credentials.get(field_name)
@@ -416,23 +419,21 @@ async def connect_with_credentials(
             secret=value,
             description=f"{integration} {field_name} for org {organization_id}",
         )
-        if vault_id:
-            stored_fields[field_name] = vault_id
-        else:
+        if not vault_id:
             logger.error(f"Failed to store credential '{field_name}' in Vault")
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to store credential '{field_name}' securely",
             )
 
-    # Build non-sensitive metadata for the integration record
+    # Build non-sensitive metadata for the integration record.
+    # No vault IDs stored — retrieval uses deterministic name-based lookup.
     metadata = {
         "account_identifier": request.credentials.get("account_identifier", ""),
         "username": request.credentials.get("username", ""),
         "warehouse": request.credentials.get("warehouse", ""),
         "database": request.credentials.get("database", ""),
         "role": request.credentials.get("role", ""),
-        "credential_vault_ids": stored_fields,
     }
 
     # Upsert organization_integrations row
