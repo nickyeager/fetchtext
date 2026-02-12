@@ -221,6 +221,9 @@ All secrets MUST be configured before deployment:
 - JWT secrets (32+ characters)
 - API keys (Azure OpenAI, etc.)
 - Service credentials
+- PostHog analytics: `VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST`
+
+**Important:** Frontend `VITE_*` variables are embedded at **build time** by Vite, not at runtime. They must be set as GitHub Secrets and passed in the `deploy-dashboard.yml` workflow. If a key is missing during the build, that feature will be silently disabled in production.
 
 ### 2. **Storage Persistence**
 Ensure persistent volumes for:
