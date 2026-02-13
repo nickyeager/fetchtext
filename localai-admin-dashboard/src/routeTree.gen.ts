@@ -53,6 +53,7 @@ import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authen
 import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
 import { Route as AuthenticatedSettingsAccountImport } from './routes/_authenticated/settings/account'
 import { Route as AuthenticatedDocumentsUploadImport } from './routes/_authenticated/documents/upload'
+import { Route as AuthenticatedDocumentsSnowflakeImportImport } from './routes/_authenticated/documents/snowflake-import'
 import { Route as AuthenticatedDocumentsProcessDocumentImport } from './routes/_authenticated/documents/process-document'
 import { Route as AuthenticatedDocumentsGalleryImport } from './routes/_authenticated/documents/gallery'
 import { Route as AuthenticatedDocumentsDocumentIdImport } from './routes/_authenticated/documents/$documentId'
@@ -333,6 +334,13 @@ const AuthenticatedDocumentsUploadRoute =
     getParentRoute: () => AuthenticatedDocumentsRoute,
   } as any)
 
+const AuthenticatedDocumentsSnowflakeImportRoute =
+  AuthenticatedDocumentsSnowflakeImportImport.update({
+    id: '/snowflake-import',
+    path: '/snowflake-import',
+    getParentRoute: () => AuthenticatedDocumentsRoute,
+  } as any)
+
 const AuthenticatedDocumentsProcessDocumentRoute =
   AuthenticatedDocumentsProcessDocumentImport.update({
     id: '/process-document',
@@ -603,6 +611,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDocumentsProcessDocumentImport
       parentRoute: typeof AuthenticatedDocumentsImport
     }
+    '/_authenticated/documents/snowflake-import': {
+      id: '/_authenticated/documents/snowflake-import'
+      path: '/snowflake-import'
+      fullPath: '/documents/snowflake-import'
+      preLoaderRoute: typeof AuthenticatedDocumentsSnowflakeImportImport
+      parentRoute: typeof AuthenticatedDocumentsImport
+    }
     '/_authenticated/documents/upload': {
       id: '/_authenticated/documents/upload'
       path: '/upload'
@@ -836,6 +851,7 @@ interface AuthenticatedDocumentsRouteChildren {
   AuthenticatedDocumentsDocumentIdRoute: typeof AuthenticatedDocumentsDocumentIdRoute
   AuthenticatedDocumentsGalleryRoute: typeof AuthenticatedDocumentsGalleryRoute
   AuthenticatedDocumentsProcessDocumentRoute: typeof AuthenticatedDocumentsProcessDocumentRoute
+  AuthenticatedDocumentsSnowflakeImportRoute: typeof AuthenticatedDocumentsSnowflakeImportRoute
   AuthenticatedDocumentsUploadRoute: typeof AuthenticatedDocumentsUploadRoute
   AuthenticatedDocumentsIndexRoute: typeof AuthenticatedDocumentsIndexRoute
   AuthenticatedDocumentsTemplatesIndexRoute: typeof AuthenticatedDocumentsTemplatesIndexRoute
@@ -848,6 +864,8 @@ const AuthenticatedDocumentsRouteChildren: AuthenticatedDocumentsRouteChildren =
     AuthenticatedDocumentsGalleryRoute: AuthenticatedDocumentsGalleryRoute,
     AuthenticatedDocumentsProcessDocumentRoute:
       AuthenticatedDocumentsProcessDocumentRoute,
+    AuthenticatedDocumentsSnowflakeImportRoute:
+      AuthenticatedDocumentsSnowflakeImportRoute,
     AuthenticatedDocumentsUploadRoute: AuthenticatedDocumentsUploadRoute,
     AuthenticatedDocumentsIndexRoute: AuthenticatedDocumentsIndexRoute,
     AuthenticatedDocumentsTemplatesIndexRoute:
@@ -1006,6 +1024,7 @@ export interface FileRoutesByFullPath {
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/snowflake-import': typeof AuthenticatedDocumentsSnowflakeImportRoute
   '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
@@ -1059,6 +1078,7 @@ export interface FileRoutesByTo {
   '/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/documents/snowflake-import': typeof AuthenticatedDocumentsSnowflakeImportRoute
   '/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
@@ -1117,6 +1137,7 @@ export interface FileRoutesById {
   '/_authenticated/documents/$documentId': typeof AuthenticatedDocumentsDocumentIdRoute
   '/_authenticated/documents/gallery': typeof AuthenticatedDocumentsGalleryRoute
   '/_authenticated/documents/process-document': typeof AuthenticatedDocumentsProcessDocumentRoute
+  '/_authenticated/documents/snowflake-import': typeof AuthenticatedDocumentsSnowflakeImportRoute
   '/_authenticated/documents/upload': typeof AuthenticatedDocumentsUploadRoute
   '/_authenticated/settings/account': typeof AuthenticatedSettingsAccountRoute
   '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
@@ -1175,6 +1196,7 @@ export interface FileRouteTypes {
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
+    | '/documents/snowflake-import'
     | '/documents/upload'
     | '/settings/account'
     | '/settings/ai-models'
@@ -1227,6 +1249,7 @@ export interface FileRouteTypes {
     | '/documents/$documentId'
     | '/documents/gallery'
     | '/documents/process-document'
+    | '/documents/snowflake-import'
     | '/documents/upload'
     | '/settings/account'
     | '/settings/ai-models'
@@ -1283,6 +1306,7 @@ export interface FileRouteTypes {
     | '/_authenticated/documents/$documentId'
     | '/_authenticated/documents/gallery'
     | '/_authenticated/documents/process-document'
+    | '/_authenticated/documents/snowflake-import'
     | '/_authenticated/documents/upload'
     | '/_authenticated/settings/account'
     | '/_authenticated/settings/ai-models'
@@ -1494,6 +1518,7 @@ export const routeTree = rootRoute
         "/_authenticated/documents/$documentId",
         "/_authenticated/documents/gallery",
         "/_authenticated/documents/process-document",
+        "/_authenticated/documents/snowflake-import",
         "/_authenticated/documents/upload",
         "/_authenticated/documents/",
         "/_authenticated/documents/templates/"
@@ -1512,6 +1537,10 @@ export const routeTree = rootRoute
     },
     "/_authenticated/documents/process-document": {
       "filePath": "_authenticated/documents/process-document.tsx",
+      "parent": "/_authenticated/documents"
+    },
+    "/_authenticated/documents/snowflake-import": {
+      "filePath": "_authenticated/documents/snowflake-import.tsx",
       "parent": "/_authenticated/documents"
     },
     "/_authenticated/documents/upload": {

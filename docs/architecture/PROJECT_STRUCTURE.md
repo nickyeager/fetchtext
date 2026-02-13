@@ -26,9 +26,16 @@
 
 ## Supabase Stack
 - `supabase/docker/` – Service-specific configuration (Kong, Storage, etc.) and volume mounts.
-- `supabase/migrations/` – Database migrations and SQL change sets.
+- `supabase/migrations/` – **Single source of truth** for all database schema changes. All SQL migrations go here, numbered sequentially (e.g., `024_add_storage_policies.sql`). These are applied to both local Docker Supabase and production managed Supabase.
 - `supabase/volumes/` – Persistent storage directories for Supabase services.
 - Supabase data volume named `supabase_postgres_data_new` declared in `docker-compose.yml`.
+
+### Migration Conventions
+- **Naming**: `NNN_descriptive_name.sql` (e.g., `024_add_storage_policies.sql`)
+- **Location**: Always in `supabase/migrations/`, never at project root
+- **Scope**: Each migration handles one logical change (table creation, RLS policies, etc.)
+- **Documentation**: Include comments at the top explaining the migration's purpose
+- **Idempotency**: Use `DROP ... IF EXISTS` and `CREATE ... IF NOT EXISTS` where appropriate
 
 ## Dependencies & Configuration
 - `package.json`, `pnpm-lock.yaml`, `node_modules/` – JavaScript/TypeScript dependencies for tooling and UI components.

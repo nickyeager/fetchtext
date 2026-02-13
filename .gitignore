@@ -4,6 +4,8 @@
 .env.production
 .env.test
 *.env.backup
+SECRETS.local.md
+.secrets/
 
 # Docker and Container Data
 volumes/
@@ -125,3 +127,6 @@ azure-credentials.json
 
 
 .copilot-tracking/
+# Snowflake test keys
+.snowflake-keys/
+.env.snowflake-test

@@ -15,6 +15,8 @@ param userAssignedIdentityId string
 param tags object = {}
 param keyVaultUri string
 param supabaseSecretNames object
+@description('Comma-separated list of allowed CORS origins for the FastAPI backend.')
+param allowedOrigins string = 'https://fetchtext.io,https://www.fetchtext.io'
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -38,6 +40,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             weight: 100
           }
         ]
+        corsPolicy: {
+          allowedOrigins: split(allowedOrigins, ',')
+          allowedMethods: ['*']
+          allowedHeaders: ['*']
+          allowCredentials: true
+        }
       }
       registries: [
         {
@@ -98,6 +106,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'SUPABASE_SERVICE_ROLE_KEY'
               secretRef: supabaseSecretNames.serviceRole
+            }
+            {
+              name: 'ALLOWED_ORIGINS'
+              value: allowedOrigins
             }
           ]
         }

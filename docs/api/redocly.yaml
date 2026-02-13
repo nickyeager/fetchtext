@@ -1,0 +1,139 @@
+# Redocly configuration for FetchText API Documentation
+# https://redocly.com/docs/cli/configuration/
+
+# API definitions
+apis:
+  fetchtext@v1:
+    root: ../../document-processor/openapi.json
+
+# Theme configuration
+theme:
+  openapi:
+    # General settings
+    showExtensions: true
+    generateCodeSamples:
+      languages:
+        - lang: curl
+          label: cURL
+        - lang: python
+          label: Python
+        - lang: javascript
+          label: JavaScript
+        - lang: typescript
+          label: TypeScript
+
+    # Layout settings
+    hideSingleRequestSampleTab: true
+    hideRequestPayloadSample: false
+
+    # Schema settings
+    jsonSampleExpandLevel: 3
+    schemaExpansionLevel: 2
+
+    # Sidebar settings
+    sideNavStyle: path-only
+
+    # Code samples
+    maxDisplayedEnumValues: 10
+
+  # Styling
+  colors:
+    primary:
+      main: '#0D9488'
+      light: '#14B8A6'
+      dark: '#0F766E'
+      contrastText: '#ffffff'
+    success:
+      main: '#22C55E'
+    warning:
+      main: '#F59E0B'
+    error:
+      main: '#EF4444'
+    text:
+      primary: '#1F2937'
+      secondary: '#6B7280'
+    http:
+      get: '#22C55E'
+      post: '#3B82F6'
+      put: '#F59E0B'
+      patch: '#8B5CF6'
+      delete: '#EF4444'
+
+  typography:
+    fontSize: '16px'
+    lineHeight: '1.6'
+    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    code:
+      fontFamily: '"JetBrains Mono", "Fira Code", monospace'
+      fontSize: '14px'
+    headings:
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, sans-serif'
+      fontWeight: '700'
+
+  logo:
+    gutter: '20px'
+    maxHeight: '50px'
+    maxWidth: '200px'
+
+  sidebar:
+    width: '280px'
+    backgroundColor: '#F9FAFB'
+    textColor: '#1F2937'
+    activeTextColor: '#0D9488'
+
+  rightPanel:
+    backgroundColor: '#1F2937'
+    textColor: '#F9FAFB'
+
+# Linting rules - relaxed for MVP documentation
+rules:
+  # Require operation descriptions
+  operation-description: warn
+
+  # Require operation summaries
+  operation-summary: warn
+
+  # Require tags on operations
+  operation-tag-defined: warn
+
+  # Security requirements - off because health endpoints are intentionally public
+  security-defined: off
+
+  # Response validation
+  response-contains-header: off
+  operation-4xx-response: off
+
+  # Path parameters
+  path-parameters-defined: error
+
+  # Trailing slash rule - off because FastAPI uses trailing slashes
+  no-path-trailing-slash: off
+
+  # Schema validation
+  spec: error
+
+# Decorators to enhance the spec
+decorators:
+  # Add code samples automatically
+  operation/code-samples:
+    generateCodeSamples:
+      languages:
+        - curl
+        - python
+        - javascript
+
+# Build configuration
+output: ./build
+
+# Development server
+referenceDocs:
+  showConsole: true
+  pagination: section
+
+# Features
+features:
+  mockServer:
+    enabled: false
+  openapi:
+    generateCodeSamples: true
+    hideDownloadButton: false

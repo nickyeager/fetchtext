@@ -75,7 +75,7 @@ class Settings:
     STRIPE_PRICE_ENTERPRISE: Optional[str] = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
     # Frontend URLs for Stripe redirects
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "")
 
     @classmethod
     def is_azure_configured(cls) -> bool:

@@ -109,6 +109,19 @@ az containerapp revision activate \
   --revision [previous-revision-name]
 ```
 
+## Analytics (PostHog)
+
+- [ ] `VITE_POSTHOG_KEY` GitHub secret is set
+- [ ] `VITE_POSTHOG_HOST` GitHub secret is set (default: `https://us.i.posthog.com`)
+- [ ] PostHog dashboard shows events after deployment
+- [ ] User identification working (check PostHog People tab)
+- [ ] Page view tracking active (check PostHog Events tab)
+
+**Troubleshooting:**
+- PostHog is disabled on localhost by design (see `src/lib/posthog.ts`)
+- If no events appear, verify the key was set **before** the build (Vite embeds at build time)
+- Check browser console for `[PostHog] Disabled` message
+
 ## Post-Deployment
 
 - [ ] Deployment logged in `docs/supabase-deployment-log.md`

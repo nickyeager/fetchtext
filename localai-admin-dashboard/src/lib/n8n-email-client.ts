@@ -28,9 +28,13 @@ interface EmailOptions {
   template?: 'password-reset' | 'welcome' | 'two-factor';
 }
 
-// N8N configuration
+// N8N configuration - no localhost fallback
 function getN8nBaseUrl(): string {
-  return import.meta.env.VITE_N8N_URL || 'http://localhost:5678';
+  const url = import.meta.env.VITE_N8N_URL || '';
+  if (!url && import.meta.env.DEV) {
+    console.warn('[N8N Email] VITE_N8N_URL is not set. N8N webhooks will not work.');
+  }
+  return url;
 }
 
 function getN8nApiKey(): string {

@@ -24,8 +24,8 @@ export const EMAIL_CONFIG = {
     TWO_FACTOR: import.meta.env.VITE_SENDGRID_2FA_TEMPLATE_ID || 'd-2fa-template-id',
   },
   
-  // Application URLs
-  APP_URL: import.meta.env.VITE_APP_URL || 'http://localhost:5173',
+  // Application URLs - use window.location.origin as fallback for production
+  APP_URL: import.meta.env.VITE_APP_URL || (typeof window !== 'undefined' ? window.location.origin : ''),
   
   // Timing Configuration
   PASSWORD_RESET_EXPIRES_IN: '1 hour',

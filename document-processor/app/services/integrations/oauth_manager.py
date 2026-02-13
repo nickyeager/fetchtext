@@ -104,6 +104,64 @@ class OAuthManager:
         return auth_url, state
 
     @classmethod
+    async def initiate_flow_with_account(
+        cls,
+        config: IntegrationConfig,
+        organization_id: str,
+        account: str,
+        client_id: str,
+        redirect_uri: str,
+        scope_preset: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """
+        Initiate OAuth flow for a per-account provider (e.g., Snowflake).
+
+        Unlike initiate_flow(), the client_id is provided by the customer,
+        not from env vars. The auth URL is built using the account-specific template.
+
+        Args:
+            config: Integration configuration
+            organization_id: Organization initiating the connection
+            account: Account identifier (e.g., "uzdboxw-snb92059")
+            client_id: Client ID from customer's Security Integration
+            redirect_uri: Where to redirect after authorization
+            scope_preset: Which scope preset to request
+
+        Returns:
+            Tuple of (authorization_url, state)
+        """
+        # Generate CSRF state token
+        state_token = secrets.token_urlsafe(32)
+        state = f"{organization_id}:{config.type.value}:{state_token}"
+
+        # Store state in database
+        await cls._store_oauth_state(
+            organization_id=organization_id,
+            integration_type=config.type.value,
+            state=state,
+        )
+
+        # Get scopes for the preset
+        scopes = config.get_scopes(scope_preset)
+
+        # Build authorization URL using account-specific template
+        auth_base_url = config.get_auth_url_for_account(account)
+
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "state": state,
+        }
+        if scopes:
+            params["scope"] = " ".join(scopes)
+
+        auth_url = f"{auth_base_url}?{urlencode(params)}"
+
+        logger.info(f"Initiated per-account OAuth flow for {config.type.value} (org: {organization_id}, account: {account})")
+        return auth_url, state
+
+    @classmethod
     async def handle_callback(
         cls,
         config: IntegrationConfig,
@@ -145,11 +203,46 @@ class OAuthManager:
             if not is_valid:
                 return False, "Invalid or expired OAuth state"
 
+            # For dual-mode integrations, retrieve stored client credentials and account from DB
+            client_id_override = None
+            client_secret_override = None
+            token_url_override = None
+
+            if config.auth_mode == "dual" and db_config.client:
+                int_result = db_config.client.table("organization_integrations").select(
+                    "metadata"
+                ).eq("organization_id", organization_id).eq(
+                    "integration_type", config.type.value
+                ).maybe_single().execute()
+
+                if int_result and int_result.data:
+                    int_metadata = int_result.data.get("metadata", {})
+                    # Retrieve client_id and client_secret from vault
+                    cid_vault = int_metadata.get("oauth_client_id_vault_id")
+                    csecret_vault = int_metadata.get("oauth_client_secret_vault_id")
+                    account_id = int_metadata.get("account_identifier", "")
+
+                    if cid_vault:
+                        client_id_override = await vault_service.get_secret(cid_vault)
+                    if csecret_vault:
+                        client_secret_override = await vault_service.get_secret(csecret_vault)
+                    if account_id:
+                        token_url_override = config.get_token_url_for_account(account_id)
+
             # Exchange code for tokens
-            tokens = await cls._exchange_code(config, code, redirect_uri, organization_id)
+            tokens = await cls._exchange_code(
+                config, code, redirect_uri, organization_id,
+                client_id_override=client_id_override,
+                client_secret_override=client_secret_override,
+                token_url_override=token_url_override,
+            )
 
             # Build metadata from callback params and token response
             metadata = extra_metadata or {}
+            # For dual-mode integrations, preserve the auth_method marker
+            if config.auth_mode == "dual":
+                metadata["auth_method"] = "oauth"
+
             if config.metadata_mapping:
                 for our_key, their_key in config.metadata_mapping.items():
                     if their_key in metadata:
@@ -546,14 +639,27 @@ class OAuthManager:
         code: str,
         redirect_uri: str,
         organization_id: str,
+        client_id_override: Optional[str] = None,
+        client_secret_override: Optional[str] = None,
+        token_url_override: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Exchange authorization code for tokens"""
+        """
+        Exchange authorization code for tokens.
+
+        For per-account OAuth (e.g., Snowflake), the caller can pass overrides
+        for client_id, client_secret, and token_url that come from the customer's
+        Security Integration rather than from env vars.
+        """
+        effective_client_id = client_id_override or config.client_id
+        effective_client_secret = client_secret_override or config.client_secret
+        effective_token_url = token_url_override or config.token_url
+
         data = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirect_uri,
-            "client_id": config.client_id,
-            "client_secret": config.client_secret,
+            "client_id": effective_client_id,
+            "client_secret": effective_client_secret,
         }
 
         # Add PKCE verifier if used
@@ -573,7 +679,7 @@ class OAuthManager:
         if config.token_endpoint_auth_method == "client_secret_basic":
             import base64
             credentials = base64.b64encode(
-                f"{config.client_id}:{config.client_secret}".encode()
+                f"{effective_client_id}:{effective_client_secret}".encode()
             ).decode()
             headers["Authorization"] = f"Basic {credentials}"
             del data["client_id"]
@@ -581,7 +687,7 @@ class OAuthManager:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                config.token_url,
+                effective_token_url,
                 data=data,
                 headers=headers,
             )

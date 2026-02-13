@@ -133,41 +133,6 @@ export interface ClassificationResult {
   }
 }
 
-export interface EnhancementCapabilities {
-  ai_classification: {
-    available: boolean
-    method: 'ai_powered' | 'rule_based'
-    supported_categories: string[]
-    confidence_threshold: number
-  }
-  structure_enhancement: {
-    available: boolean
-    category_specific: boolean
-    pattern_detection: boolean
-  }
-  data_extraction: {
-    available: boolean
-    guided_extraction: boolean
-    fallback_available: boolean
-  }
-  quality_assessment: {
-    available: boolean
-    metrics: string[]
-    insights_provided: boolean
-  }
-  ollama_status: {
-    available: boolean
-    url: string
-    model: string
-  }
-}
-
-export interface DocumentCategory {
-  value: string
-  display_name: string
-  description: string
-}
-
 export class EnhancedDocumentProcessor {
   private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments
   
@@ -296,148 +261,15 @@ export class EnhancedDocumentProcessor {
   }
 
   /**
-   * Extract structured data from document using AI guidance
-   */
-  async extractStructuredData(
-    file: File,
-    targetFields?: string[],
-    extractionMethod: 'ai_guided' | 'rule_based' = 'ai_guided'
-  ): Promise<{
-    extraction_result: ExtractedData
-    document_classification: AIClassification
-    extraction_metadata: {
-      original_filename: string
-      extraction_method: string
-      target_fields: string[] | null
-      extraction_timestamp: string
-    }
-  }> {
-    
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('extraction_method', extractionMethod)
-      
-      if (targetFields && targetFields.length > 0) {
-        formData.append('target_fields', targetFields.join(','))
-      }
-
-      const response = await fetch(`${this.enhancedBaseUrl}/extract-structured-data`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`Data extraction failed: ${errorData.detail || response.statusText}`)
-      }
-
-      const result = await response.json()
-      return result
-      
-    } catch (error) {
-      console.error('Data extraction error:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Get information about available AI enhancement capabilities
-   */
-  async getEnhancementCapabilities(): Promise<EnhancementCapabilities> {
-    
-    try {
-      const response = await fetch(`${this.enhancedBaseUrl}/enhancement-capabilities`, {
-        method: 'GET',
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to get capabilities: ${response.statusText}`)
-      }
-
-      const result = await response.json() as EnhancementCapabilities
-      return result
-      
-    } catch (error) {
-      console.error('Error getting capabilities:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Get list of supported document categories for classification
-   */
-  async getSupportedCategories(): Promise<{
-    supported_categories: DocumentCategory[]
-    total_categories: number
-    classification_method: string
-  }> {
-    
-    try {
-      const response = await fetch(`${this.enhancedBaseUrl}/supported-categories`, {
-        method: 'GET',
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to get categories: ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      return result
-      
-    } catch (error) {
-      console.error('Error getting categories:', error)
-      throw error
-    }
-  }
-
-  /**
    * Check if the enhanced backend service is available
    */
   async isEnhancedBackendAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.enhancedBaseUrl}/enhancement-capabilities`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+      const healthUrl = this.enhancedBaseUrl.replace('/api/enhanced-documents', '/health')
+      const response = await fetch(healthUrl, { method: 'GET' })
       return response.ok
     } catch {
       return false
-    }
-  }
-
-  /**
-   * Get processing status and statistics
-   */
-  async getProcessingStatus(): Promise<{
-    service_status: string
-    ai_enhancement_available: boolean
-    classification_available: boolean
-    data_extraction_available: boolean
-    ollama_connected: boolean
-  }> {
-    
-    try {
-      const capabilities = await this.getEnhancementCapabilities()
-      
-      return {
-        service_status: 'available',
-        ai_enhancement_available: capabilities.structure_enhancement.available,
-        classification_available: capabilities.ai_classification.available,
-        data_extraction_available: capabilities.data_extraction.available,
-        ollama_connected: capabilities.ollama_status.available
-      }
-      
-    } catch (error) {
-      return {
-        service_status: 'unavailable',
-        ai_enhancement_available: false,
-        classification_available: false,
-        data_extraction_available: false,
-        ollama_connected: false
-      }
     }
   }
 

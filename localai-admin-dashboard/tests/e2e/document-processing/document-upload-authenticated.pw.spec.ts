@@ -12,7 +12,7 @@ function logStep(step: string) {
 
 // ESM-safe resolution of fixture path (fixtures are at tests/fixtures/*)
 // From tests/e2e/*, the correct relative path to fixtures is ../fixtures/*
-const contractPath = new URL('../fixtures/real-test-contract.txt', import.meta.url).pathname;
+const contractPath = new URL('../../fixtures/real-test-contract.txt', import.meta.url).pathname;
 
 // Requires: successful globalSetup generating storageState with an authenticated session
 // Env vars: TEST_USER_EMAIL / TEST_USER_PASSWORD / SUPABASE_URL / SUPABASE_ANON_KEY
@@ -83,8 +83,7 @@ test.describe('Authenticated Document Upload', () => {
   
   // If a templateId was provided, confirm the UI reflects it
   if (templateId) {
-    await expect(page.getByText(/Template ID:/)).toBeVisible();
-    await expect(page.getByText(new RegExp(String(templateId)))).toBeVisible();
+    await expect(page.getByText(new RegExp(`Template ID:\\s*${templateId}`))).toBeVisible();
     await expect(page.getByText(/Source:\s*smart_templates/)).toBeVisible();
   }
   const fileInput = page.locator('[data-testid="document-file-input"]');
