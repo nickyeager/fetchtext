@@ -1,16 +1,17 @@
 name: Regression Tests
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
-    branches-ignore: [main]
+    branches: [main]
     paths:
       - "document-processor/**"
       - ".github/workflows/**"
       - "docker-compose.yml"
       - "infra/**"
-      - "localai-admin-dashboard/src/__tests__/integration/**"
+      - "localai-admin-dashboard/src/**"
 
 env:
   NODE_VERSION: "20"
@@ -47,8 +48,9 @@ jobs:
         working-directory: localai-admin-dashboard
         run: |
           npx vitest run src/__tests__/integration/env-services-regression.test.ts \
+            src/__tests__/integration/document-id-validation.test.ts \
             --reporter=verbose \
-            --testNamePattern="CI/CD Workflow|Docker Compose|CORS: Container App"
+            --testNamePattern="CI/CD Workflow|Docker Compose|CORS: Container App|Document ID Validation: Source Code|Document ID Validation: Upload"
         env:
           # Provide dummy values so Vitest doesn't fail on missing env vars
           # (only file-validation tests run via --testNamePattern)
@@ -92,12 +94,11 @@ jobs:
 
   # ── Production smoke (post-deploy only) ──────────────────────────────────
   # Runs CORS + PDF upload e2e against live fetchtext.io after main merge.
-  # Triggered manually or by the deploy workflows.
   production-smoke:
     name: Production CORS Smoke
     runs-on: ubuntu-latest
-    # Only run on main (post-merge) or manual trigger
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    # Only run on main push (post-merge) or manual trigger
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [config-validation, dashboard-build]
 
     steps:
@@ -124,15 +125,31 @@ jobs:
         working-directory: localai-admin-dashboard
         run: npx playwright install --with-deps chromium
 
+      - name: Wait for deploy workflows to complete
+        run: |
+          echo "Waiting 90s for deploy workflows to finish..."
+          sleep 90
+
       - name: Create production env file
         working-directory: localai-admin-dashboard
         run: |
-          cat > .env.e2e.production << EOF
+          cat > .env.e2e.production <<EOF
           PROD_TEST_USER_EMAIL=${{ secrets.PROD_TEST_USER_EMAIL }}
           PROD_TEST_USER_PASSWORD=${{ secrets.PROD_TEST_USER_PASSWORD }}
           PROD_BACKEND_URL=${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
           SUPABASE_PROD_URL=${{ secrets.VITE_SUPABASE_URL }}
           EOF
+
+      - name: Verify backend is reachable
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -sf "${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}/health" --max-time 15 > /dev/null 2>&1; then
+              echo "Backend is healthy (attempt $i)"
+              break
+            fi
+            echo "Backend not ready (attempt $i/6), waiting 30s..."
+            sleep 30
+          done
 
       - name: Run production CORS e2e test
         working-directory: localai-admin-dashboard
@@ -140,7 +157,8 @@ jobs:
           npx playwright test \
             --config=playwright.production.config.ts \
             tests/e2e/production/pdf-upload-production.pw.spec.ts \
-            --reporter=list
+            --reporter=list \
+            --retries=1
         env:
           CI: true
 
