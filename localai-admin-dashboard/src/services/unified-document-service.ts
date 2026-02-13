@@ -817,7 +817,7 @@ export class UnifiedDocumentService {
 
       console.log('Creating document record:', documentData);
       
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('documents')
         .insert(documentData)
         .select()
@@ -836,9 +836,13 @@ export class UnifiedDocumentService {
         throw new Error(`Failed to create document record: ${errorMessage}`);
       }
 
+      // Normalize: production Supabase can return an array [{id, ...}] instead of
+      // a single object {id, ...} despite .single() being called (observed in CI).
+      const data = Array.isArray(rawData) ? rawData[0] : rawData;
+
       // Validate that the insert returned a valid document with an ID
       if (!data?.id) {
-        console.error('Document insert returned without ID:', JSON.stringify(data, null, 2));
+        console.error('Document insert returned without ID:', JSON.stringify(rawData, null, 2));
         throw new Error(
           'Document was inserted but database did not return a valid ID. ' +
           'This may indicate an RLS policy issue preventing SELECT after INSERT.'
@@ -1012,12 +1016,15 @@ export class UnifiedDocumentService {
         timestamp: new Date().toISOString()
       });
 
-      const { data, error } = await supabase
+      const { data: rawUpdateData, error } = await supabase
         .from('documents')
         .update(updateData)
         .eq('id', documentId)
         .select()
         .single();
+
+      // Normalize: .single() may return array in some Supabase environments
+      const data = Array.isArray(rawUpdateData) ? rawUpdateData[0] : rawUpdateData;
 
       console.log('🔄 Database update response:', {
         documentId,
@@ -1028,9 +1035,9 @@ export class UnifiedDocumentService {
       });
 
       if (error) {
-        console.error('❌ Database update failed:', { 
-          error: error.message, 
-          code: error.code, 
+        console.error('❌ Database update failed:', {
+          error: error.message,
+          code: error.code,
           details: error.details,
           hint: error.hint,
           updateData 
