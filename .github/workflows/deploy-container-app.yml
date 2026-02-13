@@ -87,13 +87,25 @@ jobs:
               ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io"
 
       - name: Wait for deployment to stabilize
-        run: sleep 30
+        run: |
+          echo "Waiting 60s for container to start..."
+          sleep 60
 
       - name: CORS preflight smoke test
         env:
           BACKEND_URL: ${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
         run: |
           echo "Testing CORS preflight against $BACKEND_URL..."
+
+          # Wait for backend to be reachable (cold-start can take 30-60s)
+          for i in 1 2 3 4 5; do
+            if curl -sf "${BACKEND_URL}/health" --max-time 15 > /dev/null 2>&1; then
+              echo "Backend is healthy (attempt $i)"
+              break
+            fi
+            echo "Backend not ready yet (attempt $i/5), waiting 15s..."
+            sleep 15
+          done
 
           # Test 1: OPTIONS preflight request
           RESPONSE=$(curl -s -D - -o /dev/null -X OPTIONS \
