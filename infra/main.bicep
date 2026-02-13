@@ -51,6 +51,9 @@ param deploymentPrincipalObjectId string
 @description('Optional Static Web App custom domain names.')
 param staticWebAppCustomDomains array = []
 
+@description('Comma-separated list of allowed CORS origins for the document-processor backend.')
+param allowedOrigins string = 'https://fetchtext.io,https://www.fetchtext.io'
+
 @secure()
 @description('Managed Supabase URL (https://<ref>.supabase.co).')
 param supabaseUrl string
@@ -235,6 +238,7 @@ module containerApp 'modules/containerapp.bicep' = {
     })
     keyVaultUri: keyVault.outputs.vaultUri
     supabaseSecretNames: supabaseSecretNames
+    allowedOrigins: allowedOrigins
   }
 }
 

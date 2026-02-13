@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import routers
 from app.routers import health, enhanced_documents, models, google_docs, email
@@ -31,10 +35,14 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Configure CORS
+# Configure CORS from environment variable
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+logger.info(f"CORS allowed origins: {_allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

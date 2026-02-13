@@ -77,6 +77,20 @@ jobs:
           VITE_SENDGRID_REPLY_TO: ${{ secrets.VITE_SENDGRID_REPLY_TO }}
         run: pnpm build
 
+      - name: Validate backend CORS accepts this frontend
+        env:
+          BACKEND_URL: ${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
+        run: |
+          RESPONSE=$(curl -s -D - -o /dev/null -X OPTIONS \
+            -H "Origin: https://fetchtext.io" \
+            -H "Access-Control-Request-Method: POST" \
+            "${BACKEND_URL}/health" --max-time 30 || true)
+          if echo "$RESPONSE" | grep -qi "access-control-allow-origin.*fetchtext.io"; then
+            echo "Backend CORS verification PASSED"
+          else
+            echo "::warning::Backend CORS may not be configured for fetchtext.io"
+          fi
+
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
