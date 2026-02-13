@@ -114,8 +114,12 @@ export function DragDropUpload({
         filePath: documentRecord.file_path
       });
 
+      if (!documentRecord.id) {
+        throw new Error('Document record created without a valid ID — cannot proceed with upload');
+      }
+
       devLog('🟡 ANALYSIS: Triggering AI analysis...');
-      
+
       // Update status to analyzing
       await documentManager.updateDocumentStatus(documentRecord.id, {
         status: DocumentStatus.ANALYZING,
