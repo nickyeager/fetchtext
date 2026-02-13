@@ -1,12 +1,12 @@
 /**
- * Regression Test: Environment Variables & Service Connectivity
+ * Regression Test: Environment Variables, Service Connectivity & CORS
  *
- * Verifies that SendGrid and PostHog environment variables are properly
- * configured and that the services can be reached.
+ * Verifies that SendGrid, PostHog, and CORS environment variables are
+ * properly configured and that the services can be reached.
  *
- * Created after production incident where SendGrid VITE_* env vars were
- * missing from the CI/CD build (deploy-dashboard.yml), causing all
- * frontend email delivery to silently fail.
+ * Created after production incidents where:
+ * 1. SendGrid VITE_* env vars were missing from CI/CD build (deploy-dashboard.yml)
+ * 2. CORS allow_origins=["*"] was hardcoded, breaking production cross-origin requests
  *
  * Run with:
  *   cd localai-admin-dashboard && npx vitest run src/__tests__/integration/env-services-regression.test.ts
@@ -192,4 +192,72 @@ describe('Docker Compose Environment Variables', () => {
       expect(composeContent).toContain(`${envVar}=`);
     });
   }
+
+  it('docker-compose.yml must pass ALLOWED_ORIGINS to document-processor', () => {
+    expect(composeContent).toContain('ALLOWED_ORIGINS=');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORS Prevention Regression Tests
+// Ensures CORS configuration cannot silently regress in deployment pipelines
+// Created after production CORS breakage (fetchtext.io blocked from backend)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CORS: Container App Workflow Validation', () => {
+  let containerAppWorkflow: string;
+
+  beforeAll(() => {
+    const workflowPath = resolve(
+      __dirname,
+      '../../../../.github/workflows/deploy-container-app.yml'
+    );
+    containerAppWorkflow = readFileSync(workflowPath, 'utf-8');
+  });
+
+  it('deploy-container-app.yml must set ALLOWED_ORIGINS env var', () => {
+    expect(containerAppWorkflow).toContain('ALLOWED_ORIGINS=');
+  });
+
+  it('deploy-container-app.yml must include fetchtext.io in ALLOWED_ORIGINS', () => {
+    expect(containerAppWorkflow).toContain('fetchtext.io');
+  });
+
+  it('deploy-container-app.yml must have CORS validation step', () => {
+    expect(containerAppWorkflow).toContain('Validate CORS configuration');
+  });
+
+  it('deploy-container-app.yml must have CORS smoke test step', () => {
+    expect(containerAppWorkflow).toContain('CORS preflight smoke test');
+  });
+});
+
+describe('CORS: Backend /health/cors Endpoint', () => {
+  it('/health/cors must return allowed origins list', async () => {
+    const response = await fetch(`${BACKEND_URL}/health/cors`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(response.ok).toBe(true);
+
+    const data = await response.json();
+    expect(data.status).toBe('ok');
+    expect(data.allowed_origins).toBeDefined();
+    expect(Array.isArray(data.allowed_origins)).toBe(true);
+    expect(data.allowed_origins.length).toBeGreaterThan(0);
+    expect(data.allowed_origins_count).toBeGreaterThan(0);
+  });
+});
+
+describe('CORS: Backend Returns CORS Headers', () => {
+  it('backend must return Access-Control-Allow-Origin for allowed origin', async () => {
+    const response = await fetch(`${BACKEND_URL}/health`, {
+      headers: { Origin: 'http://localhost:5173' },
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(response.ok).toBe(true);
+
+    const acaoHeader = response.headers.get('access-control-allow-origin');
+    expect(acaoHeader).toBeTruthy();
+    expect(acaoHeader).toBe('http://localhost:5173');
+  });
 });

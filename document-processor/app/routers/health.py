@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 import asyncio
+import os
 from typing import Dict, Any
 
 router = APIRouter(tags=["health"])
@@ -54,6 +55,18 @@ async def readiness_check() -> Dict[str, Any]:
                 "service": "document-processor"
             }
         )
+
+@router.get("/health/cors", status_code=200)
+@router.get("/health/cors/", status_code=200, include_in_schema=False)
+async def cors_check() -> Dict[str, Any]:
+    """CORS configuration diagnostic endpoint"""
+    raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return {
+        "status": "ok",
+        "allowed_origins": origins,
+        "allowed_origins_count": len(origins),
+    }
 
 @router.get("/health/live", status_code=200)
 @router.get("/health/live/", status_code=200, include_in_schema=False)
