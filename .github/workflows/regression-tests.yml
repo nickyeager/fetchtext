@@ -1,0 +1,153 @@
+name: Regression Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+    paths:
+      - "document-processor/**"
+      - ".github/workflows/**"
+      - "docker-compose.yml"
+      - "infra/**"
+      - "localai-admin-dashboard/src/__tests__/integration/**"
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ── File-based regression tests ──────────────────────────────────────────
+  # Validates workflow YAML, docker-compose, and Bicep contain required
+  # configuration. Does NOT need running services — only reads files.
+  config-validation:
+    name: Config & CORS Regression
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: localai-admin-dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: Run config regression tests
+        working-directory: localai-admin-dashboard
+        run: |
+          npx vitest run src/__tests__/integration/env-services-regression.test.ts \
+            --reporter=verbose \
+            --testNamePattern="CI/CD Workflow|Docker Compose|CORS: Container App"
+        env:
+          # Provide dummy values so Vitest doesn't fail on missing env vars
+          # (only file-validation tests run via --testNamePattern)
+          VITE_SENDGRID_API_KEY: "ci-placeholder"
+          VITE_POSTHOG_KEY: "phc_ci-placeholder"
+          VITE_POSTHOG_HOST: "https://us.i.posthog.com"
+
+  # ── Dashboard build check ────────────────────────────────────────────────
+  # Ensures frontend still builds cleanly after any infra changes
+  dashboard-build:
+    name: Dashboard Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: localai-admin-dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: localai-admin-dashboard
+        run: pnpm build
+        env:
+          VITE_SUPABASE_URL: "https://placeholder.supabase.co"
+          VITE_SUPABASE_ANON_KEY: "placeholder"
+          VITE_DOCUMENT_PROCESSOR_URL: "https://placeholder.azurecontainerapps.io"
+
+  # ── Production smoke (post-deploy only) ──────────────────────────────────
+  # Runs CORS + PDF upload e2e against live fetchtext.io after main merge.
+  # Triggered manually or by the deploy workflows.
+  production-smoke:
+    name: Production CORS Smoke
+    runs-on: ubuntu-latest
+    # Only run on main (post-merge) or manual trigger
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    needs: [config-validation, dashboard-build]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: localai-admin-dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: localai-admin-dashboard
+        run: npx playwright install --with-deps chromium
+
+      - name: Create production env file
+        working-directory: localai-admin-dashboard
+        run: |
+          cat > .env.e2e.production << EOF
+          PROD_TEST_USER_EMAIL=${{ secrets.PROD_TEST_USER_EMAIL }}
+          PROD_TEST_USER_PASSWORD=${{ secrets.PROD_TEST_USER_PASSWORD }}
+          PROD_BACKEND_URL=${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
+          SUPABASE_PROD_URL=${{ secrets.VITE_SUPABASE_URL }}
+          EOF
+
+      - name: Run production CORS e2e test
+        working-directory: localai-admin-dashboard
+        run: |
+          npx playwright test \
+            --config=playwright.production.config.ts \
+            tests/e2e/production/pdf-upload-production.pw.spec.ts \
+            --reporter=list
+        env:
+          CI: true
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-smoke-report
+          path: /tmp/test-results-production/
+          retention-days: 7
