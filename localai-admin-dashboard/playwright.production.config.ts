@@ -23,12 +23,29 @@ try {
 
 /**
  * Production Playwright Configuration
- * Points to https://fetchtext.io instead of localhost
+ *
+ * Points to https://fetchtext.io instead of localhost.
+ *
+ * Runs two categories of tests:
+ *   1. Production-specific tests  — tests/e2e/production/**
+ *   2. Production-safe local tests — auth smoke, upload validation, UI smoke
+ *
+ * Tests detect the target via `baseURL` and use the shared env helper
+ * (tests/e2e/helpers/env.ts) to resolve credentials and backend URLs.
+ *
+ * Usage:
+ *   pnpm test:production                    # headless
+ *   pnpm test:production:headed             # visible browser
+ *   pnpm test:production -- --grep "PDF"    # filter by name
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  // Only run production-designated specs
-  testMatch: ['**/production/**/*.pw.spec.ts'],
+  // Run production-designated specs + production-safe local tests
+  testMatch: [
+    '**/production/**/*.pw.spec.ts',
+    '**/auth/00-auth-smoke.pw.spec.ts',
+    '**/ui-smoke/02-basic-app-shell.pw.spec.ts',
+  ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
@@ -38,10 +55,10 @@ export default defineConfig({
     ['html', { outputFolder: '/tmp/playwright-report-production', open: 'never' }],
   ],
   outputDir: '/tmp/test-results-production',
-  // Skip global setup for production (we'll handle auth in the test)
+  // Skip global setup for production (each test handles its own auth)
   globalSetup: undefined,
   use: {
-    // Production base URL
+    // Production base URL — tests use helpers/env.ts to detect this
     baseURL: 'https://fetchtext.io',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

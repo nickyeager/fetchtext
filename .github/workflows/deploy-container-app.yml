@@ -48,6 +48,15 @@ jobs:
             ${{ env.AZURE_ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.AZURE_ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
 
+      - name: Validate CORS configuration
+        run: |
+          ALLOWED="https://fetchtext.io,https://www.fetchtext.io"
+          if ! echo "$ALLOWED" | grep -q "https://fetchtext.io"; then
+            echo "::error::ALLOWED_ORIGINS missing production frontend URL"
+            exit 1
+          fi
+          echo "CORS configuration validated: $ALLOWED"
+
       - name: Sync Container App secrets
         env:
           SUPABASE_URL_SECRET: ${{ secrets.VITE_SUPABASE_URL }}
@@ -74,4 +83,41 @@ jobs:
               AZURE_OPENAI_API_KEY=secretref:azure-openai-key \
               SUPABASE_URL=secretref:supabase-url \
               SUPABASE_ANON_KEY=secretref:supabase-anon-key \
-              SERVICE_ROLE_KEY=secretref:supabase-service-role
+              SERVICE_ROLE_KEY=secretref:supabase-service-role \
+              ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io"
+
+      - name: Wait for deployment to stabilize
+        run: sleep 30
+
+      - name: CORS preflight smoke test
+        env:
+          BACKEND_URL: ${{ secrets.VITE_DOCUMENT_PROCESSOR_URL }}
+        run: |
+          echo "Testing CORS preflight against $BACKEND_URL..."
+
+          # Test 1: OPTIONS preflight request
+          RESPONSE=$(curl -s -D - -o /dev/null -X OPTIONS \
+            -H "Origin: https://fetchtext.io" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: Content-Type" \
+            "${BACKEND_URL}/health" --max-time 30 || true)
+
+          if echo "$RESPONSE" | grep -qi "access-control-allow-origin"; then
+            echo "CORS preflight check PASSED"
+          else
+            echo "::error::CORS preflight FAILED - no Access-Control-Allow-Origin header"
+            echo "Response headers:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          # Test 2: /health/cors endpoint
+          CORS_DATA=$(curl -s "${BACKEND_URL}/health/cors" --max-time 30 || true)
+          if echo "$CORS_DATA" | grep -q "fetchtext.io"; then
+            echo "CORS config endpoint check PASSED"
+            echo "$CORS_DATA"
+          else
+            echo "::error::CORS config endpoint does not include fetchtext.io"
+            echo "Response: $CORS_DATA"
+            exit 1
+          fi

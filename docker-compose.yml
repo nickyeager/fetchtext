@@ -393,6 +393,8 @@ services:
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-nick@fetchtext.io}
       - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-FetchText}
       - APP_URL=${FRONTEND_URL:-http://localhost:5173}
+      # CORS allowed origins
+      - ALLOWED_ORIGINS=${FRONTEND_URL:-http://localhost:5173},http://localhost:3000
       # Stripe Billing
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
