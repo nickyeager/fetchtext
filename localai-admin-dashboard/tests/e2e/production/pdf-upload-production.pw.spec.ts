@@ -147,26 +147,62 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
       }
     });
 
-    // ── Backend health check ──
+    // ── Backend health check (with retry for Azure cold starts) ──
     log('checking backend health');
-    const healthResp = await page.request.get(`${backendUrl}/health`, {
-      timeout: 15_000,
-    });
-    expect(healthResp.ok(), `Backend unhealthy at ${backendUrl}/health`).toBe(true);
+    let healthOk = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const resp = await fetch(`${backendUrl}/health`, {
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (resp.ok) {
+          healthOk = true;
+          log(`backend healthy (attempt ${attempt})`);
+          break;
+        }
+        log(`health attempt ${attempt}/3 returned ${resp.status}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`health attempt ${attempt}/3 failed: ${msg}`);
+      }
+      if (attempt < 3) {
+        const waitMs = attempt * 10_000;
+        log(`retrying health in ${waitMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+    expect(healthOk, `Backend unhealthy after 3 attempts at ${backendUrl}/health`).toBe(true);
 
-    // ── CORS config check ──
+    // ── CORS config check (with retry) ──
     log('checking CORS config endpoint');
-    const corsResp = await page.request.get(`${backendUrl}/health/cors`, {
-      timeout: 15_000,
-    });
-    expect(corsResp.ok()).toBe(true);
-    const corsData = await corsResp.json();
-    log(`CORS allowed origins: ${JSON.stringify(corsData.allowed_origins)}`);
+    let corsData: { allowed_origins: string[]; allowed_origins_count?: number } | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const resp = await fetch(`${backendUrl}/health/cors`, {
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (resp.ok) {
+          corsData = await resp.json() as typeof corsData;
+          log(`CORS config retrieved (attempt ${attempt})`);
+          break;
+        }
+        log(`CORS config attempt ${attempt}/3 returned ${resp.status}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`CORS config attempt ${attempt}/3 failed: ${msg}`);
+      }
+      if (attempt < 3) {
+        const waitMs = attempt * 10_000;
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+    expect(corsData, 'Failed to retrieve CORS config after 3 attempts').not.toBeNull();
+    log(`CORS allowed origins: ${JSON.stringify(corsData!.allowed_origins)}`);
 
     if (resolvedTarget === 'production') {
       expect(
-        corsData.allowed_origins.some((o: string) => o.includes('fetchtext.io')),
-        `Production backend CORS must include fetchtext.io. Got: ${corsData.allowed_origins}`
+        corsData!.allowed_origins.some((o: string) => o.includes('fetchtext.io')),
+        `Production backend CORS must include fetchtext.io. Got: ${corsData!.allowed_origins}`
       ).toBe(true);
     }
 
