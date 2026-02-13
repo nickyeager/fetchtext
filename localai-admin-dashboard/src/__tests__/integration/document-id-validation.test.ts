@@ -18,7 +18,7 @@
  *   cd localai-admin-dashboard && npx vitest run src/__tests__/integration/document-id-validation.test.ts
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 
 const BACKEND_URL =
   import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090';
