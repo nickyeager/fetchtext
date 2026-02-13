@@ -158,10 +158,29 @@ export class UnifiedDocumentService {
         return;
       }
 
-      // Get the file from storage
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('documents')
-        .download(document.file_path);
+      // Get the file from storage.
+      // Retry once after a delay — managed Supabase storage can return 400
+      // immediately after upload due to propagation delay or CDN caching.
+      let fileData: Blob | null = null;
+      let downloadError: Error | null = null;
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await supabase.storage
+          .from('documents')
+          .download(document.file_path);
+
+        if (!result.error && result.data) {
+          fileData = result.data;
+          downloadError = null;
+          break;
+        }
+
+        downloadError = result.error;
+        if (attempt === 0) {
+          console.warn('Storage download failed on first attempt, retrying in 2s:', result.error);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
 
       if (downloadError || !fileData) {
         console.error('Failed to download file for analysis:', downloadError);
