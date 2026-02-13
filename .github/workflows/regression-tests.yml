@@ -92,13 +92,14 @@ jobs:
           VITE_SUPABASE_ANON_KEY: "placeholder"
           VITE_DOCUMENT_PROCESSOR_URL: "https://placeholder.azurecontainerapps.io"
 
-  # ── Production smoke (post-deploy only) ──────────────────────────────────
-  # Runs CORS + PDF upload e2e against live fetchtext.io after main merge.
+  # ── Production smoke ─────────────────────────────────────────────────────
+  # Runs CORS + PDF upload e2e against live fetchtext.io.
+  # On PRs: validates current production is healthy (catches drift).
+  # On main push: validates the new deployment after deploy workflows finish.
+  # NEVER skipped — tests must always run.
   production-smoke:
     name: Production CORS Smoke
     runs-on: ubuntu-latest
-    # Only run on main push (post-merge) or manual trigger
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [config-validation, dashboard-build]
 
     steps:
@@ -125,9 +126,10 @@ jobs:
         working-directory: localai-admin-dashboard
         run: npx playwright install --with-deps chromium
 
-      - name: Wait for deploy workflows to complete
+      - name: Wait for deploy workflows (main push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          echo "Waiting 90s for deploy workflows to finish..."
+          echo "Post-deploy: waiting 90s for deploy workflows to finish..."
           sleep 90
 
       - name: Create production env file
