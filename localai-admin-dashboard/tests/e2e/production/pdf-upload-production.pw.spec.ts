@@ -30,6 +30,9 @@ const log = createLogger('prod-pdf-upload');
  *   4. No CORS errors in console (the primary regression this catches)
  *   5. No critical RLS/storage/auth errors
  *
+ * IMPORTANT: The CORS header test runs FIRST (lightweight API call) so the
+ * backend isn't overwhelmed by PDF processing when we check CORS headers.
+ *
  * Run against production:
  *   npx playwright test --config=playwright.production.config.ts tests/e2e/production/pdf-upload-production.pw.spec.ts
  *
@@ -46,6 +49,61 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     }
   });
 
+  // ── CORS header test runs FIRST (lightweight, no PDF processing load) ──
+  test('verifies CORS headers returned for production origin', async () => {
+    const baseURL = test.info().project.use.baseURL || '';
+    const resolvedTarget = baseURL.includes('fetchtext.io') ? 'production' as const : 'local' as const;
+    const backendUrl = getBackendUrl(resolvedTarget);
+    const testOrigin =
+      resolvedTarget === 'production'
+        ? 'https://fetchtext.io'
+        : 'http://localhost:5173';
+
+    log(`testing CORS headers: origin=${testOrigin} backend=${backendUrl}`);
+
+    // Use Node's native fetch (not page.request) to avoid inheriting
+    // browser page state which can cause timeouts or stale connections.
+    // Retry up to 3 times since Azure Container Apps can return 502/503
+    // on cold-start.
+    let response: Response | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await fetch(`${backendUrl}/health`, {
+          headers: { Origin: testOrigin },
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (response.ok) break;
+        log(`attempt ${attempt}/3 returned ${response.status} ${response.statusText}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`attempt ${attempt}/3 failed: ${msg}`);
+      }
+      if (attempt < 3) {
+        const waitMs = attempt * 10_000;
+        log(`retrying in ${waitMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+
+    expect(response, 'All 3 fetch attempts to backend health failed').not.toBeNull();
+    log(`response status: ${response!.status}`);
+    expect(
+      response!.ok,
+      `Backend health returned ${response!.status} ${response!.statusText} at ${backendUrl}/health`
+    ).toBe(true);
+
+    const acaoHeader = response!.headers.get('access-control-allow-origin');
+    log(`access-control-allow-origin: ${acaoHeader}`);
+
+    expect(
+      acaoHeader,
+      `Expected Access-Control-Allow-Origin header for ${testOrigin}`
+    ).toBe(testOrigin);
+
+    log('Test PASSED — CORS headers correct');
+  });
+
+  // ── PDF upload test runs SECOND (triggers heavy backend processing) ──
   test('uploads Stucco Contract V1.pdf and processes without CORS errors', async ({
     page,
   }) => {
@@ -170,12 +228,13 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     ).toHaveLength(0);
 
     // ── Network failure assertions ──
-    // Filter for backend-related failures (CORS blocks manifest as network errors)
+    // Filter for backend API failures only (CORS blocks manifest as network errors).
+    // Use the actual backend URL and port — NOT substring 'document-processor' which
+    // also matches frontend JS bundles like document-processor-enhanced-B2geOlv6.js.
     const backendFailures = networkFailures.filter(
       (f) =>
         f.includes(backendUrl) ||
-        f.includes('document-processor') ||
-        f.includes('8090')
+        f.includes(':8090/')
     );
     if (backendFailures.length > 0) {
       log('\n=== BACKEND NETWORK FAILURES ===');
@@ -190,36 +249,5 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     assertNoCriticalErrors(consoleErrors);
 
     log('Test PASSED — PDF uploaded without CORS errors');
-  });
-
-  test('verifies CORS headers returned for production origin', async ({
-    page,
-  }) => {
-    const baseURL = test.info().project.use.baseURL || '';
-    const resolvedTarget = baseURL.includes('fetchtext.io') ? 'production' as const : 'local' as const;
-    const backendUrl = getBackendUrl(resolvedTarget);
-    const testOrigin =
-      resolvedTarget === 'production'
-        ? 'https://fetchtext.io'
-        : 'http://localhost:5173';
-
-    log(`testing CORS headers: origin=${testOrigin} backend=${backendUrl}`);
-
-    // Send a request with Origin header and check CORS response
-    const response = await page.request.fetch(`${backendUrl}/health`, {
-      headers: { Origin: testOrigin },
-    });
-
-    expect(response.ok()).toBe(true);
-
-    const acaoHeader = response.headers()['access-control-allow-origin'];
-    log(`access-control-allow-origin: ${acaoHeader}`);
-
-    expect(
-      acaoHeader,
-      `Expected Access-Control-Allow-Origin header for ${testOrigin}`
-    ).toBe(testOrigin);
-
-    log('Test PASSED — CORS headers correct');
   });
 });
