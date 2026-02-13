@@ -79,6 +79,29 @@ describe('Document ID Validation: Source Code Guards', () => {
         'If data.id is undefined, downstream updateDocumentStatus calls will fail.'
     ).toBe(true);
   });
+
+  it('createDocumentRecord must normalize array responses from .single()', () => {
+    // Production Supabase can return an array [{id: 11, ...}] instead of
+    // a single object {id: 11, ...} despite .single() being called.
+    // The code must handle both formats by normalizing the response.
+    //
+    // Extract the createDocumentRecord function body to check for
+    // Array.isArray normalization within that specific function.
+    const fnStart = serviceSource.indexOf('createDocumentRecord');
+    // Find the next static method or end of class as boundary
+    const fnBody = serviceSource.slice(fnStart, fnStart + 3000);
+
+    const hasArrayNormalization =
+      fnBody.includes('Array.isArray') &&
+      (fnBody.includes('rawData') || fnBody.includes('[0]'));
+
+    expect(
+      hasArrayNormalization,
+      'createDocumentRecord must normalize Supabase .single() responses that arrive as arrays. ' +
+        'Production evidence shows .single() returning [{id: 11}] instead of {id: 11}. ' +
+        'Use: const data = Array.isArray(rawData) ? rawData[0] : rawData;'
+    ).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
