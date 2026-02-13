@@ -19,6 +19,7 @@ export type IntegrationType =
   | 'dropbox'
   | 'slack'
   | 'xero'
+  | 'snowflake'
 
 export type IntegrationStatus =
   | 'pending'
@@ -28,12 +29,24 @@ export type IntegrationStatus =
   | 'error'
   | 'disconnected'
 
+export interface CredentialField {
+  name: string
+  label: string
+  type: string // text, password, textarea
+  required: string
+  placeholder?: string
+  help?: string
+}
+
 export interface IntegrationInfo {
   id: string
   name: string
   description: string
   icon: string
   configured: boolean
+  auth_mode: 'oauth' | 'credential' | 'dual'
+  auth_modes?: string[] // For dual-mode: ["credential", "oauth"]
+  credential_fields?: CredentialField[]
   scope_presets: string[]
   features: {
     refresh: boolean
@@ -75,8 +88,12 @@ export interface ConnectionTestResult {
 // Configuration
 // =============================================================================
 
-const DOCUMENT_PROCESSOR_URL =
-  import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090'
+// MUST be set via VITE_DOCUMENT_PROCESSOR_URL - no localhost fallback
+const DOCUMENT_PROCESSOR_URL = import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || ''
+
+if (!DOCUMENT_PROCESSOR_URL && import.meta.env.DEV) {
+  console.warn('[Integration Service] VITE_DOCUMENT_PROCESSOR_URL is not set. Integration features will not work.')
+}
 
 // =============================================================================
 // Integration Service Class
@@ -182,6 +199,81 @@ class IntegrationService {
 
     // Redirect to OAuth provider
     window.location.href = authorization_url
+  }
+
+  // ===========================================================================
+  // Credential-Based Connection
+  // ===========================================================================
+
+  /**
+   * Connect an integration using direct credentials (non-OAuth).
+   *
+   * Used for integrations like Snowflake that use key-pair auth.
+   */
+  async connectWithCredentials(
+    organizationId: string,
+    integrationType: IntegrationType,
+    credentials: Record<string, string>
+  ): Promise<{ success: boolean; message: string; metadata?: Record<string, unknown> }> {
+    const response = await fetch(
+      `${this.baseUrl}/${integrationType}/connect-credentials`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          credentials,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to connect with credentials')
+    }
+
+    return response.json()
+  }
+
+  // ===========================================================================
+  // Per-Account OAuth (Snowflake)
+  // ===========================================================================
+
+  /**
+   * Initiate OAuth flow for Snowflake (per-account OAuth).
+   *
+   * The customer provides their own client_id and client_secret from
+   * their Snowflake Security Integration (DESCRIBE INTEGRATION output).
+   */
+  async initiateSnowflakeOAuth(
+    organizationId: string,
+    accountIdentifier: string,
+    clientId: string,
+    clientSecret: string
+  ): Promise<OAuthInitiateResponse> {
+    const redirectUri = `${DOCUMENT_PROCESSOR_URL}/api/integrations/snowflake/oauth/callback`
+
+    const response = await fetch(
+      `${this.baseUrl}/snowflake/oauth/initiate-with-account`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          account_identifier: accountIdentifier,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to initiate Snowflake OAuth')
+    }
+
+    return response.json()
   }
 
   // ===========================================================================

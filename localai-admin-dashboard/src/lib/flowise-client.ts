@@ -5,7 +5,15 @@ export class FlowiseClient {
   private baseUrl: string;
   private apiKey?: string;
 
-  constructor(baseUrl: string = 'http://localhost:3000/api/v1', apiKey?: string) {
+  /**
+   * Create Flowise client
+   * @param baseUrl - The Flowise API base URL (required, no localhost default)
+   * @param apiKey - Optional API key for authentication
+   */
+  constructor(baseUrl: string, apiKey?: string) {
+    if (!baseUrl) {
+      throw new Error('FlowiseClient: baseUrl is required. Set VITE_FLOWISE_URL environment variable.');
+    }
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
     this.apiKey = apiKey;
   }

@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // Uses UI login, uploads a document, observes progressive logs, and asserts completion markers.
 // Assumes the DocumentWorkflow component emits data-testid hooks added: document-file-input, processing-logs, processing-log-line, document-processing-status.
 
-const fixturePath = new URL('../fixtures/real-test-contract.txt', import.meta.url).pathname;
+const fixturePath = new URL('../../fixtures/real-test-contract.txt', import.meta.url).pathname;
 
 // Helper: wait for any completion signal
 async function waitForProcessing(page: import('@playwright/test').Page, testInfo: import('@playwright/test').TestInfo, opts: { templateMode: boolean; maxMs?: number; idleMs?: number }) {
@@ -110,7 +110,7 @@ test.describe('Document Processing With Logs', () => {
 
     if (TEST_TEMPLATE_ID) {
       await expect(page.getByText(/Template ID:/)).toBeVisible();
-      await expect(page.getByText(new RegExp(String(TEST_TEMPLATE_ID)))).toBeVisible();
+      await expect(page.getByText(`Template ID: ${TEST_TEMPLATE_ID}`)).toBeVisible();
     }
 
     // Prepare network observer BEFORE upload to confirm a real backend call happens

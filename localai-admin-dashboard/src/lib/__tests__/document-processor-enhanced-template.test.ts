@@ -96,7 +96,7 @@ describe('DocumentProcessorEnhanced Template Integration', () => {
 
       // Verify the API call includes template information
       expect(fetch).toHaveBeenCalledWith(
-        `${API_ENDPOINTS.documentsUpload}`,
+        `${API_ENDPOINTS.enhancedDocuments}/extract-with-smart-template`,
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),

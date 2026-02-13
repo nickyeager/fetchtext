@@ -71,11 +71,11 @@ export function AIEnhancedDocumentWorkflow({
 
   const checkServiceStatus = async () => {
     try {
-      const status = await enhancedProcessor.getProcessingStatus()
+      const available = await enhancedProcessor.isEnhancedBackendAvailable()
       setServiceStatus({
-        available: status.service_status === 'available',
-        aiEnabled: status.ai_enhancement_available,
-        ollamaConnected: status.ollama_connected
+        available,
+        aiEnabled: available,
+        ollamaConnected: available
       })
     } catch (error) {
       console.error('Failed to check service status:', error)

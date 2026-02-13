@@ -254,6 +254,48 @@ class VaultService:
             logger.exception(f"Vault error reading secret '{secret_id}'")
             return None
 
+    async def get_secret_by_name(self, name: str) -> Optional[str]:
+        """
+        Retrieve a secret from Supabase Vault by its name.
+
+        Looks up the secret ID by name, then reads the decrypted value.
+        This is more resilient than get_secret() when vault IDs become stale
+        after upsert cycles.
+
+        Args:
+            name: The name of the secret
+
+        Returns:
+            The decrypted secret value, or None if not found
+        """
+        if not self.is_configured:
+            logger.warning(VAULT_NOT_CONFIGURED_MSG)
+            return None
+
+        try:
+            client = self._get_client()
+            # Get the secret ID by name
+            id_response = await client.post(
+                f"{self.supabase_url}/rest/v1/rpc/vault_get_secret_id_by_name",
+                json={"secret_name": name},
+            )
+
+            if id_response.status_code != 200:
+                logger.error(f"Failed to get secret ID for '{name}': HTTP {id_response.status_code}")
+                return None
+
+            secret_id = id_response.json()
+            if not secret_id:
+                logger.warning(f"No secret found with name '{name}'")
+                return None
+
+            # Read the secret using the resolved ID
+            return await self.get_secret(secret_id)
+
+        except Exception:
+            logger.exception(f"Vault error reading secret by name '{name}'")
+            return None
+
     async def delete_secret(self, secret_id: str) -> bool:
         """Delete a secret from the vault"""
         if not self.is_configured:

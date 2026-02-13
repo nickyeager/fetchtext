@@ -1,0 +1,3741 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FetchText Document Processor API",
+    "description": "\n## Overview\n\nFetchText Document Processor API provides AI-powered document processing,\ntemplate matching, and field extraction capabilities.\n\n### Key Features\n\n- **Document Processing**: Upload PDFs, DOCX, images and extract structured data\n- **Template Matching**: Automatically match documents to templates or generate new ones\n- **Field Extraction**: AI-powered extraction of specific fields with confidence scores\n- **Webhooks**: Receive real-time notifications when processing completes\n\n### Authentication\n\nAll API endpoints (except health checks) require authentication:\n\n| Auth Type | Use Case | Header Format |\n|-----------|----------|---------------|\n| **API Key** | Third-party integrations | `Authorization: Bearer ftxt_xxx` |\n| **JWT Token** | Dashboard users | `Authorization: Bearer <jwt>` |\n\n### Rate Limits\n\n| Limit Type | Default | Configurable |\n|------------|---------|--------------|\n| General requests | 60/minute | Yes |\n| Upload operations | 10/minute | Yes |\n\nRate limit headers are included in all responses:\n- `X-RateLimit-Limit`: Maximum requests allowed\n- `X-RateLimit-Remaining`: Requests remaining in window\n- `X-RateLimit-Reset`: Unix timestamp when limit resets\n\n### Base URLs\n\n| Environment | URL |\n|-------------|-----|\n| Production | `https://api.fetchtext.io` |\n| Local Development | `http://localhost:8090` |\n\n### Webhook Support\n\nConfigure webhooks to receive real-time notifications when document processing completes.\nWebhooks are signed with HMAC-SHA256 for security verification.\n\n### Getting Started\n\n1. [Get your API key](/docs#section/Authentication)\n2. [Process your first document](/docs#tag/Third-Party-API-v1/operation/process_document_api_v1_process_post)\n3. [Set up webhooks](/docs#section/Webhooks)\n\n\n\n## Webhooks\n\nFetchText can send webhook notifications when document processing completes.\n\n### Setting Up Webhooks\n\nInclude `webhook_url` when calling the `/api/v1/process` endpoint:\n\n```bash\ncurl -X POST https://api.fetchtext.io/api/v1/process \\\n  -H \"Authorization: Bearer ftxt_your_api_key\" \\\n  -F \"file=@document.pdf\" \\\n  -F \"webhook_url=https://your-app.com/webhooks/fetchtext\" \\\n  -F \"webhook_secret=your_secret_key\"\n```\n\n### Webhook Payload\n\n```json\n{\n  \"job_id\": \"abc123-def456-ghi789\",\n  \"status\": \"completed\",\n  \"result\": {\n    \"template_id\": \"tpl_001\",\n    \"template_name\": \"Invoice Template\",\n    \"extracted_data\": {\n      \"vendor_name\": {\"value\": \"Acme Corp\", \"confidence\": 0.95},\n      \"total_amount\": {\"value\": \"$1,234.56\", \"confidence\": 0.92}\n    },\n    \"extraction_method\": \"template_matched\"\n  },\n  \"processing_time_ms\": 2341,\n  \"completed_at\": \"2025-02-04T12:00:02Z\"\n}\n```\n\n### Security: Signature Verification\n\nAll webhooks include an `X-Webhook-Signature` header with an HMAC-SHA256 signature.\n\n**Python verification example**:\n```python\nimport hmac\nimport hashlib\n\ndef verify_signature(payload: bytes, signature: str, secret: str) -> bool:\n    expected = hmac.new(\n        secret.encode(),\n        payload,\n        hashlib.sha256\n    ).hexdigest()\n    return hmac.compare_digest(f\"sha256={expected}\", signature)\n```\n\n### Retry Policy\n\n| Attempt | Delay |\n|---------|-------|\n| 1 | Immediate |\n| 2 | 1 minute |\n| 3 | 5 minutes |\n| 4 | 30 minutes |\n| 5 | 2 hours |\n\nAfter 5 failed attempts, the webhook is marked as failed.\n\n\n\n## Error Codes\n\nAll errors return a JSON response with a `detail` field:\n\n```json\n{\n  \"detail\": \"Error message describing what went wrong\"\n}\n```\n\n### HTTP Status Codes\n\n| Code | Meaning | Common Causes |\n|------|---------|---------------|\n| 400 | Bad Request | Invalid input, unsupported file type |\n| 401 | Unauthorized | Missing or invalid API key |\n| 403 | Forbidden | Insufficient permissions, org access denied |\n| 404 | Not Found | Job or resource doesn't exist |\n| 429 | Too Many Requests | Rate limit exceeded |\n| 500 | Internal Error | Server-side processing error |\n| 503 | Unavailable | Database or service unavailable |\n\n### Rate Limit Errors (429)\n\nWhen rate limited, the response includes:\n- `X-RateLimit-Limit`: Your limit\n- `X-RateLimit-Remaining`: `0`\n- `Retry-After`: Seconds until reset\n",
+    "contact": {
+      "name": "FetchText Support",
+      "url": "https://fetchtext.io/support",
+      "email": "support@fetchtext.io"
+    },
+    "license": {
+      "name": "Proprietary",
+      "url": "https://fetchtext.io/terms"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Check",
+        "description": "Basic health check endpoint",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness Check",
+        "description": "Readiness check - ensures all dependencies are available",
+        "operationId": "readiness_check_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Readiness Check Health Ready Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness Check",
+        "description": "Liveness check - basic endpoint to ensure service is running",
+        "operationId": "liveness_check_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Liveness Check Health Live Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/upload": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Upload Document",
+        "description": "Upload and process a single document",
+        "operationId": "upload_document_documents_upload_post",
+        "parameters": [
+          {
+            "name": "extract_text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract text content from document",
+              "default": true,
+              "title": "Extract Text"
+            },
+            "description": "Extract text content from document"
+          },
+          {
+            "name": "extract_metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract document metadata",
+              "default": true,
+              "title": "Extract Metadata"
+            },
+            "description": "Extract document metadata"
+          },
+          {
+            "name": "extract_structure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract document structure/layout",
+              "default": false,
+              "title": "Extract Structure"
+            },
+            "description": "Extract document structure/layout"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_documents_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentProcessingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/status/{job_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Processing Status",
+        "description": "Get the processing status of a document",
+        "operationId": "get_processing_status_documents_status__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentProcessingStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/result/{job_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Processing Result",
+        "description": "Get the processing result of a completed document",
+        "operationId": "get_processing_result_documents_result__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/batch": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Batch Process Documents",
+        "description": "Process multiple documents in batch",
+        "operationId": "batch_process_documents_documents_batch_post",
+        "parameters": [
+          {
+            "name": "extract_text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Extract Text"
+            }
+          },
+          {
+            "name": "extract_metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Extract Metadata"
+            }
+          },
+          {
+            "name": "extract_structure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Extract Structure"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_batch_process_documents_documents_batch_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchProcessingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/batch/status/{batch_id}": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Get Batch Status",
+        "description": "Get the status of a batch processing job",
+        "operationId": "get_batch_status_documents_batch_status__batch_id__get",
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/cleanup/{job_id}": {
+      "delete": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Cleanup Job",
+        "description": "Clean up temporary files and remove job from status tracking",
+        "operationId": "cleanup_job_documents_cleanup__job_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/batch-process-with-ai": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Batch Process With Ai Enhancement",
+        "description": "Process multiple documents with AI enhancement in batch.\n\nEfficiently processes multiple files with:\n- Concurrent processing (configurable)\n- Individual error handling\n- Comprehensive batch results",
+        "operationId": "batch_process_with_ai_enhancement_api_enhanced_documents_batch_process_with_ai_post",
+        "parameters": [
+          {
+            "name": "extract_text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract text content",
+              "default": true,
+              "title": "Extract Text"
+            },
+            "description": "Extract text content"
+          },
+          {
+            "name": "extract_metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract document metadata",
+              "default": true,
+              "title": "Extract Metadata"
+            },
+            "description": "Extract document metadata"
+          },
+          {
+            "name": "extract_structure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Extract document structure",
+              "default": true,
+              "title": "Extract Structure"
+            },
+            "description": "Extract document structure"
+          },
+          {
+            "name": "use_ai_enhancement",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Apply AI enhancement",
+              "default": true,
+              "title": "Use Ai Enhancement"
+            },
+            "description": "Apply AI enhancement"
+          },
+          {
+            "name": "max_concurrent",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "Maximum concurrent processing",
+              "default": 3,
+              "title": "Max Concurrent"
+            },
+            "description": "Maximum concurrent processing"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_batch_process_with_ai_enhancement_api_enhanced_documents_batch_process_with_ai_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/enhancement-capabilities": {
+      "get": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Get Enhancement Capabilities",
+        "description": "Get information about available AI enhancement capabilities.\n\nReturns details about:\n- AI classification capabilities\n- Structure enhancement features\n- Data extraction options\n- Quality assessment metrics\n- System status",
+        "operationId": "get_enhancement_capabilities_api_enhanced_documents_enhancement_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/test-extraction": {
+      "get": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Test Extraction",
+        "description": "Test the template extraction logic without file upload",
+        "operationId": "test_extraction_api_enhanced_documents_test_extraction_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/extract-with-text": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Extract With Text",
+        "description": "Extract template fields from provided text content.\nBypasses file upload issues for testing purposes.",
+        "operationId": "extract_with_text_api_enhanced_documents_extract_with_text_post",
+        "parameters": [
+          {
+            "name": "text_content",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Text content to extract from",
+              "title": "Text Content"
+            },
+            "description": "Text content to extract from"
+          },
+          {
+            "name": "template_data",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "JSON string containing template smart variables",
+              "title": "Template Data"
+            },
+            "description": "JSON string containing template smart variables"
+          },
+          {
+            "name": "confidence_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "description": "Minimum confidence threshold for extraction",
+              "default": 0.6,
+              "title": "Confidence Threshold"
+            },
+            "description": "Minimum confidence threshold for extraction"
+          },
+          {
+            "name": "use_two_pass",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Use two-pass extraction for improved accuracy",
+              "default": false,
+              "title": "Use Two Pass"
+            },
+            "description": "Use two-pass extraction for improved accuracy"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/supported-categories": {
+      "get": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Get Supported Document Categories",
+        "description": "Get list of supported document categories for classification",
+        "operationId": "get_supported_document_categories_api_enhanced_documents_supported_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/extract-with-template": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Extract With Template",
+        "description": "Extract structured data from document using template smart variables.\n\nThis endpoint processes documents with specific template guidance:\n- Uses template smart variables for targeted extraction\n- Applies AI-guided extraction with field-specific hints\n- Returns structured data matching template schema\n\nTemplate data should be JSON with structure:\n{\n    \"smart_variables\": [\n        {\n            \"name\": \"field_name\",\n            \"type\": \"text|number|date|email\",\n            \"description\": \"Field description\",\n            \"extraction_hints\": [\"hint1\", \"hint2\"]\n        }\n    ]\n}",
+        "operationId": "extract_with_template_api_enhanced_documents_extract_with_template_post",
+        "parameters": [
+          {
+            "name": "template_data",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON string containing template smart variables",
+              "title": "Template Data"
+            },
+            "description": "JSON string containing template smart variables"
+          },
+          {
+            "name": "confidence_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "description": "Minimum confidence threshold for extraction",
+              "default": 0.6,
+              "title": "Confidence Threshold"
+            },
+            "description": "Minimum confidence threshold for extraction"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_extract_with_template_api_enhanced_documents_extract_with_template_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/decide-template": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Decide Template Strategy",
+        "description": "Decide whether to use an existing template or generate a new one for the uploaded document.\n\nBehavior:\n- Evaluates the document to get type, key phrases, and template suggestions (with scores).\n- If a top suggestion meets `min_match_confidence`, returns an action to use that template.\n- Otherwise, if `allow_generation` is true, generates a new smart template and validates extraction.\n- Returns a unified response structure including the chosen action, rationale, and artifacts.\n\nThis endpoint centralizes the decision logic previously split between evaluation and generation endpoints.",
+        "operationId": "decide_template_strategy_api_enhanced_documents_decide_template_post",
+        "parameters": [
+          {
+            "name": "quick_scan",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Use quick evaluation path",
+              "default": true,
+              "title": "Quick Scan"
+            },
+            "description": "Use quick evaluation path"
+          },
+          {
+            "name": "min_match_confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "description": "Minimum match score to use an existing template",
+              "default": 0.7,
+              "title": "Min Match Confidence"
+            },
+            "description": "Minimum match score to use an existing template"
+          },
+          {
+            "name": "allow_generation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Allow generating a template when no strong match exists",
+              "default": true,
+              "title": "Allow Generation"
+            },
+            "description": "Allow generating a template when no strong match exists"
+          },
+          {
+            "name": "auto_save",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Auto-save generated templates to the database",
+              "default": false,
+              "title": "Auto Save"
+            },
+            "description": "Auto-save generated templates to the database"
+          },
+          {
+            "name": "generation_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Template generation mode when generation is chosen: automatic, guided, custom",
+              "default": "automatic",
+              "title": "Generation Mode"
+            },
+            "description": "Template generation mode when generation is chosen: automatic, guided, custom"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_decide_template_strategy_api_enhanced_documents_decide_template_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/extract-structured-data": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Extract Structured Data",
+        "description": "Extract structured data from document using AI guidance.\n\nProvides targeted data extraction based on:\n- Document type classification\n- Specified target fields\n- AI-guided extraction strategies",
+        "operationId": "extract_structured_data_api_enhanced_documents_extract_structured_data_post",
+        "parameters": [
+          {
+            "name": "target_fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated list of fields to extract",
+              "title": "Target Fields"
+            },
+            "description": "Comma-separated list of fields to extract"
+          },
+          {
+            "name": "extraction_method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Extraction method: ai_guided or rule_based",
+              "default": "ai_guided",
+              "title": "Extraction Method"
+            },
+            "description": "Extraction method: ai_guided or rule_based"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_extract_structured_data_api_enhanced_documents_extract_structured_data_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/evaluate-document-type": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Evaluate Document Type",
+        "description": "Quickly evaluate document type and suggest processing options.\n\nThis endpoint provides:\n- Fast document type detection (quick_scan=True) or comprehensive analysis\n- Confidence scores for each document type\n- Suggested templates that match the document\n- Recommended processing workflow\n- File format validation\n\nUse this for:\n- Initial document upload evaluation\n- Template recommendation\n- Processing workflow guidance\n- File format validation",
+        "operationId": "evaluate_document_type_api_enhanced_documents_evaluate_document_type_post",
+        "parameters": [
+          {
+            "name": "quick_scan",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Perform quick scan only (faster)",
+              "default": true,
+              "title": "Quick Scan"
+            },
+            "description": "Perform quick scan only (faster)"
+          },
+          {
+            "name": "include_confidence_scores",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include detailed confidence scores",
+              "default": true,
+              "title": "Include Confidence Scores"
+            },
+            "description": "Include detailed confidence scores"
+          },
+          {
+            "name": "suggest_templates",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Suggest matching templates",
+              "default": true,
+              "title": "Suggest Templates"
+            },
+            "description": "Suggest matching templates"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_evaluate_document_type_api_enhanced_documents_evaluate_document_type_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/extract-with-smart-template": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Extract With Smart Template",
+        "description": "Extract structured data from document using smart template with AI-based field extraction.\n\nThis endpoint is specifically designed for smart template processing with:\n- AI-powered field extraction using smart variables\n- Template-guided document analysis\n- High-accuracy extraction with confidence scoring\n- Support for progressive processing modes\n\nExpected template data format:\n{\n    \"id\": \"template_id\",\n    \"name\": \"template_name\", \n    \"smart_variables\": [\n        {\n            \"name\": \"field_name\",\n            \"type\": \"text|currency|date|email\",\n            \"description\": \"Description of what this field contains\",\n            \"extraction_hints\": [\"hint1\", \"hint2\"]\n        }\n    ],\n    \"extraction_rules\": [...],\n    \"confidence_threshold\": 0.7\n}",
+        "operationId": "extract_with_smart_template_api_enhanced_documents_extract_with_smart_template_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_extract_with_smart_template_api_enhanced_documents_extract_with_smart_template_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/smart-extract": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Smart Field Extraction",
+        "description": "NEW: Smart LLM-based field extraction endpoint\n\nThis endpoint uses Azure OpenAI or Ollama to intelligently extract field values\nfrom text content based on field descriptions rather than regex patterns.\n\nRequest body format:\n{\n    \"text_content\": \"document text here...\",\n    \"template_data\": {\n        \"smart_variables\": [\n            {\n                \"name\": \"field_name\",\n                \"type\": \"text|currency|date|email\",\n                \"description\": \"Description of what this field contains\"\n            }\n        ]\n    },\n    \"confidence_threshold\": 0.6,\n    \"provider\": \"azure\"\n}",
+        "operationId": "smart_field_extraction_api_enhanced_documents_smart_extract_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/analyze-document": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Analyze Document For Template Generation",
+        "description": "Analyze document structure and content to identify potential template fields.\n\nThis endpoint performs deep analysis to understand document layout, detect patterns,\nand suggest extractable fields for template creation.\n\nUse this when you want to:\n- Understand what fields can be extracted from a new document type\n- Get AI suggestions for template creation\n- Analyze document complexity before processing",
+        "operationId": "analyze_document_for_template_generation_api_enhanced_documents_analyze_document_post",
+        "parameters": [
+          {
+            "name": "confidence_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "description": "Minimum confidence for field detection",
+              "default": 0.7,
+              "title": "Confidence Threshold"
+            },
+            "description": "Minimum confidence for field detection"
+          },
+          {
+            "name": "include_suggestions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include AI-generated field suggestions",
+              "default": true,
+              "title": "Include Suggestions"
+            },
+            "description": "Include AI-generated field suggestions"
+          },
+          {
+            "name": "analysis_depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Analysis depth: basic, standard, comprehensive",
+              "default": "standard",
+              "title": "Analysis Depth"
+            },
+            "description": "Analysis depth: basic, standard, comprehensive"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_document_for_template_generation_api_enhanced_documents_analyze_document_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/suggest-template-improvements": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Suggest Template Improvements",
+        "description": "Analyze multiple sample documents against an existing template to suggest improvements.\n\nThis endpoint helps optimize templates by identifying:\n- Missing fields that could be added\n- Poorly performing fields that need better extraction hints\n- Structural improvements for better accuracy",
+        "operationId": "suggest_template_improvements_api_enhanced_documents_suggest_template_improvements_post",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "ID of template to improve",
+              "title": "Template Id"
+            },
+            "description": "ID of template to improve"
+          },
+          {
+            "name": "improvement_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Improvement mode: enhance, optimize, validate",
+              "default": "enhance",
+              "title": "Improvement Mode"
+            },
+            "description": "Improvement mode: enhance, optimize, validate"
+          },
+          {
+            "name": "focus_areas",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Focus areas for improvement",
+              "title": "Focus Areas"
+            },
+            "description": "Focus areas for improvement"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_suggest_template_improvements_api_enhanced_documents_suggest_template_improvements_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/save-generated-template": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Save Generated Template",
+        "description": "Save a generated template to the database.\n\nThis endpoint allows saving templates that were generated via /decide-template\nbut not initially saved.",
+        "operationId": "save_generated_template_api_enhanced_documents_save_generated_template_post",
+        "parameters": [
+          {
+            "name": "template_data",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "JSON string containing generated template data",
+              "title": "Template Data"
+            },
+            "description": "JSON string containing generated template data"
+          },
+          {
+            "name": "template_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Name for the template",
+              "title": "Template Name"
+            },
+            "description": "Name for the template"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Category for the template",
+              "default": "Generated",
+              "title": "Category"
+            },
+            "description": "Category for the template"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enhanced-documents/field-positions": {
+      "post": {
+        "tags": [
+          "enhanced-documents"
+        ],
+        "summary": "Get Field Positions",
+        "description": "Find positions of extracted field values in the document.\n\nReturns bounding box coordinates for each field value found.\nUsed for highlighting extracted values in document preview.",
+        "operationId": "get_field_positions_api_enhanced_documents_field_positions_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_get_field_positions_api_enhanced_documents_field_positions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/providers": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get Available Providers",
+        "description": "Get list of available AI providers",
+        "operationId": "get_available_providers_models_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/provider/select": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Set Active Provider",
+        "description": "Switch to a different AI provider",
+        "operationId": "set_active_provider_models_provider_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get Available Models",
+        "description": "Fetch available models based on current provider",
+        "operationId": "get_available_models_models__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/select": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Set Active Model",
+        "description": "Set the active Ollama model for document processing",
+        "operationId": "set_active_model_models_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelSelectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/current": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get Current Model",
+        "description": "Get the currently active Ollama model",
+        "operationId": "get_current_model_models_current_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models/test-connection": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Test Provider Connection",
+        "description": "Test connection to the currently active AI provider",
+        "operationId": "test_provider_connection_models_test_connection_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/load-document": {
+      "post": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "Load Google Document",
+        "description": "Load and process a Google Doc using user-provided credentials",
+        "operationId": "load_google_document_api_google_docs_load_document_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleDocLoadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleDocLoadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/validate-access": {
+      "post": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "Validate Document Access",
+        "description": "Validate access to a Google Doc without downloading it",
+        "operationId": "validate_document_access_api_google_docs_validate_access_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleDocValidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleDocValidationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/batch-load": {
+      "post": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "Batch Load Documents",
+        "description": "Load multiple Google Docs in batch",
+        "operationId": "batch_load_documents_api_google_docs_batch_load_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/GoogleDocLoadRequest"
+                },
+                "type": "array",
+                "title": "Documents"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/supported-formats": {
+      "get": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "Get Supported Formats",
+        "description": "Get list of supported export formats for Google Docs",
+        "operationId": "get_supported_formats_api_google_docs_supported_formats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/list-folder-documents": {
+      "post": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "List Folder Documents",
+        "description": "List Google Docs in a specific folder",
+        "operationId": "list_folder_documents_api_google_docs_list_folder_documents_post",
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Folder Id"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleCredentials"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/google-docs/health": {
+      "get": {
+        "tags": [
+          "google-docs"
+        ],
+        "summary": "Health Check",
+        "description": "Health check endpoint for Google Docs integration",
+        "operationId": "health_check_api_google_docs_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/email/send-invitation": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Send Invitation Email",
+        "description": "Send an organization invitation email via SendGrid.\n\nThis endpoint is called from the frontend to send invitation emails\nwithout exposing the SendGrid API key to the browser.",
+        "operationId": "send_invitation_email_api_email_send_invitation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/email/health": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email Health",
+        "description": "Check if email service is configured",
+        "operationId": "email_health_api_email_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/process": {
+      "post": {
+        "tags": [
+          "Third-Party API v1"
+        ],
+        "summary": "Process Document",
+        "description": "Process a document with template matching and field extraction.\n\n**Authentication**: Bearer token (API Key starting with `ftxt_`)\n\n**Rate Limits**:\n- 10 uploads per minute (configurable per API key)\n- 60 requests per minute (general)\n\n**Workflow**:\n1. Upload document (PDF, DOCX, images supported)\n2. If `template_id` provided: use that template for extraction\n3. Otherwise: auto-match to existing template\n4. If no match and `auto_generate_template=true`: generate new template\n5. Extract structured data using matched/generated template\n6. POST results to `webhook_url` when complete (if provided)\n\n**Returns**: Job ID for tracking (processing is asynchronous)\n\n**Webhook Payload**:\n```json\n{\n    \"job_id\": \"uuid\",\n    \"status\": \"completed\",\n    \"result\": {\n        \"template_id\": \"...\",\n        \"template_name\": \"...\",\n        \"extracted_data\": {...},\n        \"extraction_method\": \"template_matched|template_generated|template_provided\"\n    },\n    \"processing_time_ms\": 1234,\n    \"completed_at\": \"2025-01-01T00:00:00Z\"\n}\n```",
+        "operationId": "process_document_api_v1_process_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_process_document_api_v1_process_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKey": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "Third-Party API v1"
+        ],
+        "summary": "Get Job Status",
+        "description": "Get the status and results of a processing job.\n\n**Authentication**: Bearer token (API Key)\n\n**Returns**:\n- Job status (pending, processing, completed, failed)\n- Result data (if completed)\n- Error message (if failed)\n- Processing metrics",
+        "operationId": "get_job_status_api_v1_jobs__job_id__get",
+        "security": [
+          {
+            "APIKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "tags": [
+          "Third-Party API v1"
+        ],
+        "summary": "List Templates",
+        "description": "List available templates for the organization.\n\n**Authentication**: Bearer token (API Key)\n\n**Returns**: List of templates with id, name, category, and field count",
+        "operationId": "list_templates_api_v1_templates_get",
+        "security": [
+          {
+            "APIKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category",
+              "title": "Category"
+            },
+            "description": "Filter by category"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Maximum templates to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum templates to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "Third-Party API v1"
+        ],
+        "summary": "Api Health",
+        "description": "Health check endpoint for the third-party API.\n\nNo authentication required.",
+        "operationId": "api_health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/create": {
+      "post": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Create Api Key",
+        "description": "Create a new API key for an organization.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Important**: The full API key is only returned once during creation.\nStore it securely - it cannot be retrieved later.\n\n**Default Permissions**:\n- `upload`: true - Can upload documents\n- `process`: true - Can process documents\n- `templates_read`: true - Can list templates\n\n**Returns**: API key details including the full key (shown only once)",
+        "operationId": "create_api_key_api_admin_keys_create_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAPIKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyCreatedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/list/{organization_id}": {
+      "get": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "List Api Keys",
+        "description": "List all API keys for an organization.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Note**: Actual API keys are never returned - only the prefix for identification.\n\n**Returns**: List of API keys with metadata (without the actual keys)",
+        "operationId": "list_api_keys_api_admin_keys_list__organization_id__get",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Organization Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include inactive/revoked keys",
+              "default": false,
+              "title": "Include Inactive"
+            },
+            "description": "Include inactive/revoked keys"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/{key_id}": {
+      "get": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Get Api Key",
+        "description": "Get details of a specific API key.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Note**: The actual API key is never returned.",
+        "operationId": "get_api_key_api_admin_keys__key_id__get",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Update Api Key",
+        "description": "Update an API key's settings.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Updatable fields**:\n- name\n- description\n- rate_limit_per_minute\n- upload_limit_per_minute\n- is_active (use DELETE /revoke for permanent revocation)\n- permissions",
+        "operationId": "update_api_key_api_admin_keys__key_id__patch",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAPIKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Delete Api Key",
+        "description": "Permanently delete an API key.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Warning**: This action cannot be undone. All associated rate limit data\nand webhook logs will also be deleted.\n\nConsider using /revoke instead to preserve audit history.",
+        "operationId": "delete_api_key_api_admin_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/{key_id}/revoke": {
+      "delete": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Revoke Api Key",
+        "description": "Revoke (permanently deactivate) an API key.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\nThis action cannot be undone. The key will immediately stop working.",
+        "operationId": "revoke_api_key_api_admin_keys__key_id__revoke_delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/{key_id}/usage": {
+      "get": {
+        "tags": [
+          "API Key Management (Admin)"
+        ],
+        "summary": "Get Api Key Usage",
+        "description": "Get usage statistics for an API key.\n\n**Requires**: Valid Supabase JWT token and organization membership.\n\n**Returns**:\n- Total requests in period\n- Total jobs created\n- Success/failure rates\n- Recent jobs",
+        "operationId": "get_api_key_usage_api_admin_keys__key_id__usage_get",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "description": "Number of days to look back",
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "Number of days to look back"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "APIKeyCreatedResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "key_prefix": {
+            "type": "string",
+            "title": "Key Prefix"
+          },
+          "organization_id": {
+            "type": "string",
+            "title": "Organization Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "rate_limit_per_minute": {
+            "type": "integer",
+            "title": "Rate Limit Per Minute"
+          },
+          "upload_limit_per_minute": {
+            "type": "integer",
+            "title": "Upload Limit Per Minute"
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Permissions"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          },
+          "warning": {
+            "type": "string",
+            "title": "Warning",
+            "default": "Save this API key - it will never be shown again!"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "key_prefix",
+          "organization_id",
+          "is_active",
+          "rate_limit_per_minute",
+          "upload_limit_per_minute",
+          "permissions",
+          "created_at",
+          "expires_at",
+          "last_used_at",
+          "api_key"
+        ],
+        "title": "APIKeyCreatedResponse",
+        "description": "Response model for newly created API key (includes the full key once)."
+      },
+      "BatchProcessingResponse": {
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "title": "Batch Id"
+          },
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Job Ids"
+          },
+          "total_files": {
+            "type": "integer",
+            "title": "Total Files"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "job_ids",
+          "total_files",
+          "status",
+          "message"
+        ],
+        "title": "BatchProcessingResponse",
+        "description": "Response model for batch processing"
+      },
+      "Body_analyze_document_for_template_generation_api_enhanced_documents_analyze_document_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_analyze_document_for_template_generation_api_enhanced_documents_analyze_document_post"
+      },
+      "Body_batch_process_documents_documents_batch_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_batch_process_documents_documents_batch_post"
+      },
+      "Body_batch_process_with_ai_enhancement_api_enhanced_documents_batch_process_with_ai_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_batch_process_with_ai_enhancement_api_enhanced_documents_batch_process_with_ai_post"
+      },
+      "Body_decide_template_strategy_api_enhanced_documents_decide_template_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_decide_template_strategy_api_enhanced_documents_decide_template_post"
+      },
+      "Body_evaluate_document_type_api_enhanced_documents_evaluate_document_type_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_evaluate_document_type_api_enhanced_documents_evaluate_document_type_post"
+      },
+      "Body_extract_structured_data_api_enhanced_documents_extract_structured_data_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_extract_structured_data_api_enhanced_documents_extract_structured_data_post"
+      },
+      "Body_extract_with_smart_template_api_enhanced_documents_extract_with_smart_template_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "template_data": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Data",
+            "description": "JSON string containing smart template data"
+          },
+          "processing_mode": {
+            "type": "string",
+            "title": "Processing Mode",
+            "description": "Processing mode: smart_template or progressive",
+            "default": "smart_template"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "title": "Confidence Threshold",
+            "description": "Minimum confidence threshold for extraction",
+            "default": 0.7
+          },
+          "enable_validation": {
+            "type": "boolean",
+            "title": "Enable Validation",
+            "description": "Enable extraction validation",
+            "default": true
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "AI provider to use (azure or ollama)",
+            "default": "azure"
+          },
+          "use_two_pass": {
+            "type": "boolean",
+            "title": "Use Two Pass",
+            "description": "Use two-pass extraction for improved accuracy",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_extract_with_smart_template_api_enhanced_documents_extract_with_smart_template_post"
+      },
+      "Body_extract_with_template_api_enhanced_documents_extract_with_template_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_extract_with_template_api_enhanced_documents_extract_with_template_post"
+      },
+      "Body_get_field_positions_api_enhanced_documents_field_positions_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "field_values": {
+            "type": "string",
+            "title": "Field Values",
+            "description": "JSON array of field values to locate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "field_values"
+        ],
+        "title": "Body_get_field_positions_api_enhanced_documents_field_positions_post"
+      },
+      "Body_process_document_api_v1_process_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File",
+            "description": "Document file to process (PDF, DOCX, images)"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id",
+            "description": "Specific template ID to use (skips auto-matching)"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url",
+            "description": "URL to POST results when processing completes"
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret",
+            "description": "Secret for HMAC webhook signature verification"
+          },
+          "auto_generate_template": {
+            "type": "boolean",
+            "title": "Auto Generate Template",
+            "description": "Auto-generate template if no match found",
+            "default": true
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence Threshold",
+            "description": "Minimum confidence for extraction",
+            "default": 0.7
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_process_document_api_v1_process_post"
+      },
+      "Body_suggest_template_improvements_api_enhanced_documents_suggest_template_improvements_post": {
+        "properties": {
+          "sample_documents": {
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "type": "array",
+            "title": "Sample Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sample_documents"
+        ],
+        "title": "Body_suggest_template_improvements_api_enhanced_documents_suggest_template_improvements_post"
+      },
+      "Body_upload_document_documents_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_documents_upload_post"
+      },
+      "CreateAPIKeyRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Friendly name for the API key"
+          },
+          "organization_id": {
+            "type": "string",
+            "title": "Organization Id",
+            "description": "Organization UUID"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional description"
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "maximum": 3650.0,
+            "minimum": 1.0,
+            "title": "Expires In Days",
+            "description": "Days until expiration (max 10 years)",
+            "default": 365
+          },
+          "rate_limit_per_minute": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Rate Limit Per Minute",
+            "description": "Requests per minute limit",
+            "default": 60
+          },
+          "upload_limit_per_minute": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Upload Limit Per Minute",
+            "description": "Uploads per minute limit",
+            "default": 10
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permissions",
+            "description": "Custom permissions (default: upload, process, templates_read)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "organization_id"
+        ],
+        "title": "CreateAPIKeyRequest",
+        "description": "Request body for creating a new API key."
+      },
+      "DocumentProcessingResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "filename",
+          "message"
+        ],
+        "title": "DocumentProcessingResponse",
+        "description": "Response model for document upload/processing"
+      },
+      "DocumentProcessingStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "progress",
+          "message",
+          "filename"
+        ],
+        "title": "DocumentProcessingStatus",
+        "description": "Status model for document processing"
+      },
+      "EmailResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "EmailResponse",
+        "description": "Response model for email operations"
+      },
+      "GoogleCredentials": {
+        "properties": {
+          "auth_method": {
+            "type": "string",
+            "title": "Auth Method",
+            "description": "Authentication method: 'oauth2' or 'service_account'"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id",
+            "description": "OAuth2 Client ID"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret",
+            "description": "OAuth2 Client Secret"
+          },
+          "service_account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Account Email",
+            "description": "Service account email"
+          },
+          "service_account_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Account Key",
+            "description": "Service account private key JSON"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Google Cloud Project ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_method"
+        ],
+        "title": "GoogleCredentials"
+      },
+      "GoogleDocLoadRequest": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Google Docs document ID"
+          },
+          "export_format": {
+            "type": "string",
+            "title": "Export Format",
+            "description": "Export format MIME type",
+            "default": "text/plain"
+          },
+          "google_credentials": {
+            "$ref": "#/components/schemas/GoogleCredentials",
+            "description": "User's Google API credentials"
+          },
+          "process_immediately": {
+            "type": "boolean",
+            "title": "Process Immediately",
+            "description": "Process with AI immediately",
+            "default": true
+          },
+          "target_folder": {
+            "type": "string",
+            "title": "Target Folder",
+            "description": "Target folder for processed documents",
+            "default": "downloaded_docs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "google_credentials"
+        ],
+        "title": "GoogleDocLoadRequest"
+      },
+      "GoogleDocLoadResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "google_doc_id": {
+            "type": "string",
+            "title": "Google Doc Id"
+          },
+          "document_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Data"
+          },
+          "file_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Data"
+          },
+          "processed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processed At"
+          },
+          "downloaded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloaded At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "google_doc_id"
+        ],
+        "title": "GoogleDocLoadResponse"
+      },
+      "GoogleDocValidationRequest": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Google Docs document ID"
+          },
+          "google_credentials": {
+            "$ref": "#/components/schemas/GoogleCredentials",
+            "description": "User's Google API credentials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "google_credentials"
+        ],
+        "title": "GoogleDocValidationRequest"
+      },
+      "GoogleDocValidationResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "document_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "title": "GoogleDocValidationResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InvitationEmailRequest": {
+        "properties": {
+          "to_email": {
+            "type": "string",
+            "format": "email",
+            "title": "To Email"
+          },
+          "organization_name": {
+            "type": "string",
+            "title": "Organization Name"
+          },
+          "inviter_email": {
+            "type": "string",
+            "title": "Inviter Email"
+          },
+          "invite_token": {
+            "type": "string",
+            "title": "Invite Token"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_email",
+          "organization_name",
+          "inviter_email",
+          "invite_token",
+          "role"
+        ],
+        "title": "InvitationEmailRequest",
+        "description": "Request model for sending invitation emails"
+      },
+      "ModelInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Size"
+          },
+          "modified": {
+            "type": "string",
+            "title": "Modified",
+            "default": ""
+          },
+          "digest": {
+            "type": "string",
+            "title": "Digest",
+            "default": ""
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "size"
+        ],
+        "title": "ModelInfo"
+      },
+      "ModelSelectionRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name"
+        ],
+        "title": "ModelSelectionRequest"
+      },
+      "ModelsResponse": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelInfo"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "current_model": {
+            "type": "string",
+            "title": "Current Model"
+          },
+          "current_provider": {
+            "type": "string",
+            "title": "Current Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "models",
+          "current_model",
+          "current_provider"
+        ],
+        "title": "ModelsResponse"
+      },
+      "ProviderInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "display_name",
+          "available",
+          "configured"
+        ],
+        "title": "ProviderInfo"
+      },
+      "ProviderSelectionRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "title": "ProviderSelectionRequest"
+      },
+      "ProvidersResponse": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderInfo"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "current_provider": {
+            "type": "string",
+            "title": "Current Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "providers",
+          "current_provider"
+        ],
+        "title": "ProvidersResponse"
+      },
+      "SmartExtractRequest": {
+        "properties": {
+          "text_content": {
+            "type": "string",
+            "title": "Text Content"
+          },
+          "template_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Template Data"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "title": "Confidence Threshold",
+            "default": 0.6
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "azure"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text_content",
+          "template_data"
+        ],
+        "title": "SmartExtractRequest",
+        "description": "Request model for smart field extraction"
+      },
+      "TestResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "provider",
+          "message"
+        ],
+        "title": "TestResponse"
+      },
+      "UpdateAPIKeyRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rate_limit_per_minute": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit Per Minute"
+          },
+          "upload_limit_per_minute": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Limit Per Minute"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "permissions": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permissions"
+          }
+        },
+        "type": "object",
+        "title": "UpdateAPIKeyRequest",
+        "description": "Request body for updating an API key."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API Key",
+        "description": "\nAPI Key authentication for third-party integrations.\n\n**Format**: `Authorization: Bearer ftxt_<key>`\n\n**How to obtain**:\n1. Log into the FetchText dashboard\n2. Go to Settings → API Keys\n3. Click \"Create New Key\"\n4. Copy the key (shown only once!)\n\n**Key format**: Keys start with `ftxt_` followed by 43 characters.\n\n**Example**:\n```\nAuthorization: Bearer ftxt_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0\n```\n        "
+      },
+      "JWTAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "\nJWT Bearer token from Supabase for dashboard users.\n\nUsed for admin operations like API key management.\n\n**How to obtain**:\n1. Authenticate via the FetchText dashboard\n2. JWT token is automatically included in requests\n\n**Token contents**: User ID, email, role, organization membership\n        "
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Third-Party API v1",
+      "description": "\nExternal API for third-party integrations.\n\n**Authentication**: API Key (Bearer token starting with `ftxt_`)\n\n**Rate Limits**:\n- General requests: 60/minute (configurable)\n- Upload operations: 10/minute (configurable)\n\n**Key Endpoints**:\n- `POST /api/v1/process` - Process document with template matching\n- `GET /api/v1/jobs/{job_id}` - Get job status and results\n- `GET /api/v1/templates` - List available templates\n        ",
+      "externalDocs": {
+        "description": "Integration Guide",
+        "url": "https://docs.fetchtext.io/quickstart"
+      }
+    },
+    {
+      "name": "Documents",
+      "description": "\nBasic document upload and processing endpoints.\n\nSupports: PDF, DOCX, PPTX, HTML, Markdown, TXT, and common image formats.\n\n**Features**:\n- Single document processing\n- Batch processing (up to 10 documents)\n- Text, metadata, and structure extraction\n        "
+    },
+    {
+      "name": "Enhanced Documents",
+      "description": "\nAI-enhanced document processing with template matching and field extraction.\n\n**Capabilities**:\n- Smart template matching with confidence scores\n- Auto-template generation from document samples\n- Two-pass extraction for improved accuracy\n- Field position detection for highlighting\n        "
+    },
+    {
+      "name": "Models",
+      "description": "\nAI provider and model configuration management.\n\n**Supported Providers**:\n- **Ollama**: Local CPU-based models (privacy-focused)\n- **Azure OpenAI**: Cloud-based GPT models (faster processing)\n\nSwitch providers dynamically without restarting the service.\n        "
+    },
+    {
+      "name": "Health",
+      "description": "\nService health and readiness checks.\n\n**Endpoints**:\n- `/health/` - Basic health check\n- `/health/ready` - Readiness check (all dependencies available)\n- `/health/live` - Liveness check (service running)\n\nNo authentication required for health endpoints.\n        "
+    },
+    {
+      "name": "API Key Management",
+      "description": "\nCreate and manage API keys for third-party access.\n\n**Authentication**: Requires JWT token (dashboard users only)\n\n**Features**:\n- Create keys with custom permissions\n- Set expiration and rate limits\n- Track usage statistics\n- Revoke or delete keys\n        "
+    },
+    {
+      "name": "Google Docs",
+      "description": "\nGoogle Docs/Drive integration for document import.\n\n**Authentication Methods**:\n- OAuth2 (user consent flow)\n- Service Account (server-to-server)\n\nImport documents directly from Google Drive without manual download.\n        "
+    },
+    {
+      "name": "Email",
+      "description": "\nEmail notification service for organization invitations.\n\nUses SendGrid for reliable email delivery.\n        "
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.fetchtext.io",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:8090",
+      "description": "Local development server"
+    }
+  ]
+}

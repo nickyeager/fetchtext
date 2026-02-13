@@ -12,6 +12,7 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react'
+import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config'
 
 type DemoState = 'idle' | 'uploading' | 'processing' | 'success' | 'error'
 
@@ -58,7 +59,7 @@ export function DemoWidget() {
       setState('processing')
 
       // Call the document analyzer API (no auth required for demo)
-      const response = await fetch('http://localhost:8090/api/enhanced-documents/analyze-document', {
+      const response = await fetch(`${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/analyze-document`, {
         method: 'POST',
         body: formData
       })

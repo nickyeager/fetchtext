@@ -1,0 +1,19 @@
+# Redocly lint ignore file for FetchText API
+# Generated to handle intentional patterns in the API design
+
+# Health endpoints intentionally have no security requirement
+/paths/~1health/get:
+  - security-defined
+/paths/~1health~1ready/get:
+  - security-defined
+/paths/~1health~1live/get:
+  - security-defined
+/paths/~1api~1v1~1health/get:
+  - security-defined
+
+# Trailing slash on models endpoint (FastAPI convention)
+/paths/~1models~1:
+  - no-path-trailing-slash
+
+# Internal endpoints without auth are intentional for internal dashboard use
+# These are accessed via authenticated Supabase sessions, not API keys
