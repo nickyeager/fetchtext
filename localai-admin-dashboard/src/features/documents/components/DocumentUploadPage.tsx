@@ -222,6 +222,11 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         uploadSource: UploadSource.SMART_UPLOAD,
         organizationId: activeOrganization.id,
       });
+
+      if (!documentRecord.id) {
+        throw new Error('Document record created without a valid ID — cannot proceed with processing');
+      }
+
       setDocumentId(documentRecord.id);
 
       // Check if storage upload failed but processing can continue

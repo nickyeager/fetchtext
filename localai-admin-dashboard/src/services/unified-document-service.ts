@@ -826,14 +826,23 @@ export class UnifiedDocumentService {
       if (error) {
         console.error('Document insert error:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
-        
+
         if (error.code === 'PGRST116' || error.message?.includes('row-level security')) {
           throw new Error('Permission denied - please ensure you are signed in and have permission to upload documents');
         }
-        
+
         // Better error handling for undefined error messages
         const errorMessage = error.message || error.details || error.hint || `Database error (code: ${error.code || 'unknown'})`;
         throw new Error(`Failed to create document record: ${errorMessage}`);
+      }
+
+      // Validate that the insert returned a valid document with an ID
+      if (!data?.id) {
+        console.error('Document insert returned without ID:', JSON.stringify(data, null, 2));
+        throw new Error(
+          'Document was inserted but database did not return a valid ID. ' +
+          'This may indicate an RLS policy issue preventing SELECT after INSERT.'
+        );
       }
 
       // Upload file to storage (with fallback for file system issues)
@@ -924,11 +933,21 @@ export class UnifiedDocumentService {
    * Update document status and metadata
    */
   static async updateDocumentStatus(
-    documentId: string, 
+    documentId: string,
     options: UpdateDocumentStatusOptions
   ): Promise<DocumentRecord> {
     console.log('🔄 UpdateDocumentStatus called:', { documentId, status: options.status, timestamp: new Date().toISOString() });
-    
+
+    // Validate documentId is defined and valid before querying
+    if (!documentId || documentId === 'undefined' || documentId === 'null') {
+      const error = new Error(
+        `Invalid document ID: "${documentId}". Cannot update status to "${options.status}". ` +
+        'This usually means createDocumentRecord did not return a valid ID.'
+      );
+      console.error('❌ Document ID validation failed:', error.message);
+      throw error;
+    }
+
     // Validate status value against allowed enum
     const validStatuses = ['uploaded', 'analyzing', 'processing', 'completed', 'failed'];
     if (!validStatuses.includes(options.status)) {
