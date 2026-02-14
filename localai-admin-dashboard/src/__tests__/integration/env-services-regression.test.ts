@@ -196,6 +196,27 @@ describe('Docker Compose Environment Variables', () => {
   it('docker-compose.yml must pass ALLOWED_ORIGINS to document-processor', () => {
     expect(composeContent).toContain('ALLOWED_ORIGINS=');
   });
+
+  it('docker-compose.yml must define a qdrant service', () => {
+    expect(composeContent).toMatch(/qdrant:/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Qdrant / Template-RAG Regression Tests
+// Ensures Qdrant is reachable and /health/cors still works after RAG changes
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Qdrant Health Check', () => {
+  it('Qdrant collections endpoint must be reachable', async () => {
+    const QDRANT_URL = 'http://localhost:6333';
+    const response = await fetch(`${QDRANT_URL}/collections`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data).toHaveProperty('result');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
