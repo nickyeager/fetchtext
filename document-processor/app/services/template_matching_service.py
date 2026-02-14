@@ -571,6 +571,44 @@ class TemplateMatchingService:
 
         return " | ".join(parts)
 
+    async def find_matching_templates_vector(
+        self,
+        document_embedding: List[float],
+        document_type: Optional[str] = None,
+        limit: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Find matching templates using Qdrant vector similarity search.
+
+        Returns results in the same format as ``find_matching_templates()``
+        so they can be used as a drop-in replacement.
+
+        Falls back to an empty list if Qdrant is unavailable or has no
+        indexed templates.
+        """
+        try:
+            from .template_vector_service import template_vector_service
+
+            if not template_vector_service.available:
+                self.logger.debug("Template vector service not available, skipping vector search")
+                return []
+
+            results = await template_vector_service.search_similar_templates(
+                document_embedding=document_embedding,
+                limit=limit,
+                category_filter=document_type,
+            )
+
+            if results:
+                self.logger.info(
+                    f"Vector search returned {len(results)} templates "
+                    f"(top: {results[0]['template_name']} @ {results[0]['match_score']:.3f})"
+                )
+            return results
+
+        except Exception as e:
+            self.logger.warning(f"Vector template search failed: {e}")
+            return []
+
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache performance statistics"""
         return self.template_cache.get_stats()
