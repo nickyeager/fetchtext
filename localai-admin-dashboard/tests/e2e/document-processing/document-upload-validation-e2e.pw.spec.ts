@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import { test, expect, type Page } from '@playwright/test';
 import { preflight } from '../utils/preflight';
+import {
+  createLogger,
+  uiLogin,
+  monitorConsole,
+  assertNoCriticalErrors,
+} from '../helpers/auth';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -17,109 +23,7 @@ const oversizedFilePath = path.join(tmpDir, 'e2e-oversized-test.bin');
 const invalidExePath = path.join(tmpDir, 'e2e-invalid.exe');
 const invalidZipPath = path.join(tmpDir, 'e2e-invalid.zip');
 
-// ---------------------------------------------------------------------------
-// Helpers (mirrors full-document-upload-e2e.pw.spec.ts)
-// ---------------------------------------------------------------------------
-
-interface ConsoleEntry {
-  type: string;
-  text: string;
-  timestamp: Date;
-}
-
-function log(step: string) {
-  // eslint-disable-next-line no-console
-  console.log(`[upload-validation] ${step}`);
-}
-
-async function uiLogin(page: Page, email: string, password: string) {
-  log('navigating to sign-in');
-  await page.goto('/(auth)/sign-in', { waitUntil: 'domcontentloaded' });
-
-  let emailInput = page.getByPlaceholder('name@example.com');
-  let loginButton = page.getByRole('button', { name: 'Login' });
-
-  if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
-    log('fallback to /sign-in');
-    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
-    emailInput = page.getByPlaceholder('name@example.com');
-    loginButton = page.getByRole('button', { name: 'Login' });
-  }
-
-  if (await loginButton.isVisible().catch(() => false)) {
-    log('filling login form');
-    await emailInput.fill(email);
-    await page.getByPlaceholder('********').fill(password);
-    await loginButton.click();
-    await page.waitForURL(/dashboard|_authenticated|documents/, {
-      timeout: 20_000,
-    });
-    log('login complete');
-  } else {
-    log('already authenticated, skipping login');
-    await page.waitForURL(/dashboard|_authenticated|documents/, {
-      timeout: 20_000,
-    });
-  }
-}
-
-function monitorConsole(page: Page): ConsoleEntry[] {
-  const errors: ConsoleEntry[] = [];
-
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      const text = msg.text();
-      errors.push({ type: 'console.error', text, timestamp: new Date() });
-      log(`[CONSOLE ERROR] ${text}`);
-    }
-  });
-
-  page.on('pageerror', (err) => {
-    errors.push({
-      type: 'pageerror',
-      text: err.message,
-      timestamp: new Date(),
-    });
-    log(`[PAGE ERROR] ${err.message}`);
-  });
-
-  return errors;
-}
-
-function assertNoCriticalErrors(errors: ConsoleEntry[]) {
-  const ignoredPatterns = [
-    'Invalid Refresh Token',
-    'Failed to fetch',
-    'Authentication failed',
-    'authentication expired',
-    'Failed to load resource',
-    'extended attributes', // Known macOS storage issue (MinIO workaround)
-    'Supabase storage upload error', // Storage errors during upload tests
-  ];
-
-  const critical = errors.filter(
-    (e) =>
-      !ignoredPatterns.some((p) => e.text.includes(p)) &&
-      (e.text.includes('row-level security') ||
-        e.text.includes('RLS') ||
-        e.text.includes('policy') ||
-        e.text.includes('storage') ||
-        e.text.includes('403') ||
-        e.text.includes('401'))
-  );
-
-  if (critical.length > 0) {
-    const summary = critical
-      .map((e, i) => `  ${i + 1}. [${e.type}] ${e.text}`)
-      .join('\n');
-    log(`\n=== CRITICAL ERRORS ===\n${summary}`);
-  }
-
-  expect(
-    critical,
-    `Critical console errors detected:\n${critical.map((e) => e.text).join('\n')}`
-  ).toHaveLength(0);
-}
+const log = createLogger('upload-validation');
 
 // ---------------------------------------------------------------------------
 // Shared setup

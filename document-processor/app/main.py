@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from app.routers import health, enhanced_documents, models, google_docs, email
 from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing, snowflake
+from app.routers import stream
 
 # Import OpenAPI configuration
 from app.openapi_config import get_openapi_config, get_custom_openapi_schema, API_TAGS
@@ -57,6 +58,7 @@ app.include_router(email.router)
 app.include_router(integrations.router)
 app.include_router(billing.router)
 app.include_router(snowflake.router)
+app.include_router(stream.router)
 
 # Third-party API routers
 app.include_router(api_v1.router)

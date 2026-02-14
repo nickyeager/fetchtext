@@ -172,6 +172,7 @@ export function assertNoCriticalErrors(errors: ConsoleEntry[]) {
     'Invalid Refresh Token',
     'net::ERR_ABORTED',
     'extended attributes',
+    'Failed to fetch',  // Browser-aborted fetch during navigation (not a real auth/CORS failure)
   ];
 
   // Patterns that indicate a critical issue (matched case-insensitively)
@@ -184,6 +185,7 @@ export function assertNoCriticalErrors(errors: ConsoleEntry[]) {
     'storage',
     '403',
     '401',
+    'authentication failed',  // Supabase auth.getUser() network failures
   ];
 
   const lowerText = (e: ConsoleEntry) => e.text.toLowerCase();

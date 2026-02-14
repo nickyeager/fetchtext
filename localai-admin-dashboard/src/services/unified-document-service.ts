@@ -159,12 +159,14 @@ export class UnifiedDocumentService {
       }
 
       // Get the file from storage.
-      // Retry once after a delay — managed Supabase storage can return 400
+      // Retry with exponential backoff — managed Supabase storage can return 400
       // immediately after upload due to propagation delay or CDN caching.
       let fileData: Blob | null = null;
       let downloadError: Error | null = null;
+      const maxAttempts = 3;
+      const baseDelayMs = 2000;
 
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const result = await supabase.storage
           .from('documents')
           .download(document.file_path);
@@ -176,9 +178,10 @@ export class UnifiedDocumentService {
         }
 
         downloadError = result.error;
-        if (attempt === 0) {
-          console.warn('Storage download failed on first attempt, retrying in 2s:', result.error);
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (attempt < maxAttempts - 1) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt); // 2s, 4s
+          console.warn(`Storage download attempt ${attempt + 1}/${maxAttempts} failed, retrying in ${delayMs / 1000}s:`, result.error);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuth } from '@/context/auth-context';
 import { useOrganization } from '@/context/organization-context';
@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { DragDropZone } from '@/components/ui/drag-drop-zone';
+import { ProcessingLog } from '@/components/ui/processing-log';
 import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 import { useDocumentManager } from '@/hooks/use-document-manager';
+import { useProcessingStream } from '@/hooks/use-processing-stream';
+import type { StreamResult } from '@/hooks/use-processing-stream';
 import { UploadSource } from '@/services/unified-document-service';
 import { Sparkles, ArrowRight, Settings, FileText, Zap, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -62,156 +65,232 @@ interface DocumentUploadPageProps {
 export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }: DocumentUploadPageProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
-  const [evaluation, setEvaluation] = useState<DocumentEvaluation | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Debug pre-selected template
   useEffect(() => {
     if (preSelectedTemplate) {
-      console.log('🎯 Pre-selected template loaded:', preSelectedTemplate);
+      console.log('[DocumentUpload] Pre-selected template loaded:', preSelectedTemplate);
     }
   }, [preSelectedTemplate]);
-  
+
   const navigate = useNavigate();
   const { user, session } = useAuth();
   const { activeOrganization, isLoading: isLoadingOrg } = useOrganization();
   const queryClient = useQueryClient();
   const documentProcessor = React.useMemo(() => new DocumentProcessorEnhanced(), []);
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
+  const stream = useProcessingStream();
+
+  // Track whether we've already handled the stream result to prevent double-navigation
+  const handledResultRef = useRef(false);
 
   // Debug authentication state
   useEffect(() => {
-    console.log('Auth state in DocumentUploadPage:', { 
-      user_id: user?.id, 
+    console.log('[DocumentUpload] Auth state:', {
+      user_id: user?.id,
       has_session: !!session,
       user_email: user?.email
     });
   }, [user, session]);
 
-  // Define handleActionSelect first since it's used by handleFileSelect
-  const handleActionSelect = useCallback(async (action: ProcessingAction) => {
-    // For pre-selected templates, we don't need evaluation
-    if (!selectedFile || !documentId) return;
-    
-    // For regular flow, we need evaluation, but not for pre-selected templates
-    if (!evaluation && !preSelectedTemplate) return;
+  // ── Handle stream completion: finalize document + navigate ──────────
+  useEffect(() => {
+    if (stream.status !== 'complete' || !stream.result || !documentId || handledResultRef.current) {
+      return;
+    }
 
-    console.log('🎯 handleActionSelect called with:', action);
+    handledResultRef.current = true;
+    const result = stream.result;
+
+    (async () => {
+      try {
+        // Build extracted data in the format DocumentDetailView expects
+        let extractedData = null;
+        if (result.extracted_fields && Object.keys(result.extracted_fields).length > 0) {
+          extractedData = {
+            extracted_values: result.extracted_fields,
+            confidence_scores: Object.entries(result.extracted_fields).reduce(
+              (acc, [key, field]: [string, any]) => {
+                acc[key] = field.confidence || 0;
+                return acc;
+              },
+              {} as Record<string, number>,
+            ),
+          };
+        }
+
+        // If a template was generated, save it to the database
+        let savedGeneratedTemplate = null;
+        if (result.action === 'generate_new' && result.generated_template) {
+          const genTemplate = result.generated_template;
+          const templateVariables = genTemplate.smart_variables || genTemplate.variables || [];
+          const primaryType = (result.evaluation?.type_evaluation?.primary_type) || 'document';
+
+          if (Array.isArray(templateVariables) && templateVariables.length > 0) {
+            try {
+              savedGeneratedTemplate = await withAuthentication(async (authUser) => {
+                const { data, error: dbError } = await supabase
+                  .from('smart_templates')
+                  .insert({
+                    name: genTemplate.name || `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
+                    description: genTemplate.description || `Auto-generated template for ${primaryType} documents`,
+                    category: genTemplate.category || primaryType,
+                    smart_variables: templateVariables,
+                    extraction_rules: genTemplate.extraction_rules || [],
+                    is_public: false,
+                    created_by: authUser.id,
+                    template_type: 'smart',
+                    tags: genTemplate.tags || ['ai-generated', primaryType],
+                  })
+                  .select()
+                  .single();
+
+                if (dbError) throw dbError;
+                return data;
+              }, 'Save Generated Template');
+
+              console.log('[DocumentUpload] Generated template saved:', savedGeneratedTemplate?.id);
+            } catch (saveErr) {
+              console.error('[DocumentUpload] Failed to save generated template:', saveErr);
+            }
+          }
+        }
+
+        const appliedTemplate = result.chosen_template || (savedGeneratedTemplate
+          ? { template_id: savedGeneratedTemplate.id, template_name: savedGeneratedTemplate.name }
+          : null);
+
+        const evaluation = result.evaluation || {};
+        const typeEval = evaluation.type_evaluation || {};
+
+        await documentManager.finalizeDocument(documentId, {
+          status: 'completed',
+          content_text: result.content,
+          extracted_fields: extractedData,
+          metadata: {
+            document_type: typeEval.primary_type,
+            type_confidence: typeEval.confidence,
+            ai_classification: {
+              primary_category: typeEval.primary_type,
+              confidence_score: typeEval.confidence,
+              detection_method: typeEval.detection_method,
+            },
+            template_id: appliedTemplate?.template_id,
+            template_name: appliedTemplate?.template_name,
+            template_decision: {
+              action: result.action,
+              validation_level: result.decision_metadata?.validation_level,
+              match_score: result.decision_metadata?.match_score,
+              extraction_quality: result.decision_metadata?.extraction_quality,
+              combined_score: result.decision_metadata?.combined_score,
+              auto_applied: !!extractedData,
+              chosen_template: result.chosen_template,
+            },
+            template_suggestions: result.alternatives || [],
+            extracted_data: extractedData,
+            title: result.metadata?.title,
+            author: result.metadata?.author,
+            page_count: result.metadata?.page_count,
+          },
+        });
+
+        await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
+
+        console.log('[DocumentUpload] Document finalized, navigating to:', documentId);
+
+        if (onDocumentProcessed) {
+          onDocumentProcessed(result);
+        } else {
+          navigate({ to: `/documents/${documentId}` });
+        }
+      } catch (err) {
+        console.error('[DocumentUpload] Failed to finalize document:', err);
+        setError(err instanceof Error ? err.message : 'Failed to finalize document');
+      }
+    })();
+  }, [stream.status, stream.result, documentId, documentManager, queryClient, navigate, onDocumentProcessed]);
+
+  // Propagate stream errors
+  useEffect(() => {
+    if (stream.status === 'error' && stream.error) {
+      setError(stream.error);
+      if (documentId) {
+        documentManager.markDocumentFailed(documentId, stream.error);
+      }
+    }
+  }, [stream.status, stream.error, documentId, documentManager]);
+
+  // ── Pre-selected template handler (unchanged) ──────────────────────
+  const handleActionSelect = useCallback(async (action: ProcessingAction) => {
+    if (!selectedFile || !documentId) return;
+    if (!preSelectedTemplate) return;
+
+    console.log('[DocumentUpload] handleActionSelect (pre-selected):', action);
     setIsProcessing(true);
     setError(null);
 
     try {
-      // Update document status to processing
       await documentManager.updateDocumentStatus(documentId, {
         status: 'processing' as any,
         metadata: {
-          processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
+          processing_method: 'template_guided',
           template_id: action.template_id,
           template_name: action.template_name,
         },
       });
 
-      let result;
+      const result = await documentProcessor.processWithExistingTemplate(
+        selectedFile,
+        action.template_id!,
+      );
 
-      switch (action.type) {
-        case 'use_template':
-          console.log('🔄 Processing with existing template:', action.template_id);
-          // Process with existing template
-          result = await documentProcessor.processWithExistingTemplate(
-            selectedFile,
-            action.template_id!
-          );
-          break;
+      console.log('[DocumentUpload] Pre-selected template processing complete:', result);
 
-        case 'generate_template':
-          // Generate new template (only for regular evaluation flow)
-          if (!evaluation) {
-            throw new Error('Cannot generate template without evaluation data');
-          }
-          
-          console.log('🎨 Generating template for:', evaluation.type_evaluation.primary_type);
-          result = await documentProcessor.generateTemplate(
-            selectedFile,
-            `${evaluation.type_evaluation.primary_type} Template`,
-            evaluation.type_evaluation.primary_type
-          );
-          break;
-
-        case 'manual_selection':
-          // Navigate to template selection
-          navigate({ to: '/templates' });
-          return;
-      }
-
-      console.log('✅ Processing completed:', result);
-
-      // Finalize document with processing results
       await documentManager.finalizeDocument(documentId, {
         content_text: result?.content || '',
         extracted_fields: result?.extractedFields || result?.extracted_fields,
-        processing_method: action.type === 'use_template' ? 'template_guided' : 'ai_enhanced',
+        processing_method: 'template_guided',
         quality_metrics: result?.quality_metrics,
       });
 
-      // Invalidate queries to refresh the documents list
       await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
-
-      console.log('🧭 Navigating to document detail page:', documentId);
-
-      // For pre-selected template flow, always navigate directly to results
-      if (preSelectedTemplate) {
-        console.log('🎯 Pre-selected template flow: forcing navigation to results page');
-        navigate({ to: `/documents/${documentId}` });
-        return; // Exit early to prevent further processing
-      }
-
-      // Navigate to results page or call callback
-      if (onDocumentProcessed) {
-        onDocumentProcessed(result);
-      } else {
-        // Navigate to the document detail page to show the processed result
-        navigate({ to: `/documents/${documentId}` });
-      }
+      navigate({ to: `/documents/${documentId}` });
 
     } catch (err) {
-      console.error('❌ Document processing failed:', err);
+      console.error('[DocumentUpload] Pre-selected template processing failed:', err);
       setError(err instanceof Error ? err.message : 'Document processing failed');
-      
-      // Mark document as failed
       if (documentId) {
         await documentManager.markDocumentFailed(
-          documentId, 
-          err instanceof Error ? err.message : 'Document processing failed'
+          documentId,
+          err instanceof Error ? err.message : 'Document processing failed',
         );
       }
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, evaluation, navigate, onDocumentProcessed, documentId, documentManager, documentProcessor, queryClient, preSelectedTemplate]);
+  }, [selectedFile, documentId, documentManager, documentProcessor, queryClient, navigate, preSelectedTemplate]);
 
+  // ── Main file select handler ───────────────────────────────────────
   const handleFileSelect = useCallback(async (file: File) => {
-    console.log('📁 handleFileSelect called with:', file.name, 'preSelectedTemplate:', preSelectedTemplate);
-    
+    console.log('[DocumentUpload] handleFileSelect:', file.name, 'preSelectedTemplate:', preSelectedTemplate);
+
     setSelectedFile(file);
     setError(null);
-    setEvaluation(null);
-    setIsEvaluating(true);
+    handledResultRef.current = false;
 
     // Verify user is authenticated before proceeding
     if (!user || !session) {
-      console.error('❌ Authentication failed');
+      console.error('[DocumentUpload] Authentication failed');
       setError('Authentication required - please sign in to upload documents');
-      setIsEvaluating(false);
       return;
     }
 
     // Verify organization is selected
     if (!activeOrganization) {
-      console.error('❌ No organization selected');
+      console.error('[DocumentUpload] No organization selected');
       setError('Please select an organization before uploading documents');
-      setIsEvaluating(false);
       return;
     }
 
@@ -224,25 +303,22 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       });
 
       if (!documentRecord.id) {
-        throw new Error('Document record created without a valid ID — cannot proceed with processing');
+        throw new Error('Document record created without a valid ID');
       }
 
       setDocumentId(documentRecord.id);
 
-      // Check if storage upload failed but processing can continue
       const metadata = documentRecord.metadata as any;
       if (metadata?.storage_upload_failed) {
-        console.warn('File storage failed, but document processing will continue:', metadata.storage_error);
+        console.warn('[DocumentUpload] File storage failed, processing will continue:', metadata.storage_error);
       }
 
-      // If we have a pre-selected template, skip evaluation and process directly
+      // ── Pre-selected template path (unchanged) ───────────────────
       if (preSelectedTemplate) {
-        console.log('🎯 Using pre-selected template:', preSelectedTemplate);
-        setIsEvaluating(false); // Stop evaluating since we're processing directly
-        setIsProcessing(true);  // Start processing
-        
+        console.log('[DocumentUpload] Using pre-selected template:', preSelectedTemplate);
+        setIsProcessing(true);
+
         try {
-          // Step 2: Update status to processing with template info
           await documentManager.updateDocumentStatus(documentRecord.id, {
             status: 'processing' as any,
             metadata: {
@@ -253,372 +329,73 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
             },
           });
 
-          console.log('🔄 Processing with template ID:', preSelectedTemplate.id);
-          
-          // Step 3: Process with the selected template
           await handleActionSelect({
             type: 'use_template',
             template_id: Number(preSelectedTemplate.id),
-            template_name: preSelectedTemplate.name
+            template_name: preSelectedTemplate.name,
           });
-          
-          console.log('✅ Pre-selected template processing completed successfully');
-          return; // Exit early, processing is handled by handleActionSelect
-        } catch (error) {
-          console.error('❌ Error processing with pre-selected template:', error);
-          setError(error instanceof Error ? error.message : 'Processing failed with selected template');
+          return;
+        } catch (templateErr) {
+          console.error('[DocumentUpload] Pre-selected template error:', templateErr);
+          setError(templateErr instanceof Error ? templateErr.message : 'Processing failed with selected template');
           setIsProcessing(false);
-          setIsEvaluating(false);
-          
-          // Even on error, try to navigate to the document if it was created
-          if (documentRecord && documentRecord.id) {
-            console.log('🔀 Error occurred but document exists, navigating to document page for troubleshooting');
-            setTimeout(() => {
-              navigate({ to: `/documents/${documentRecord.id}` });
-            }, 2000); // Give user time to see the error message
+          if (documentRecord.id) {
+            setTimeout(() => navigate({ to: `/documents/${documentRecord.id}` }), 2000);
           }
           return;
         }
       }
 
-      // Step 2: Update status to analyzing
-      await documentManager.updateDocumentStatus(documentRecord.id, {
-        status: 'analyzing' as any,
-      });
-
-      // Step 3: Call the /decide-template endpoint with 2-way validation
-      // Pass user ID to include their private saved templates in matching
-      console.log('🎯 Using intelligent template decision with 2-way validation...');
-      const decisionResult = await documentProcessor.decideTemplate(file, {
-        minMatchConfidence: 0.6,
-        allowGeneration: true,
-        autoSave: false,
-        userId: user?.id // Include user's private templates in matching
-      });
-
-      setEvaluation(decisionResult.evaluation);
-
-      // Step 4: Extract document content using Docling
-      console.log('📄 Extracting document content...');
+      // ── Smart upload path: stream via SSE ────────────────────────
+      // Use 'processing' (not 'analyzing') because 'analyzing' auto-triggers
+      // triggerAIAnalysis() which tries to download from storage — conflicting
+      // with the SSE stream that sends the file directly to the backend.
       await documentManager.updateDocumentStatus(documentRecord.id, {
         status: 'processing' as any,
+        metadata: { processing_method: 'sse_stream' },
       });
 
-      const processedContent = await documentProcessor.processDocumentWithDocling(file);
-      console.log('✅ Content extracted:', processedContent.content?.substring(0, 100) + '...');
+      console.log('[DocumentUpload] Starting SSE stream for:', file.name);
 
-      // Step 5: Auto-apply best matching template (user can change later)
-      // Changed: Always auto-apply if a template was found, regardless of confidence level
-      let extractedData = null;
-      let finalStatus: any = 'uploaded'; // Default: Ready for user action
-      const MIN_AUTO_APPLY_SCORE = 0.6; // Require 60% match for auto-apply
-
-      if (
-        decisionResult.action === 'use_existing' &&
-        decisionResult.chosen_template &&
-        (decisionResult.decision_metadata.match_score || 0) >= MIN_AUTO_APPLY_SCORE
-      ) {
-        // Auto-extract fields with the best matching template
-        // User can change template later if extraction isn't satisfactory
-        console.log('✨ Auto-applying best matching template...', {
-          template: decisionResult.chosen_template.template_name,
-          match_score: decisionResult.decision_metadata.match_score,
-          extraction_quality: decisionResult.decision_metadata.extraction_quality,
-          combined_score: decisionResult.decision_metadata.combined_score,
-          confidence_level: decisionResult.decision_metadata.validation_level
-        });
-
-        try {
-          const extractionResult = await documentProcessor.processWithExistingTemplate(
-            file,
-            decisionResult.chosen_template.template_id
-          );
-
-          // Get extracted fields (backend returns extractedFields, not extracted_data)
-          const rawExtractedFields = extractionResult.extractedFields || extractionResult.extracted_data;
-          const fieldsExtractedCount = Object.keys(rawExtractedFields || {}).length;
-
-          // FALLBACK: If existing template extracted 0 fields, generate a new template
-          if (fieldsExtractedCount === 0) {
-            console.log('⚠️ Existing template extracted 0 fields, falling back to template generation...');
-
-            // Trigger template generation via backend
-            const primaryType = decisionResult.evaluation?.type_evaluation?.primary_type || 'document';
-            const generationResult = await documentProcessor.generateTemplate(
-              file,
-              `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
-              primaryType
-            );
-
-            if (generationResult?.template || generationResult?.generated_template) {
-              const generatedTemplate = generationResult.template || generationResult.generated_template;
-              const templateVariables = generatedTemplate.smart_variables || generatedTemplate.variables || [];
-
-              if (templateVariables.length > 0) {
-                console.log('📝 Saving fallback-generated template...', {
-                  name: generatedTemplate.name,
-                  variables_count: templateVariables.length
-                });
-
-                // Save the generated template
-                const savedTemplate = await withAuthentication(async (user) => {
-                  const { data, error } = await supabase
-                    .from('smart_templates')
-                    .insert({
-                      name: generatedTemplate.name || `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
-                      description: generatedTemplate.description || `Auto-generated template for ${primaryType} documents`,
-                      category: generatedTemplate.category || primaryType,
-                      smart_variables: templateVariables,
-                      extraction_rules: generatedTemplate.extraction_rules || [],
-                      is_public: false,
-                      created_by: user.id,
-                      template_type: 'smart',
-                      tags: ['ai-generated', 'fallback', primaryType]
-                    })
-                    .select()
-                    .single();
-
-                  if (error) throw error;
-                  return data;
-                }, 'Save Fallback Generated Template');
-
-                console.log('✅ Fallback template saved, extracting fields...');
-
-                // Extract with the new template
-                const fallbackExtraction = await documentProcessor.processWithExistingTemplate(
-                  file,
-                  savedTemplate.id
-                );
-
-                const fallbackFields = fallbackExtraction.extractedFields || fallbackExtraction.extracted_data;
-
-                extractedData = {
-                  extracted_values: fallbackFields,
-                  confidence_scores: Object.entries(fallbackFields || {}).reduce((acc, [key, field]: [string, any]) => {
-                    acc[key] = field.confidence || 0;
-                    return acc;
-                  }, {} as Record<string, number>)
-                };
-
-                // Update the chosen template to the generated one
-                decisionResult.chosen_template = {
-                  template_id: savedTemplate.id,
-                  template_name: savedTemplate.name,
-                  match_score: 1.0, // Perfect match since we generated it
-                  extraction_quality: Object.keys(fallbackFields || {}).length > 0 ? 0.8 : 0
-                };
-
-                console.log('✅ Fallback extraction completed:', {
-                  fields_extracted: Object.keys(fallbackFields || {}).length,
-                  template_id: savedTemplate.id,
-                  template_name: savedTemplate.name
-                });
-              }
-            }
-          } else {
-            // Transform to the format DocumentDetailView expects
-            extractedData = {
-              extracted_values: rawExtractedFields,
-              confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
-                acc[key] = field.confidence || 0;
-                return acc;
-              }, {} as Record<string, number>)
-            };
-
-            console.log('✅ Auto-extraction completed:', {
-              fields_extracted: fieldsExtractedCount,
-              template_used: decisionResult.chosen_template.template_name,
-              extracted_data_format: extractedData
-            });
-          }
-
-          finalStatus = 'completed'; // Fully processed
-        } catch (extractError) {
-          console.error('⚠️ Auto-extraction failed, continuing without extraction:', extractError);
-          // Still save document - user can retry or change template
-          finalStatus = 'completed'; // Mark as completed so user sees the document
-        }
-      } else if (decisionResult.action === 'generate_new' && decisionResult.generated_template) {
-        // Auto-generate new template and extract fields
-        const generatedTemplate = decisionResult.generated_template;
-        console.log('✨ No suitable template found - generating new template with AI...', {
-          template_name: generatedTemplate.name,
-          variables_count: (generatedTemplate.smart_variables || generatedTemplate.variables)?.length || 0
-        });
-
-        try {
-          // Map 'variables' to 'smart_variables' if needed (backend field name compatibility)
-          const templateVariables = generatedTemplate.smart_variables || generatedTemplate.variables || [];
-
-          if (!Array.isArray(templateVariables) || templateVariables.length === 0) {
-            throw new Error('Generated template has no variables defined');
-          }
-
-          console.log('📝 Saving generated template to database...', {
-            name: generatedTemplate.name,
-            category: generatedTemplate.category,
-            variable_names: templateVariables.map((v: any) => v.name).join(', ')
-          });
-
-          // Save template to database with authentication
-          const savedTemplate = await withAuthentication(async (user) => {
-            const { data, error } = await supabase
-              .from('smart_templates')
-              .insert({
-                name: generatedTemplate.name,
-                description: generatedTemplate.description || `Auto-generated template for ${decisionResult.evaluation.type_evaluation.primary_type} documents`,
-                category: generatedTemplate.category || 'general',
-                smart_variables: templateVariables,
-                extraction_rules: generatedTemplate.extraction_rules || [],
-                is_public: false, // Private by default
-                created_by: user.id,
-                template_type: 'smart',
-                tags: generatedTemplate.tags || []
-              })
-              .select()
-              .single();
-
-            if (error) throw error;
-            return data;
-          }, 'Save Generated Template');
-
-          console.log('✅ Template saved successfully:', {
-            template_id: savedTemplate.id,
-            name: savedTemplate.name
-          });
-
-          // Extract fields using the newly saved template
-          console.log('🔍 Extracting fields with generated template...');
-          const extractionResult = await documentProcessor.processWithExistingTemplate(
-            file,
-            savedTemplate.id
-          );
-
-          // Get extracted fields (backend returns extractedFields, not extracted_data)
-          const rawExtractedFields = extractionResult.extractedFields || extractionResult.extracted_data;
-
-          // Transform to the format DocumentDetailView expects
-          extractedData = {
-            extracted_values: rawExtractedFields,
-            confidence_scores: Object.entries(rawExtractedFields || {}).reduce((acc, [key, field]: [string, any]) => {
-              acc[key] = field.confidence || 0;
-              return acc;
-            }, {} as Record<string, number>)
-          };
-
-          finalStatus = 'completed'; // Fully processed
-
-          console.log('✅ Auto-extraction with generated template completed:', {
-            fields_extracted: Object.keys(rawExtractedFields || {}).length,
-            template_id: savedTemplate.id,
-            template_name: savedTemplate.name,
-            extracted_data_format: extractedData
-          });
-        } catch (generationError) {
-          console.error('⚠️ Failed to save/apply generated template:', generationError);
-          console.error('   Error details:', {
-            message: generationError instanceof Error ? generationError.message : String(generationError),
-            template_data: generatedTemplate
-          });
-          // Still save document but without extracted fields
-          // User can manually select template or retry later
-        }
-      } else {
-        console.log('📋 No suitable template found or match too low - document saved without extraction', {
-          action: decisionResult.action,
-          match_score: decisionResult.decision_metadata?.match_score,
-          threshold: MIN_AUTO_APPLY_SCORE
-        });
-        finalStatus = 'completed'; // Still mark as completed
-      }
-
-      // Determine if a template was applied
-      const appliedTemplate = extractedData ? decisionResult.chosen_template : null;
-
-      // Step 6: Update document with content, decision results, and optional extracted fields
-      await documentManager.finalizeDocument(documentRecord.id, {
-        status: finalStatus,
-        content_text: processedContent.content,
-        extracted_fields: extractedData,
-        metadata: {
-          document_type: decisionResult.evaluation.type_evaluation.primary_type,
-          type_confidence: decisionResult.evaluation.type_evaluation.confidence,
-          ai_classification: {
-            primary_category: decisionResult.evaluation.type_evaluation.primary_type,
-            confidence_score: decisionResult.evaluation.type_evaluation.confidence,
-            detection_method: decisionResult.evaluation.type_evaluation.detection_method,
-          },
-          // Store applied template info for easy access
-          template_id: appliedTemplate?.template_id,
-          template_name: appliedTemplate?.template_name,
-          template_decision: {
-            action: decisionResult.action,
-            validation_level: decisionResult.decision_metadata.validation_level,
-            match_score: decisionResult.decision_metadata.match_score,
-            extraction_quality: decisionResult.decision_metadata.extraction_quality,
-            combined_score: decisionResult.decision_metadata.combined_score,
-            extraction_tested: decisionResult.decision_metadata.extraction_tested,
-            auto_applied: !!extractedData,
-            chosen_template: decisionResult.chosen_template
-          },
-          template_suggestions: decisionResult.alternatives || [],
-          // CRITICAL: Store extracted_data for DocumentDetailView compatibility
-          extracted_data: extractedData,
-          title: processedContent.metadata?.title,
-          author: processedContent.metadata?.author,
-          page_count: processedContent.metadata?.page_count,
-        },
+      stream.startProcessing(file, {
+        quickScan: true,
+        minMatchConfidence: 0.6,
+        allowGeneration: true,
+        organizationId: activeOrganization.id,
       });
-
-      // Redirect to document detail page
-      navigate({ to: `/documents/${documentRecord.id}` });
 
     } catch (err) {
-      console.error('❌ Document evaluation failed:', err);
-      setError(err instanceof Error ? err.message : 'Document evaluation failed');
-      
-      // Mark document as failed if we created it
+      console.error('[DocumentUpload] Document upload failed:', err);
+      setError(err instanceof Error ? err.message : 'Document upload failed');
+
       if (documentId) {
         await documentManager.markDocumentFailed(
-          documentId, 
-          err instanceof Error ? err.message : 'Document evaluation failed'
+          documentId,
+          err instanceof Error ? err.message : 'Document upload failed',
         );
       }
-    } finally {
-      setIsEvaluating(false);
-      setIsProcessing(false);
     }
-  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate, activeOrganization]);
+  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate, activeOrganization, stream]);
 
   const resetUpload = useCallback(() => {
     setSelectedFile(null);
     setDocumentId(null);
-    setEvaluation(null);
     setError(null);
-    setIsEvaluating(false);
     setIsProcessing(false);
-  }, []);
+    handledResultRef.current = false;
+    stream.abort();
+  }, [stream]);
 
-  const getWorkflowIcon = (workflow: string) => {
-    switch (workflow) {
-      case 'existing_template':
-        return <FileText className="w-5 h-5" />;
-      case 'generate_template':
-        return <Sparkles className="w-5 h-5" />;
-      case 'template_selection':
-        return <Settings className="w-5 h-5" />;
-      default:
-        return <AlertTriangle className="w-5 h-5" />;
-    }
-  };
+  const isStreamActive = stream.status === 'connecting' || stream.status === 'streaming';
+  const showProcessingLog = isStreamActive || stream.status === 'complete' || stream.status === 'error';
 
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => navigate({ to: '/documents' })}
             className="flex items-center gap-2"
@@ -651,11 +428,10 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
                 </Badge>
               </span>
             </div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
-                // Clear the search params by navigating to upload without params
                 navigate({ to: '/documents/upload' });
               }}
               className="text-xs"
@@ -687,7 +463,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       )}
 
       {/* Error Alert */}
-      {error && (
+      {error && !showProcessingLog && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
@@ -699,236 +475,48 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         <CardContent className="p-6">
           <DragDropZone
             onFileSelect={handleFileSelect}
-            isEvaluating={isEvaluating}
-            evaluationResult={evaluation || undefined}
-            disabled={isProcessing || !user || isLoadingOrg || !activeOrganization}
+            isEvaluating={isStreamActive}
+            evaluationResult={undefined}
+            disabled={isProcessing || isStreamActive || !user || isLoadingOrg || !activeOrganization}
           />
         </CardContent>
       </Card>
 
-      {/* Processing Options */}
-      {evaluation && !error && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {getWorkflowIcon(evaluation.processing_recommendations.workflow)}
-              Processing Options
-              <Badge variant="outline" className="ml-auto">
-                {evaluation.processing_recommendations.confidence_level} confidence
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Primary Recommendation */}
-            <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-1">
-                    Recommended Action
-                  </h3>
-                  <p className="text-blue-700 dark:text-blue-300 text-sm mb-3">
-                    {evaluation.processing_recommendations.suggested_action}
-                  </p>
-
-                  {/* Template Suggestions */}
-                  {evaluation.template_suggestions.length > 0 && (
-                    <div className="space-y-2">
-                      {evaluation.template_suggestions.slice(0, 1).map((template) => (
-                        <div key={template.template_id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
-                          <div>
-                            <span className="font-medium text-sm text-gray-900 dark:text-white">{template.template_name}</span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                              ({template.category} • {template.field_count} fields)
-                            </span>
-                          </div>
-                          <Badge variant="secondary">
-                            {Math.round(template.match_score * 100)}% match
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  onClick={() => handleActionSelect({
-                    type: evaluation.template_suggestions.length > 0 ? 'use_template' : 'generate_template',
-                    template_id: evaluation.template_suggestions[0]?.template_id,
-                    template_name: evaluation.template_suggestions[0]?.template_name
-                  })}
-                  disabled={isProcessing}
-                  className="ml-4"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Zap className="w-4 h-4 mr-2 animate-pulse" />
-                      Processing with AI...
-                    </>
-                  ) : (
-                    <>
-                      {evaluation.template_suggestions.length > 0 ? 'Use Template' : 'Generate Template'}
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {/* Alternative Actions */}
-            {evaluation.processing_recommendations.alternative_actions.length > 0 && (
-              <div>
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3">Alternative Options</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {evaluation.processing_recommendations.alternative_actions.map((action, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      onClick={() => {
-                        if (action.toLowerCase().includes('generate')) {
-                          handleActionSelect({ type: 'generate_template' });
-                        } else if (action.toLowerCase().includes('template')) {
-                          handleActionSelect({ type: 'manual_selection' });
-                        }
-                      }}
-                      disabled={isProcessing}
-                      className="justify-start"
-                    >
-                      {action.toLowerCase().includes('generate') && <Sparkles className="w-4 h-4 mr-2" />}
-                      {action.toLowerCase().includes('template') && <Settings className="w-4 h-4 mr-2" />}
-                      {action}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Additional Templates */}
-            {evaluation.template_suggestions.length > 1 && (
-              <div>
-                <h3 className="font-medium text-gray-900 dark:text-white mb-3">Other Suggested Templates</h3>
-                <div className="space-y-2">
-                  {evaluation.template_suggestions.slice(1).map((template) => (
-                    <div key={template.template_id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <div>
-                        <span className="font-medium text-sm text-gray-900 dark:text-white">{template.template_name}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                          ({template.category} • {template.field_count} fields)
-                        </span>
-                        <div className="mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {Math.round(template.match_score * 100)}% match
-                          </Badge>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleActionSelect({
-                          type: 'use_template',
-                          template_id: template.template_id,
-                          template_name: template.template_name
-                        })}
-                        disabled={isProcessing}
-                      >
-                        Use This
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Reset Button */}
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <Button
-                variant="ghost"
-                onClick={resetUpload}
-                disabled={isProcessing}
-                className="w-full"
-              >
-                Upload Different Document
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Streaming Processing Log (replaces old static spinners) */}
+      {showProcessingLog && (
+        <ProcessingLog
+          logs={stream.logs}
+          progress={stream.progress}
+          status={stream.status}
+          error={stream.error}
+        />
       )}
 
-      {/* Evaluation Status */}
-      {isEvaluating && !evaluation && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-center space-x-3">
-              <Sparkles className="w-6 h-6 text-purple-500 animate-pulse" />
-              <div className="text-center">
-                <p className="text-lg font-medium text-gray-900 dark:text-white">Analyzing Document</p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  AI is detecting document type and preparing processing recommendations...
-                </p>
-                <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>🔍 Document analysis</span>
-                  <span>•</span>
-                  <span>🤖 AI evaluation</span>
-                  <span>•</span>
-                  <span>⏱️ Redirecting shortly</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Processing Status */}
-      {isProcessing && (
+      {/* Pre-selected template processing status (kept as-is) */}
+      {isProcessing && preSelectedTemplate && (
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-center space-x-3">
               <Zap className="w-6 h-6 text-blue-500 animate-pulse" />
               <div className="text-center">
-                {preSelectedTemplate ? (
-                  <>
-                    <p className="text-lg font-medium text-gray-900 dark:text-white">Processing with {preSelectedTemplate.name}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Extracting data using the pre-selected template. This should be faster since we're skipping document type analysis...
-                    </p>
-                    <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
-                      <span>⚡ Template processing</span>
-                      <span>•</span>
-                      <span>🎯 {preSelectedTemplate.name}</span>
-                      <span>•</span>
-                      <span>⏱️ Redirecting to results</span>
-                    </div>
-                    {/* Manual navigation button as backup */}
-                    <div className="mt-4">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          if (documentId) {
-                            console.log('🖱️ Manual navigation clicked for document:', documentId);
-                            navigate({ to: `/documents/${documentId}` });
-                          }
-                        }}
-                        disabled={!documentId}
-                      >
-                        {documentId ? 'View Document Results' : 'Processing...'}
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-lg font-medium text-gray-900 dark:text-white">Processing Document with AI</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Using advanced AI models for document analysis. This typically takes 60-90 seconds...
-                    </p>
-                    <div className="mt-2 flex items-center justify-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
-                      <span>⚡ AI-powered extraction</span>
-                      <span>•</span>
-                      <span>🤖 LLM processing</span>
-                      <span>•</span>
-                      <span>⏱️ Please wait</span>
-                    </div>
-                  </>
-                )}
+                <p className="text-lg font-medium text-gray-900 dark:text-white">Processing with {preSelectedTemplate.name}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Extracting data using the pre-selected template...
+                </p>
+                <div className="mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (documentId) {
+                        navigate({ to: `/documents/${documentId}` });
+                      }
+                    }}
+                    disabled={!documentId}
+                  >
+                    {documentId ? 'View Document Results' : 'Processing...'}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -936,8 +524,8 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       )}
 
       {/* Help Text */}
-      {!selectedFile && !isEvaluating && (
-        <Card className={preSelectedTemplate 
+      {!selectedFile && !isStreamActive && !isProcessing && (
+        <Card className={preSelectedTemplate
           ? "bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800"
           : "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800"
         }>
@@ -950,9 +538,9 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
                     Ready to Process with Selected Template
                   </h3>
                   <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-w-2xl mx-auto">
-                    <p>• <strong>Template Selected:</strong> {preSelectedTemplate.name || `Template ${preSelectedTemplate.id}`}</p>
-                    <p>• <strong>Direct Processing:</strong> Your document will be processed immediately using this template</p>
-                    <p>• <strong>Fast Results:</strong> No evaluation needed - we'll extract data based on the template fields</p>
+                    <p>- <strong>Template Selected:</strong> {preSelectedTemplate.name || `Template ${preSelectedTemplate.id}`}</p>
+                    <p>- <strong>Direct Processing:</strong> Your document will be processed immediately using this template</p>
+                    <p>- <strong>Fast Results:</strong> No evaluation needed - we'll extract data based on the template fields</p>
                   </div>
                 </>
               ) : (
@@ -962,15 +550,27 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
                     Smart Document Processing
                   </h3>
                   <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1 max-w-2xl mx-auto">
-                    <p>• <strong>Automatic Detection:</strong> AI identifies document type (invoices, contracts, reports, etc.)</p>
-                    <p>• <strong>Template Matching:</strong> Suggests the best templates based on document content</p>
-                    <p>• <strong>Intelligent Processing:</strong> Chooses optimal extraction method for your document</p>
+                    <p>- <strong>Automatic Detection:</strong> AI identifies document type (invoices, contracts, reports, etc.)</p>
+                    <p>- <strong>Template Matching:</strong> Suggests the best templates based on document content</p>
+                    <p>- <strong>Intelligent Processing:</strong> Chooses optimal extraction method for your document</p>
                   </div>
                 </>
               )}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Reset Button when streaming is active or errored */}
+      {(isStreamActive || stream.status === 'error') && (
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            onClick={resetUpload}
+          >
+            {stream.status === 'error' ? 'Try Again' : 'Cancel Processing'}
+          </Button>
+        </div>
       )}
     </div>
   );
