@@ -17,7 +17,7 @@ const BACKEND_URL = 'http://localhost:8090';
 
 // Test user credentials (from environment or defaults)
 const TEST_USER_EMAIL = process.env.TEST_USER_EMAIL || 'admin@fetchtext.local';
-const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD || 'testpass123';
+const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD || '***REMOVED-TEST-PASSWORD***';
 
 test.describe('Azure Provisioning UI - Complete User Journey', () => {
 
