@@ -58,4 +58,20 @@ export default defineConfig({
       },
     },
   },
+  // Preview proxy is needed for Playwright e2e tests which use `pnpm preview`
+  // Without this, /supabase requests fail because preview has no proxy by default
+  preview: {
+    proxy: {
+      '/supabase': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/supabase/, ''),
+      },
+      '/n8n-webhook': {
+        target: 'http://localhost:5678',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/n8n-webhook/, '/webhook'),
+      },
+    },
+  },
 })
