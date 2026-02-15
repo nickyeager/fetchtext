@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from app.routers import health, enhanced_documents, models, google_docs, email
 from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing, snowflake
+from app.routers import stream
 
 # Import OpenAPI configuration
 from app.openapi_config import get_openapi_config, get_custom_openapi_schema, API_TAGS
@@ -57,10 +58,25 @@ app.include_router(email.router)
 app.include_router(integrations.router)
 app.include_router(billing.router)
 app.include_router(snowflake.router)
+app.include_router(stream.router)
 
 # Third-party API routers
 app.include_router(api_v1.router)
 app.include_router(api_keys_admin.router)
+
+@app.on_event("startup")
+async def startup_sync_template_embeddings():
+    """Sync existing templates into Qdrant for vector search on startup."""
+    try:
+        from app.services.template_vector_service import template_vector_service
+        if template_vector_service.available:
+            count = await template_vector_service.sync_all_templates()
+            logger.info(f"Synced {count} template embeddings to Qdrant on startup")
+        else:
+            logger.info("Template vector service not available — skipping startup sync")
+    except Exception as e:
+        logger.warning(f"Template embedding sync failed on startup (non-fatal): {e}")
+
 
 @app.get("/")
 async def root():

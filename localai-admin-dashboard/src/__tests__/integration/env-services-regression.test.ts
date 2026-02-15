@@ -196,6 +196,27 @@ describe('Docker Compose Environment Variables', () => {
   it('docker-compose.yml must pass ALLOWED_ORIGINS to document-processor', () => {
     expect(composeContent).toContain('ALLOWED_ORIGINS=');
   });
+
+  it('docker-compose.yml must define a qdrant service', () => {
+    expect(composeContent).toMatch(/qdrant:/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Qdrant / Template-RAG Regression Tests
+// Ensures Qdrant is reachable and /health/cors still works after RAG changes
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Qdrant Health Check', () => {
+  it('Qdrant collections endpoint must be reachable', async () => {
+    const QDRANT_URL = 'http://localhost:6333';
+    const response = await fetch(`${QDRANT_URL}/collections`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data).toHaveProperty('result');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,5 +280,45 @@ describe('CORS: Backend Returns CORS Headers', () => {
     const acaoHeader = response.headers.get('access-control-allow-origin');
     expect(acaoHeader).toBeTruthy();
     expect(acaoHeader).toBe('http://localhost:5173');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Regression Tests Workflow: No Skipped Jobs
+// Ensures the production-smoke job is NEVER conditionally skipped.
+// Tests must always run — skipping is forbidden by project prime directive.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CI/CD: Regression Tests Workflow — No Skipped Jobs', () => {
+  let regressionWorkflow: string;
+
+  beforeAll(() => {
+    const workflowPath = resolve(
+      __dirname,
+      '../../../../.github/workflows/regression-tests.yml'
+    );
+    regressionWorkflow = readFileSync(workflowPath, 'utf-8');
+  });
+
+  it('production-smoke job must NOT have a job-level if: condition that skips it', () => {
+    // Extract the production-smoke job block.
+    // A job-level `if:` would appear right after the job key before `runs-on:`.
+    const jobMatch = regressionWorkflow.match(
+      /production-smoke:\s*\n([\s\S]*?)(?=\n  \w[\w-]*:|$)/
+    );
+    expect(jobMatch, 'production-smoke job not found in regression-tests.yml').toBeTruthy();
+
+    const jobBlock = jobMatch![1];
+    // Check for job-level `if:` (indented at job property level, before steps)
+    const stepsStart = jobBlock.indexOf('steps:');
+    const jobConfig = stepsStart >= 0 ? jobBlock.slice(0, stepsStart) : jobBlock;
+
+    const hasJobLevelIf = /^\s{4}if:/m.test(jobConfig);
+    expect(
+      hasJobLevelIf,
+      'production-smoke job has a job-level `if:` condition that can skip the entire job. ' +
+        'Tests must NEVER be skipped — this violates the prime directive. ' +
+        'Remove the job-level `if:` so the job always runs on every trigger.'
+    ).toBe(false);
   });
 });

@@ -158,10 +158,32 @@ export class UnifiedDocumentService {
         return;
       }
 
-      // Get the file from storage
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('documents')
-        .download(document.file_path);
+      // Get the file from storage.
+      // Retry with exponential backoff — managed Supabase storage can return 400
+      // immediately after upload due to propagation delay or CDN caching.
+      let fileData: Blob | null = null;
+      let downloadError: Error | null = null;
+      const maxAttempts = 3;
+      const baseDelayMs = 2000;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const result = await supabase.storage
+          .from('documents')
+          .download(document.file_path);
+
+        if (!result.error && result.data) {
+          fileData = result.data;
+          downloadError = null;
+          break;
+        }
+
+        downloadError = result.error;
+        if (attempt < maxAttempts - 1) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt); // 2s, 4s
+          console.warn(`Storage download attempt ${attempt + 1}/${maxAttempts} failed, retrying in ${delayMs / 1000}s:`, result.error);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
 
       if (downloadError || !fileData) {
         console.error('Failed to download file for analysis:', downloadError);
@@ -817,7 +839,7 @@ export class UnifiedDocumentService {
 
       console.log('Creating document record:', documentData);
       
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from('documents')
         .insert(documentData)
         .select()
@@ -826,14 +848,27 @@ export class UnifiedDocumentService {
       if (error) {
         console.error('Document insert error:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
-        
+
         if (error.code === 'PGRST116' || error.message?.includes('row-level security')) {
           throw new Error('Permission denied - please ensure you are signed in and have permission to upload documents');
         }
-        
+
         // Better error handling for undefined error messages
         const errorMessage = error.message || error.details || error.hint || `Database error (code: ${error.code || 'unknown'})`;
         throw new Error(`Failed to create document record: ${errorMessage}`);
+      }
+
+      // Normalize: production Supabase can return an array [{id, ...}] instead of
+      // a single object {id, ...} despite .single() being called (observed in CI).
+      const data = Array.isArray(rawData) ? rawData[0] : rawData;
+
+      // Validate that the insert returned a valid document with an ID
+      if (!data?.id) {
+        console.error('Document insert returned without ID:', JSON.stringify(rawData, null, 2));
+        throw new Error(
+          'Document was inserted but database did not return a valid ID. ' +
+          'This may indicate an RLS policy issue preventing SELECT after INSERT.'
+        );
       }
 
       // Upload file to storage (with fallback for file system issues)
@@ -924,11 +959,21 @@ export class UnifiedDocumentService {
    * Update document status and metadata
    */
   static async updateDocumentStatus(
-    documentId: string, 
+    documentId: string,
     options: UpdateDocumentStatusOptions
   ): Promise<DocumentRecord> {
     console.log('🔄 UpdateDocumentStatus called:', { documentId, status: options.status, timestamp: new Date().toISOString() });
-    
+
+    // Validate documentId is defined and valid before querying
+    if (!documentId || documentId === 'undefined' || documentId === 'null') {
+      const error = new Error(
+        `Invalid document ID: "${documentId}". Cannot update status to "${options.status}". ` +
+        'This usually means createDocumentRecord did not return a valid ID.'
+      );
+      console.error('❌ Document ID validation failed:', error.message);
+      throw error;
+    }
+
     // Validate status value against allowed enum
     const validStatuses = ['uploaded', 'analyzing', 'processing', 'completed', 'failed'];
     if (!validStatuses.includes(options.status)) {
@@ -993,12 +1038,15 @@ export class UnifiedDocumentService {
         timestamp: new Date().toISOString()
       });
 
-      const { data, error } = await supabase
+      const { data: rawUpdateData, error } = await supabase
         .from('documents')
         .update(updateData)
         .eq('id', documentId)
         .select()
         .single();
+
+      // Normalize: .single() may return array in some Supabase environments
+      const data = Array.isArray(rawUpdateData) ? rawUpdateData[0] : rawUpdateData;
 
       console.log('🔄 Database update response:', {
         documentId,
@@ -1009,9 +1057,9 @@ export class UnifiedDocumentService {
       });
 
       if (error) {
-        console.error('❌ Database update failed:', { 
-          error: error.message, 
-          code: error.code, 
+        console.error('❌ Database update failed:', {
+          error: error.message,
+          code: error.code,
           details: error.details,
           hint: error.hint,
           updateData 
