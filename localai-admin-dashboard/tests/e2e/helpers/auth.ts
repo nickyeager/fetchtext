@@ -172,7 +172,9 @@ export function assertNoCriticalErrors(errors: ConsoleEntry[]) {
     'Invalid Refresh Token',
     'net::ERR_ABORTED',
     'extended attributes',
-    'Failed to fetch',  // Browser-aborted fetch during navigation (not a real auth/CORS failure)
+    'Failed to fetch',            // Browser-aborted fetch during navigation (not a real auth/CORS failure)
+    'authentication expired',     // Supabase getUser() aborted by navigation → interpreted as expired session
+    'AuthRetryableFetchError',    // Supabase retry wrapper around aborted fetch
   ];
 
   // Patterns that indicate a critical issue (matched case-insensitively)
