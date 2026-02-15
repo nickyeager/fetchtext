@@ -342,6 +342,14 @@ async def _process_with_auto_template(
                 if saved.data:
                     template_id = saved.data[0]['id']
 
+                    # Index template embedding for vector search (fire-and-forget)
+                    try:
+                        from app.services.template_vector_service import template_vector_service
+                        if template_vector_service.available:
+                            await template_vector_service.index_template(saved.data[0])
+                    except Exception as embed_err:
+                        logger.warning(f"Failed to index template embedding: {embed_err}")
+
                     return {
                         'template_id': template_id,
                         'template_name': template_name,

@@ -36,6 +36,7 @@ from ..services.smart_field_extractor import smart_field_extractor
 from ..services.two_pass_extractor import two_pass_extractor
 from ..services.template_matching_service import template_matching_service
 from ..services.template_generation_service import template_generation_service
+from ..services.embedding_service import embedding_service
 from ..config.database import db_config
 
 router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
@@ -477,78 +478,75 @@ async def decide_template_strategy(
             except Exception as e:
                 logger.warning(f"Failed to extract document text for validation: {str(e)}")
 
-        # 3) Test extraction quality for top suggestions (2-way validation)
+        # 3) Vector-enhanced template matching (Template-RAG)
+        # Try vector search first for fast matching, fall back to multi-factor scoring
+        if document_text:
+            try:
+                from app.services.template_vector_service import template_vector_service
+                if template_vector_service.available:
+                    doc_embedding = await embedding_service.generate_single_embedding(document_text[:2000])
+                    if doc_embedding:
+                        primary_type = (evaluation.get('type_evaluation') or {}).get('primary_type')
+                        vector_suggestions = await template_vector_service.search_similar_templates(
+                            document_embedding=doc_embedding,
+                            limit=5,
+                            category_filter=primary_type,
+                        )
+                        if vector_suggestions:
+                            logger.info(f"Vector search returned {len(vector_suggestions)} matches — replacing multi-factor results")
+                            suggestions = vector_suggestions
+            except Exception as e:
+                logger.warning(f"Vector search failed, using multi-factor scoring: {e}")
+
+        # 4) Test extraction quality for top 1 suggestion only (not top 3)
         if suggestions and document_text:
-            logger.info(f"Testing extraction quality for top {min(len(suggestions), 3)} template suggestions")
-
-            # Test top 3 suggestions to avoid performance issues
-            for i, suggestion in enumerate(suggestions[:3]):
+            best = suggestions[0]
+            template_id = best.get('template_id')
+            if template_id and db_config.is_configured and db_config.client:
                 try:
-                    # Fetch full template with smart_variables from database
-                    template_id = suggestion.get('template_id')
-                    if not template_id:
-                        logger.warning(f"Suggestion {i} missing template_id, skipping extraction test")
-                        continue
+                    template_result = db_config.client.table('smart_templates').select(
+                        'id, name, smart_variables, category'
+                    ).eq('id', template_id).single().execute()
 
-                    # Query database for full template
-                    if db_config.is_configured and db_config.client:
-                        template_result = db_config.client.table('smart_templates').select(
-                            'id, name, smart_variables, category'
-                        ).eq('id', template_id).single().execute()
+                    if template_result.data:
+                        smart_variables = template_result.data.get('smart_variables', [])
+                        if smart_variables:
+                            test_result = await smart_field_extractor.test_template_extraction(
+                                content=document_text,
+                                template_variables=smart_variables,
+                                confidence_threshold=0.6,
+                                provider="azure",
+                                organization_id=organization_id,
+                            )
+                            best['extraction_quality'] = test_result.get('field_success_rate', 0.0)
+                            best['avg_field_confidence'] = test_result.get('avg_confidence', 0.0)
+                            best['extractable_fields'] = test_result.get('extractable_count', 0)
+                            best['total_fields'] = test_result.get('total_fields', 0)
+                            best['failed_fields'] = test_result.get('failed_fields', [])
+                            best['extraction_test_passed'] = test_result.get('test_passed', False)
+                            best['combined_score'] = best.get('match_score', 0.0) * best['extraction_quality']
 
-                        if template_result.data:
-                            template = template_result.data
-                            smart_variables = template.get('smart_variables', [])
-
-                            if smart_variables:
-                                # Perform REAL extraction test
-                                test_result = await smart_field_extractor.test_template_extraction(
-                                    content=document_text,
-                                    template_variables=smart_variables,
-                                    confidence_threshold=0.6,
-                                    provider="azure",  # Use configured AI provider
-                                    organization_id=organization_id
-                                )
-
-                                # Add extraction metrics to suggestion
-                                suggestion['extraction_quality'] = test_result.get('field_success_rate', 0.0)
-                                suggestion['avg_field_confidence'] = test_result.get('avg_confidence', 0.0)
-                                suggestion['extractable_fields'] = test_result.get('extractable_count', 0)
-                                suggestion['total_fields'] = test_result.get('total_fields', 0)
-                                suggestion['failed_fields'] = test_result.get('failed_fields', [])
-                                suggestion['extraction_test_passed'] = test_result.get('test_passed', False)
-
-                                # Calculate combined score (match_score * extraction_quality)
-                                suggestion['combined_score'] = suggestion.get('match_score', 0.0) * suggestion['extraction_quality']
-
-                                logger.info(
-                                    f"Template '{suggestion.get('template_name')}': "
-                                    f"match_score={suggestion.get('match_score', 0):.2f}, "
-                                    f"extraction_quality={suggestion['extraction_quality']:.2f}, "
-                                    f"combined_score={suggestion['combined_score']:.2f}"
-                                )
-                            else:
-                                logger.warning(f"Template {template_id} has no smart_variables, skipping extraction test")
-                                suggestion['extraction_quality'] = 0.0
-                                suggestion['combined_score'] = 0.0
+                            logger.info(
+                                f"Template '{best.get('template_name')}': "
+                                f"match_score={best.get('match_score', 0):.2f}, "
+                                f"extraction_quality={best['extraction_quality']:.2f}, "
+                                f"combined_score={best['combined_score']:.2f}"
+                            )
                         else:
-                            logger.warning(f"Template {template_id} not found in database")
-                            suggestion['extraction_quality'] = 0.0
-                            suggestion['combined_score'] = 0.0
+                            logger.warning(f"Template {template_id} has no smart_variables")
+                            best['extraction_quality'] = 0.0
+                            best['combined_score'] = 0.0
                     else:
-                        logger.warning("Database not configured, skipping extraction validation")
-                        suggestion['extraction_quality'] = suggestion.get('match_score', 0.0)  # Fallback to match_score
-                        suggestion['combined_score'] = suggestion.get('match_score', 0.0)
-
+                        logger.warning(f"Template {template_id} not found in database")
+                        best['extraction_quality'] = 0.0
+                        best['combined_score'] = 0.0
                 except Exception as e:
-                    logger.error(f"Failed to test extraction for suggestion {i}: {str(e)}", exc_info=True)
-                    suggestion['extraction_quality'] = 0.0
-                    suggestion['combined_score'] = 0.0
-                    suggestion['extraction_error'] = str(e)
-
-            # Re-sort suggestions by combined_score (match_score * extraction_quality)
-            suggestions.sort(key=lambda x: x.get('combined_score', 0), reverse=True)
-            logger.info("Re-sorted suggestions by combined score")
+                    logger.error(f"Extraction test failed for top match: {e}")
+                    best['extraction_quality'] = best.get('match_score', 0.0)
+                    best['combined_score'] = best.get('match_score', 0.0)
+            elif not db_config.is_configured:
+                best['extraction_quality'] = best.get('match_score', 0.0)
+                best['combined_score'] = best.get('match_score', 0.0)
 
         # 4) Apply 2-way validation thresholds for decision
         chosen = None
@@ -659,6 +657,8 @@ async def decide_template_strategy(
                     decision['generation_metadata']['saved_to_database'] = True
                     decision['generation_metadata']['template_id'] = saved_template['id']
                     decision['template']['id'] = saved_template['id']
+                    # Index template embedding for vector search
+                    await _index_template_embedding(saved_template)
                 except Exception as e:
                     logger.error(f"Failed to auto-save generated template: {str(e)}")
                     decision['generation_metadata']['saved_to_database'] = False
@@ -1116,19 +1116,31 @@ async def save_generated_template(
         
         # Save to database
         saved_template = await _save_template_to_database(template, template_name, category)
-        
+        # Index template embedding for vector search
+        await _index_template_embedding(saved_template)
+
         return JSONResponse(content={
             'success': True,
             'template_id': saved_template['id'],
             'message': f'Template "{template_name}" saved successfully',
             'saved_template': saved_template
         })
-        
+
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
     except Exception as e:
         logger.error(f"Failed to save generated template: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
+
+async def _index_template_embedding(template: Dict[str, Any]) -> None:
+    """Fire-and-forget: index a saved template's embedding in Qdrant."""
+    try:
+        from app.services.template_vector_service import template_vector_service
+        if template_vector_service.available:
+            await template_vector_service.index_template(template)
+    except Exception as e:
+        logger.warning(f"Failed to index template embedding (non-fatal): {e}")
+
 
 async def _test_template_extraction(document_path: Path, template: Dict[str, Any]) -> Dict[str, Any]:
     """Test template extraction on the source document"""

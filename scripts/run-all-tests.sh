@@ -43,7 +43,7 @@ echo "--------------------------------------------"
 cd /Users/nickyeager/Code/agents/local-ai-packaged/localai-admin-dashboard
 
 export TEST_USER_EMAIL="admin@fetchtext.local"
-export TEST_USER_PASSWORD="testpass123"
+export TEST_USER_PASSWORD="AdminPass2024!"
 
 # Run auth and settings tests
 if npx playwright test tests/e2e/auth/00-auth-smoke.pw.spec.ts tests/e2e/settings/org-llm-config.pw.spec.ts --reporter=line 2>&1 | tee /tmp/e2e-test-results.txt; then
