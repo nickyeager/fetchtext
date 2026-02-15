@@ -68,7 +68,7 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
 
     // Login via UI (more reliable than stored state)
     const email = process.env.TEST_USER_EMAIL || 'admin@fetchtext.local';
-    const password = process.env.TEST_USER_PASSWORD || 'TestUser2024';
+    const password = process.env.TEST_USER_PASSWORD || 'AdminPass2024!';
 
     console.log('[Test] Performing UI login...');
     await page.goto('/');
