@@ -63,6 +63,7 @@ jobs:
           SUPABASE_ANON_SECRET: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_SECRET: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           AZURE_OPENAI_KEY_SECRET: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          SENDGRID_KEY_SECRET: ${{ secrets.SENDGRID_API_KEY }}
         run: |
           az containerapp secret set \
             --name "$AZURE_CONTAINERAPP_NAME" \
@@ -71,7 +72,8 @@ jobs:
               supabase-url="$SUPABASE_URL_SECRET" \
               supabase-anon-key="$SUPABASE_ANON_SECRET" \
               supabase-service-role="$SUPABASE_SERVICE_ROLE_SECRET" \
-              azure-openai-key="$AZURE_OPENAI_KEY_SECRET"
+              azure-openai-key="$AZURE_OPENAI_KEY_SECRET" \
+              sendgrid-api-key="$SENDGRID_KEY_SECRET"
 
       - name: Update Container App
         run: |
@@ -84,6 +86,10 @@ jobs:
               SUPABASE_URL=secretref:supabase-url \
               SUPABASE_ANON_KEY=secretref:supabase-anon-key \
               SERVICE_ROLE_KEY=secretref:supabase-service-role \
+              SENDGRID_API_KEY=secretref:sendgrid-api-key \
+              SENDGRID_FROM_EMAIL=nick@fetchtext.io \
+              SENDGRID_FROM_NAME=FetchText \
+              APP_URL=https://fetchtext.io \
               ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io"
 
       - name: Wait for deployment to stabilize

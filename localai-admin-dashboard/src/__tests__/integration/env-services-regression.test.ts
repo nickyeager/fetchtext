@@ -271,15 +271,24 @@ describe('CORS: Backend /health/cors Endpoint', () => {
 
 describe('CORS: Backend Returns CORS Headers', () => {
   it('backend must return Access-Control-Allow-Origin for allowed origin', async () => {
+    // Determine correct origin based on backend URL:
+    // - Production backends only allow fetchtext.io origins
+    // - Local backends allow localhost origins
+    const isProduction = BACKEND_URL.includes('azurecontainerapps.io') ||
+      BACKEND_URL.includes('fetchtext.io');
+    const testOrigin = isProduction
+      ? 'https://fetchtext.io'
+      : 'http://localhost:5173';
+
     const response = await fetch(`${BACKEND_URL}/health`, {
-      headers: { Origin: 'http://localhost:5173' },
+      headers: { Origin: testOrigin },
       signal: AbortSignal.timeout(10000),
     });
     expect(response.ok).toBe(true);
 
     const acaoHeader = response.headers.get('access-control-allow-origin');
     expect(acaoHeader).toBeTruthy();
-    expect(acaoHeader).toBe('http://localhost:5173');
+    expect(acaoHeader).toBe(testOrigin);
   });
 });
 
