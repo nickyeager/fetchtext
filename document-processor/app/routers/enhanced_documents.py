@@ -7,7 +7,6 @@ import re
 import logging
 import sys
 import os
-import aiohttp
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
@@ -1246,26 +1245,21 @@ def _validate_extraction_results(
     return validation_results
 
 async def _save_template_to_database(
-    template: Dict[str, Any], 
-    template_name: str, 
+    template: Dict[str, Any],
+    template_name: str,
     category: str
 ) -> Dict[str, Any]:
-    """Save generated template to the Supabase database"""
-    
-    # Get Supabase connection details from environment
-    supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
-    supabase_key = os.getenv('ANON_KEY', '')
-    
-    if not supabase_url or not supabase_key:
-        raise ValueError("Supabase credentials not configured")
-    
-    headers = {
-        'apikey': supabase_key,
-        'Authorization': f'Bearer {supabase_key}',
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-    }
-    
+    """Save generated template to the Supabase database.
+
+    Uses ``db_config.client`` (service_role key) so that the save works
+    consistently across local Docker and production Azure environments.
+    Auto-generated templates are saved as ``is_public=True`` so they are
+    discoverable by the matching service without user context.
+    """
+
+    if not db_config.is_configured or not db_config.client:
+        raise ValueError("Supabase database not configured — cannot save template")
+
     # Prepare template data for database
     template_data = {
         'name': template_name,
@@ -1275,7 +1269,7 @@ async def _save_template_to_database(
         'template_type': 'smart',
         'smart_variables': template.get('variables', []),
         'tags': ['ai-generated', category],
-        'is_public': False,
+        'is_public': True,  # Auto-generated templates must be public for matching
         'extraction_rules': [
             {
                 'variable_id': var.get('id', var.get('name')),
@@ -1293,24 +1287,21 @@ async def _save_template_to_database(
             'generation_method': 'automatic'
         }
     }
-    
+
     try:
-        # Insert template into smart_templates table
-        url = f"{supabase_url}/rest/v1/smart_templates"
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=template_data, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status >= 400:
-                    text = await resp.text()
-                    raise aiohttp.ClientResponseError(request_info=resp.request_info, history=resp.history, status=resp.status, message=text)
-                saved_templates = await resp.json()
-        
-        if not saved_templates or len(saved_templates) == 0:
-            raise LookupError("No template returned from database")
-        
-        saved_template = saved_templates[0]
+        result = db_config.client.table('smart_templates').insert(template_data).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise LookupError("No template returned from database after insert")
+
+        saved_template = result.data[0]
         logger.info(f"Successfully saved template with ID: {saved_template['id']}")
+
+        # Invalidate template cache so the matching service picks up the new template
+        await template_matching_service.clear_cache()
+
         return saved_template
-        
+
     except Exception as e:
         logger.error(f"Database save failed: {str(e)}")
         raise RuntimeError(f"Failed to save template to database: {str(e)}")
