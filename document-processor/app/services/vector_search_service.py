@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import uuid
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
@@ -39,22 +40,30 @@ logger = logging.getLogger(__name__)
 class VectorSearchService:
     """Enhanced vector search service with hybrid capabilities using Qdrant"""
     
-    def __init__(self, 
-                 host: str = "qdrant", 
-                 port: int = 6333,
+    def __init__(self,
+                 host: str = None,
+                 port: int = None,
                  collection_name: str = "documents"):
-        
-        self.host = host
-        self.port = port
+
+        self.host = host or os.getenv("QDRANT_HOST", "qdrant")
+        self.port = port or int(os.getenv("QDRANT_PORT", "6333"))
         self.collection_name = collection_name
         self.embedding_service = EmbeddingService()
-        
+
         # Initialize Qdrant client
         if QDRANT_AVAILABLE:
             try:
-                self.client = QdrantClient(host=host, port=port)
+                api_key = os.getenv("QDRANT_API_KEY")
+                if self.host.startswith("http") or "." in self.host:
+                    # External Qdrant (production via Caddy/HTTPS)
+                    url = self.host if self.host.startswith("http") else f"https://{self.host}"
+                    self.client = QdrantClient(url=url, api_key=api_key, timeout=10)
+                    logger.info(f"Qdrant client initialized at {url} (external)")
+                else:
+                    # Docker internal (local dev)
+                    self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, timeout=10)
+                    logger.info(f"Qdrant client initialized at {self.host}:{self.port} (docker)")
                 self.available = True
-                logger.info(f"Qdrant client initialized successfully at {host}:{port}")
             except Exception as e:
                 logger.error(f"Failed to initialize Qdrant client: {e}")
                 self.client = None

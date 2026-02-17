@@ -99,6 +99,20 @@ jobs:
           fi
           ENDSSH
 
+      - name: Sync env secrets to VM
+        env:
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          QDRANT_HOSTNAME_VALUE: qdrant.fetchtext.io
+        run: |
+          ssh -i "$SSH_KEY_PATH" \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking="$SSH_STRICT_MODE" \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_PUBLIC_IP }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             grep -q '^QDRANT_API_KEY=' .env 2>/dev/null && sed -i 's|^QDRANT_API_KEY=.*|QDRANT_API_KEY=${QDRANT_API_KEY}|' .env || echo 'QDRANT_API_KEY=${QDRANT_API_KEY}' >> .env && \
+             grep -q '^QDRANT_HOSTNAME=' .env 2>/dev/null && sed -i 's|^QDRANT_HOSTNAME=.*|QDRANT_HOSTNAME=${QDRANT_HOSTNAME_VALUE}|' .env || echo 'QDRANT_HOSTNAME=${QDRANT_HOSTNAME_VALUE}' >> .env && \
+             echo 'Qdrant env vars synced to .env'"
+
       - name: Deploy to VM
         run: |
           ssh -i "$SSH_KEY_PATH" \

@@ -103,6 +103,8 @@ services:
       - 6334/tcp
     volumes:
       - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
 
   neo4j:
     image: neo4j:latest
@@ -144,6 +146,7 @@ services:
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
       - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
       - DOCUMENT_PROCESSOR_HOSTNAME=${DOCUMENT_PROCESSOR_HOSTNAME:-":8009"}
+      - QDRANT_HOSTNAME=${QDRANT_HOSTNAME:-":8010"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -414,6 +417,10 @@ services:
       - QUICKBOOKS_CLIENT_ID=${QUICKBOOKS_CLIENT_ID}
       - QUICKBOOKS_CLIENT_SECRET=${QUICKBOOKS_CLIENT_SECRET}
       - QUICKBOOKS_SANDBOX=${QUICKBOOKS_SANDBOX:-true}
+      # Qdrant Vector Database
+      - QDRANT_HOST=${QDRANT_HOST:-qdrant}
+      - QDRANT_PORT=${QDRANT_PORT:-6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s
