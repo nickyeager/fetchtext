@@ -45,6 +45,11 @@
     reverse_proxy document-processor:8090
 }
 
+# Qdrant Vector Database
+{$QDRANT_HOSTNAME} {
+    reverse_proxy qdrant:6333
+}
+
 # # SearXNG
 # {$SEARXNG_HOSTNAME} {
 #     encode zstd gzip

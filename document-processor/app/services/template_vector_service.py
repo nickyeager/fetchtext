@@ -48,19 +48,28 @@ class TemplateVectorService:
 
         host = os.getenv("QDRANT_HOST", "qdrant")
         port = int(os.getenv("QDRANT_PORT", "6333"))
+        api_key = os.getenv("QDRANT_API_KEY")
 
         if not QDRANT_AVAILABLE:
             logger.warning("qdrant-client not installed — template vector search disabled")
             return
 
         try:
-            self.client = QdrantClient(host=host, port=port, timeout=10)
+            if host.startswith("http") or "." in host:
+                # External Qdrant (production via Caddy/HTTPS)
+                url = host if host.startswith("http") else f"https://{host}"
+                self.client = QdrantClient(url=url, api_key=api_key, timeout=10)
+                conn_label = url
+            else:
+                # Docker internal (local dev)
+                self.client = QdrantClient(host=host, port=port, api_key=api_key, timeout=10)
+                conn_label = f"{host}:{port}"
             # Quick connectivity check
             self.client.get_collections()
             self.available = True
-            logger.info(f"TemplateVectorService connected to Qdrant at {host}:{port}")
+            logger.info(f"TemplateVectorService connected to Qdrant at {conn_label}")
         except Exception as e:
-            logger.warning(f"Qdrant not reachable at {host}:{port} — template vector search disabled: {e}")
+            logger.warning(f"Qdrant not reachable at {host} — template vector search disabled: {e}")
 
     # ------------------------------------------------------------------
     # Collection management
