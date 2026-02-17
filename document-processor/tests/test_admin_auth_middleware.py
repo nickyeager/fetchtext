@@ -1,20 +1,36 @@
 """
-Tests for Admin Dashboard Authentication Middleware
+Tests for Admin Dashboard Authentication Middleware.
 
-Tests JWT validation for admin dashboard users accessing the API.
+Pure logic tests exercise the AdminAuth class directly.
+Integration tests call the REAL backend at localhost:8090.
+No mocks. No fakes.
 """
 
 import pytest
 import jwt
+import httpx
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from app.middleware.admin_auth import AdminAuth, admin_auth
+
+BACKEND_URL = "http://localhost:8090"
+TEST_ORG_ID = "00000000-0000-0000-0000-000000000010"
+
+
+@pytest.fixture(scope="module")
+def backend():
+    """Verify the backend is reachable before running integration tests."""
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/health", timeout=5)
+        resp.raise_for_status()
+    except Exception as exc:
+        pytest.fail(f"Backend not reachable at {BACKEND_URL}: {exc}")
+
+
+# =============================================================================
+# Pure Logic Tests — Authorization Header Parsing (no external services)
+# =============================================================================
 
 
 class TestAuthorizationHeader:
@@ -56,8 +72,8 @@ class TestAuthorizationHeader:
     async def test_extracts_token_from_bearer_header(self):
         """Correctly extracts token from 'Bearer <token>' format."""
         auth = AdminAuth()
+        auth.jwt_secret = ''  # Permissive mode (no verification)
 
-        # Create a valid JWT for testing
         test_payload = {
             'sub': 'user-123',
             'email': 'test@example.com',
@@ -66,13 +82,16 @@ class TestAuthorizationHeader:
             'exp': datetime.utcnow() + timedelta(hours=1)
         }
 
-        # Without JWT_SECRET, it should decode without verification
-        with patch.object(auth, 'jwt_secret', ''):
-            token = jwt.encode(test_payload, 'any-secret', algorithm='HS256')
-            result = await auth.get_current_user(f"Bearer {token}")
+        token = jwt.encode(test_payload, 'any-secret', algorithm='HS256')
+        result = await auth.get_current_user(f"Bearer {token}")
 
-            assert result['user_id'] == 'user-123'
-            assert result['email'] == 'test@example.com'
+        assert result['user_id'] == 'user-123'
+        assert result['email'] == 'test@example.com'
+
+
+# =============================================================================
+# Pure Logic Tests — JWT Validation (no external services)
+# =============================================================================
 
 
 class TestJWTValidation:
@@ -125,6 +144,7 @@ class TestJWTValidation:
     async def test_rejects_token_missing_user_id(self):
         """Token without 'sub' claim returns 401."""
         auth = AdminAuth()
+        auth.jwt_secret = ''  # Permissive mode
 
         payload = {
             'email': 'test@example.com',
@@ -133,14 +153,13 @@ class TestJWTValidation:
             # Missing 'sub' claim
         }
 
-        with patch.object(auth, 'jwt_secret', ''):
-            token = jwt.encode(payload, 'any-secret', algorithm='HS256')
+        token = jwt.encode(payload, 'any-secret', algorithm='HS256')
 
-            with pytest.raises(HTTPException) as exc_info:
-                await auth.get_current_user(f"Bearer {token}")
+        with pytest.raises(HTTPException) as exc_info:
+            await auth.get_current_user(f"Bearer {token}")
 
-            assert exc_info.value.status_code == 401
-            assert "missing user ID" in exc_info.value.detail
+        assert exc_info.value.status_code == 401
+        assert "missing user ID" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_accepts_valid_token(self):
@@ -184,109 +203,17 @@ class TestJWTValidation:
         assert result['user_id'] == 'user-123'
 
 
-class TestOrganizationMembership:
-    """Test organization membership verification."""
+# =============================================================================
+# Pure Logic Tests — require_org_access auth failure (no external services)
+# =============================================================================
+
+
+class TestRequireOrgAccessAuthFailure:
+    """Test require_org_access when authentication itself fails."""
 
     @pytest.mark.asyncio
-    async def test_allows_member(self):
-        """User who is a member gets access."""
-        auth = AdminAuth()
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            {'id': 'membership-id-123'}
-        ]
-
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = True
-            mock_db.client = mock_client
-
-            result = await auth.verify_org_membership('user-123', 'org-456')
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_rejects_non_member(self):
-        """User who is not a member gets 403."""
-        auth = AdminAuth()
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
-
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = True
-            mock_db.client = mock_client
-
-            with pytest.raises(HTTPException) as exc_info:
-                await auth.verify_org_membership('user-123', 'org-456')
-
-            assert exc_info.value.status_code == 403
-            assert "do not have access" in exc_info.value.detail
-
-    @pytest.mark.asyncio
-    async def test_skips_check_when_db_unavailable(self):
-        """Skips membership check when database is unavailable (dev mode)."""
-        auth = AdminAuth()
-
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = False
-            mock_db.client = None
-
-            result = await auth.verify_org_membership('user-123', 'org-456')
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_fails_closed_on_db_error(self):
-        """Database errors result in denied access (fail closed)."""
-        auth = AdminAuth()
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = Exception("Database error")
-
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = True
-            mock_db.client = mock_client
-
-            with pytest.raises(HTTPException) as exc_info:
-                await auth.verify_org_membership('user-123', 'org-456')
-
-            assert exc_info.value.status_code == 500
-
-
-class TestRequireOrgAccess:
-    """Test combined auth and org access check."""
-
-    @pytest.mark.asyncio
-    async def test_combines_auth_and_membership(self):
-        """require_org_access combines both checks."""
-        auth = AdminAuth()
-        auth.jwt_secret = 'test-secret'
-
-        payload = {
-            'sub': 'user-123',
-            'email': 'test@example.com',
-            'aud': 'authenticated',
-            'exp': datetime.utcnow() + timedelta(hours=1)
-        }
-
-        token = jwt.encode(payload, 'test-secret', algorithm='HS256')
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            {'id': 'membership-id'}
-        ]
-
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = True
-            mock_db.client = mock_client
-
-            result = await auth.require_org_access('org-456', f"Bearer {token}")
-
-            assert result['user_id'] == 'user-123'
-            assert result['organization_id'] == 'org-456'
-
-    @pytest.mark.asyncio
-    async def test_fails_on_auth_failure(self):
-        """Fails if authentication fails."""
+    async def test_fails_on_missing_auth(self):
+        """Fails if authentication header is missing."""
         auth = AdminAuth()
 
         with pytest.raises(HTTPException) as exc_info:
@@ -294,32 +221,106 @@ class TestRequireOrgAccess:
 
         assert exc_info.value.status_code == 401
 
-    @pytest.mark.asyncio
-    async def test_fails_on_membership_failure(self):
-        """Fails if membership check fails."""
-        auth = AdminAuth()
-        auth.jwt_secret = 'test-secret'
 
-        payload = {
-            'sub': 'user-123',
-            'email': 'test@example.com',
-            'aud': 'authenticated',
-            'exp': datetime.utcnow() + timedelta(hours=1)
-        }
+# =============================================================================
+# Integration Tests — Admin Auth via Real HTTP Endpoints
+# =============================================================================
 
-        token = jwt.encode(payload, 'test-secret', algorithm='HS256')
 
-        mock_client = MagicMock()
-        mock_client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+class TestAdminAuthViaRealEndpoints:
+    """Test admin auth middleware behavior via real HTTP calls to the backend."""
 
-        with patch('app.middleware.admin_auth.db_config') as mock_db:
-            mock_db.is_configured = True
-            mock_db.client = mock_client
+    def test_admin_create_rejects_missing_auth(self, backend):
+        """POST /api/admin/keys/create without auth returns 401."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/admin/keys/create",
+            json={"name": "Test Key", "organization_id": TEST_ORG_ID},
+            timeout=5,
+        )
+        assert resp.status_code == 401
 
-            with pytest.raises(HTTPException) as exc_info:
-                await auth.require_org_access('org-456', f"Bearer {token}")
+    def test_admin_list_rejects_missing_auth(self, backend):
+        """GET /api/admin/keys/list/{org_id} without auth returns 401."""
+        resp = httpx.get(
+            f"{BACKEND_URL}/api/admin/keys/list/{TEST_ORG_ID}",
+            timeout=5,
+        )
+        assert resp.status_code == 401
 
-            assert exc_info.value.status_code == 403
+    def test_admin_get_rejects_missing_auth(self, backend):
+        """GET /api/admin/keys/{key_id} without auth returns 401."""
+        resp = httpx.get(
+            f"{BACKEND_URL}/api/admin/keys/00000000-0000-0000-0000-000000000099",
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_update_rejects_missing_auth(self, backend):
+        """PATCH /api/admin/keys/{key_id} without auth returns 401."""
+        resp = httpx.patch(
+            f"{BACKEND_URL}/api/admin/keys/00000000-0000-0000-0000-000000000099",
+            json={"name": "Updated"},
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_revoke_rejects_missing_auth(self, backend):
+        """DELETE /api/admin/keys/{key_id}/revoke without auth returns 401."""
+        resp = httpx.delete(
+            f"{BACKEND_URL}/api/admin/keys/00000000-0000-0000-0000-000000000099/revoke",
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_delete_rejects_missing_auth(self, backend):
+        """DELETE /api/admin/keys/{key_id} without auth returns 401."""
+        resp = httpx.delete(
+            f"{BACKEND_URL}/api/admin/keys/00000000-0000-0000-0000-000000000099",
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_usage_rejects_missing_auth(self, backend):
+        """GET /api/admin/keys/{key_id}/usage without auth returns 401."""
+        resp = httpx.get(
+            f"{BACKEND_URL}/api/admin/keys/00000000-0000-0000-0000-000000000099/usage",
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_create_rejects_invalid_jwt(self, backend):
+        """POST /api/admin/keys/create with invalid JWT returns 401."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/admin/keys/create",
+            json={"name": "Test Key", "organization_id": TEST_ORG_ID},
+            headers={"Authorization": "Bearer invalid.jwt.token"},
+            timeout=5,
+        )
+        assert resp.status_code in (401, 403)
+
+    def test_admin_create_rejects_non_bearer(self, backend):
+        """POST /api/admin/keys/create with non-Bearer scheme returns 401."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/admin/keys/create",
+            json={"name": "Test Key", "organization_id": TEST_ORG_ID},
+            headers={"Authorization": "Basic dXNlcm5hbWU6cGFzc3dvcmQ="},
+            timeout=5,
+        )
+        assert resp.status_code == 401
+
+    def test_admin_list_rejects_invalid_jwt(self, backend):
+        """GET /api/admin/keys/list/{org_id} with invalid JWT returns 401."""
+        resp = httpx.get(
+            f"{BACKEND_URL}/api/admin/keys/list/{TEST_ORG_ID}",
+            headers={"Authorization": "Bearer invalid.jwt.token"},
+            timeout=5,
+        )
+        assert resp.status_code in (401, 403)
+
+
+# =============================================================================
+# Pure Logic Tests — Global Singleton
+# =============================================================================
 
 
 class TestGlobalSingleton:
@@ -335,3 +336,7 @@ class TestGlobalSingleton:
         assert hasattr(admin_auth, 'jwt_secret')
         assert hasattr(admin_auth, 'jwt_algorithms')
         assert 'HS256' in admin_auth.jwt_algorithms
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   FileText,
@@ -81,6 +81,11 @@ export function StageFileBrowser({
   const [processingFile, setProcessingFile] = useState<string | null>(null)
   const [processingBatch, setProcessingBatch] = useState(false)
 
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
+
   const filterParam =
     typeFilter === 'all' ? undefined : typeFilter === 'documents' ? 'documents' : 'data'
 
@@ -134,7 +139,7 @@ export function StageFileBrowser({
           error instanceof Error ? error.message : 'Unknown error',
       })
     } finally {
-      setProcessingFile(null)
+      if (mountedRef.current) setProcessingFile(null)
     }
   }
 
@@ -162,7 +167,7 @@ export function StageFileBrowser({
           error instanceof Error ? error.message : 'Unknown error',
       })
     } finally {
-      setProcessingBatch(false)
+      if (mountedRef.current) setProcessingBatch(false)
     }
   }
 

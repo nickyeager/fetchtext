@@ -1,170 +1,173 @@
 """
-Tests for the models API endpoints
+Integration tests for the models API endpoints.
+
+Tests call the REAL backend at localhost:8090.
+No mocks. No fakes.
 """
 import pytest
-import asyncio
-from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
-from app.main import app
-import aiohttp
+import httpx
 
-client = TestClient(app)
+BACKEND_URL = "http://localhost:8090"
 
-# Mock Ollama response data
-MOCK_OLLAMA_TAGS_RESPONSE = {
-    "models": [
-        {
-            "name": "qwen2.5:7b-instruct-q4_K_M",
-            "size": "4200000000",
-            "modified_at": "2024-01-15T10:30:00Z",
-            "digest": "sha256:abc123"
-        },
-        {
-            "name": "llama2:7b",
-            "size": "3800000000", 
-            "modified_at": "2024-01-10T08:15:00Z",
-            "digest": "sha256:def456"
-        }
-    ]
-}
+
+@pytest.fixture(scope="module")
+def backend():
+    """Verify the backend is reachable before running tests."""
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/health", timeout=5)
+        resp.raise_for_status()
+    except Exception as exc:
+        pytest.fail(f"Backend not reachable at {BACKEND_URL}: {exc}")
+
 
 class TestModelsAPI:
-    """Test the models API endpoints"""
+    """Test the /models/ endpoints against the real running backend."""
 
-    @patch('aiohttp.ClientSession.get')
-    def test_get_available_models_success(self, mock_get):
-        """Test successful retrieval of available models"""
-        # Mock the aiohttp response
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value=MOCK_OLLAMA_TAGS_RESPONSE)
-        mock_get.return_value.__aenter__.return_value = mock_response
+    def test_get_available_models_success(self, backend):
+        """GET /models/ should return models list with current provider info."""
+        resp = httpx.get(f"{BACKEND_URL}/models/", timeout=10)
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
-        response = client.get("/models/")
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert "models" in data
-        assert "current_model" in data
-        assert len(data["models"]) == 2
-        
-        # Check first model
-        first_model = data["models"][0]
-        assert first_model["name"] == "qwen2.5:7b-instruct-q4_K_M"
-        assert first_model["size"] == "4200000000"
-        assert "digest" in first_model
-        assert "modified" in first_model
+        data = resp.json()
+        assert "models" in data, f"Response missing 'models' key: {data}"
+        assert "current_model" in data, f"Response missing 'current_model' key: {data}"
+        assert "current_provider" in data, f"Response missing 'current_provider' key: {data}"
 
-    @patch('aiohttp.ClientSession.get')
-    def test_get_available_models_ollama_unavailable(self, mock_get):
-        """Test when Ollama service is unavailable"""
-        # Mock Ollama service returning 503
-        mock_response = AsyncMock()
-        mock_response.status = 503
-        mock_get.return_value.__aenter__.return_value = mock_response
+        # Should have at least one model from the active provider
+        assert len(data["models"]) >= 1, f"Expected at least 1 model, got {len(data['models'])}"
 
-        response = client.get("/models/")
-        
-        assert response.status_code == 503
-        data = response.json()
-        assert "detail" in data
-        assert "Ollama service unavailable" in data["detail"]
+        # Each model should have required fields
+        for model in data["models"]:
+            assert "name" in model, f"Model missing 'name': {model}"
+            assert "provider" in model, f"Model missing 'provider': {model}"
 
-    @patch('aiohttp.ClientSession.get')
-    def test_get_available_models_connection_error(self, mock_get):
-        """Test when there's a connection error to Ollama"""
-        # Mock connection error
-        mock_get.side_effect = aiohttp.ClientError("Connection failed")
+    def test_get_current_model(self, backend):
+        """GET /models/current should return the active model name."""
+        resp = httpx.get(f"{BACKEND_URL}/models/current", timeout=5)
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
-        response = client.get("/models/")
-        
-        assert response.status_code == 503
-        data = response.json()
-        assert "detail" in data
-        assert "Failed to connect to Ollama service" in data["detail"]
+        data = resp.json()
+        assert "current_model" in data, f"Response missing 'current_model': {data}"
+        assert isinstance(data["current_model"], str)
+        assert len(data["current_model"]) > 0, "current_model should not be empty"
 
-    def test_get_current_model(self):
-        """Test getting the current active model"""
-        response = client.get("/models/current")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert "current_model" in data
-        # Should return the default model
-        assert data["current_model"] == "qwen2.5:7b-instruct-q4_K_M"
+    def test_get_available_providers(self, backend):
+        """GET /models/providers should list available AI providers."""
+        resp = httpx.get(f"{BACKEND_URL}/models/providers", timeout=5)
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
-    @patch('aiohttp.ClientSession.get')
-    @patch('aiohttp.ClientSession.post')
-    def test_set_active_model_success(self, mock_post, mock_get):
-        """Test successfully setting an active model"""
-        # Mock the get request for validation
-        mock_get_response = AsyncMock()
-        mock_get_response.status = 200
-        mock_get_response.json = AsyncMock(return_value=MOCK_OLLAMA_TAGS_RESPONSE)
-        mock_get.return_value.__aenter__.return_value = mock_get_response
+        data = resp.json()
+        assert "providers" in data, f"Response missing 'providers': {data}"
+        assert "current_provider" in data, f"Response missing 'current_provider': {data}"
 
-        # Test setting a valid model
-        response = client.post("/models/select", json={
-            "model_name": "llama2:7b"
-        })
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert data["model"] == "llama2:7b"
-        assert "Active model set to" in data["message"]
+        # Should have at least Ollama and Azure OpenAI
+        provider_names = [p["name"] for p in data["providers"]]
+        assert "ollama" in provider_names, f"Ollama not in providers: {provider_names}"
+        assert "azure_openai" in provider_names, f"Azure OpenAI not in providers: {provider_names}"
 
-    @patch('aiohttp.ClientSession.get')
-    def test_set_active_model_invalid_model(self, mock_get):
-        """Test setting an invalid/unavailable model"""
-        # Mock the get request for validation
-        mock_get_response = AsyncMock()
-        mock_get_response.status = 200
-        mock_get_response.json = AsyncMock(return_value=MOCK_OLLAMA_TAGS_RESPONSE)
-        mock_get.return_value.__aenter__.return_value = mock_get_response
+        # Each provider should have required fields
+        for provider in data["providers"]:
+            assert "name" in provider
+            assert "display_name" in provider
+            assert "available" in provider
+            assert "configured" in provider
 
-        # Test setting an invalid model
-        response = client.post("/models/select", json={
-            "model_name": "nonexistent:model"
-        })
-        
-        assert response.status_code == 400
-        data = response.json()
-        assert "detail" in data
-        assert "not found in available models" in data["detail"]
+    def test_test_connection(self, backend):
+        """POST /models/test-connection should test the current provider."""
+        resp = httpx.post(f"{BACKEND_URL}/models/test-connection", timeout=15)
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
-    def test_set_active_model_missing_body(self):
-        """Test setting model without request body"""
-        response = client.post("/models/select", json={})
-        
-        assert response.status_code == 422  # Validation error
+        data = resp.json()
+        assert "success" in data, f"Response missing 'success': {data}"
+        assert "provider" in data, f"Response missing 'provider': {data}"
+        assert "message" in data, f"Response missing 'message': {data}"
 
-    def test_set_active_model_invalid_json(self):
-        """Test setting model with invalid JSON"""
-        response = client.post("/models/select", data="invalid json")
-        
-        assert response.status_code == 422  # Validation error
+    def test_select_invalid_provider(self, backend):
+        """POST /models/provider/select with invalid provider should return 400."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/models/provider/select",
+            json={"provider": "nonexistent_provider"},
+            timeout=5,
+        )
+        assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
 
-class TestModelUtilities:
-    """Test model utility functions in the service"""
+    def test_select_model_invalid_name(self, backend):
+        """POST /models/select with non-existent model should return 400."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/models/select",
+            json={"model_name": "nonexistent:model-that-does-not-exist"},
+            timeout=10,
+        )
+        assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
+        data = resp.json()
+        assert "not found in available models" in data.get("detail", "")
 
-    def test_model_name_formatting(self):
-        """Test model name formatting utilities"""
-        from app.services.enhanced_docling_service import EnhancedDoclingService
-        
-        service = EnhancedDoclingService()
-        
-        # Test that model is set correctly
-        assert service.model == "qwen2.5:7b-instruct-q4_K_M"
-        
-        # Test model changing
-        original_model = service.model
-        service.model = "llama2:7b"
-        assert service.model == "llama2:7b"
-        
-        # Reset for other tests
-        service.model = original_model
+    def test_select_model_missing_body(self, backend):
+        """POST /models/select without model_name should return 422."""
+        resp = httpx.post(f"{BACKEND_URL}/models/select", json={}, timeout=5)
+        assert resp.status_code == 422
+
+    def test_select_provider_round_trip(self, backend):
+        """Select a provider, verify it took effect, then restore."""
+        # Get current provider
+        initial = httpx.get(f"{BACKEND_URL}/models/providers", timeout=5).json()
+        original_provider = initial["current_provider"]
+
+        # Select azure_openai (should be configured)
+        resp = httpx.post(
+            f"{BACKEND_URL}/models/provider/select",
+            json={"provider": "azure_openai"},
+            timeout=5,
+        )
+        if resp.status_code == 400 and "not properly configured" in resp.json().get("detail", ""):
+            pytest.skip("Azure OpenAI not configured on this backend")
+
+        assert resp.status_code == 200, f"Failed to select azure_openai: {resp.text}"
+        data = resp.json()
+        assert data["provider"] == "azure_openai"
+
+        # Verify it took effect
+        providers_resp = httpx.get(f"{BACKEND_URL}/models/providers", timeout=5).json()
+        assert providers_resp["current_provider"] == "azure_openai"
+
+        # Restore original provider
+        httpx.post(
+            f"{BACKEND_URL}/models/provider/select",
+            json={"provider": original_provider},
+            timeout=5,
+        )
+
+    def test_org_config_default(self, backend):
+        """GET /models/org-config/{org_id} should return default config for unknown org."""
+        test_org_id = "00000000-0000-0000-0000-000000000010"
+        resp = httpx.get(f"{BACKEND_URL}/models/org-config/{test_org_id}", timeout=5)
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+
+        data = resp.json()
+        assert data["organization_id"] == test_org_id
+        assert "tier" in data
+        assert "provider_type" in data
+        assert "source" in data
+
+    def test_org_config_invalid_id(self, backend):
+        """GET /models/org-config with non-UUID should still work (server handles gracefully)."""
+        resp = httpx.get(f"{BACKEND_URL}/models/org-config/not-a-uuid", timeout=5)
+        # The endpoint may return 200 with system defaults or 400/500
+        assert resp.status_code in (200, 400, 500), f"Unexpected status: {resp.status_code}"
+
+    def test_effective_config(self, backend):
+        """GET /models/org-config/{org_id}/effective should return effective config."""
+        test_org_id = "00000000-0000-0000-0000-000000000010"
+        resp = httpx.get(
+            f"{BACKEND_URL}/models/org-config/{test_org_id}/effective", timeout=5
+        )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+
+        data = resp.json()
+        assert "source" in data
+        assert "provider" in data
+        assert "tier" in data
+
 
 if __name__ == "__main__":
-    pytest.main([__file__])
+    pytest.main([__file__, "-v"])

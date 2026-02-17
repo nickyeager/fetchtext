@@ -18,8 +18,16 @@ Usage:
 """
 
 import os
+from pathlib import Path
+
 import pytest
 import httpx
+from dotenv import load_dotenv
+
+# Auto-load Snowflake test credentials from .env.snowflake-test
+_env_file = Path(__file__).resolve().parents[2] / ".env.snowflake-test"
+if _env_file.exists():
+    load_dotenv(_env_file, override=False)
 
 # Backend URL
 BACKEND_URL = os.getenv("DOCUMENT_PROCESSOR_URL", "http://localhost:8090")

@@ -95,24 +95,33 @@ class VaultService:
                 logger.info(f"Stored secret: {name} (ID: {secret_id})")
                 return secret_id
             elif response.status_code == 409:
-                # Secret with this name already exists - delete and recreate
-                logger.info(f"Secret '{name}' already exists, deleting and recreating")
-                # Get the existing secret ID first
-                get_id_response = await client.post(
-                    f"{self.supabase_url}/rest/v1/rpc/vault_get_secret_id_by_name",
-                    json={"secret_name": name},
-                )
-                if get_id_response.status_code == 200:
-                    old_secret_id = get_id_response.json()
-                    if old_secret_id:
-                        logger.debug(f"Deleting old secret {old_secret_id}")
-                        await self.delete_secret(old_secret_id)
-                        # Create new secret
-                        return await self._create_secret_directly(name, secret, description)
-                logger.warning(f"Could not find existing secret '{name}' to delete, trying update fallback")
-                result = await self._update_secret_by_name(name, secret, description)
-                logger.debug(f"Update result for '{name}': {result}")
-                return result
+                # Secret with this name already exists - try update, then delete+recreate with retry
+                logger.info(f"Secret '{name}' already exists, attempting update")
+                # Try direct update first (avoids delete+create race)
+                update_result = await self._update_secret_by_name(name, secret, description)
+                if update_result:
+                    return update_result
+                # Fallback: delete and recreate with retry for concurrent access
+                for attempt in range(3):
+                    try:
+                        get_id_response = await client.post(
+                            f"{self.supabase_url}/rest/v1/rpc/vault_get_secret_id_by_name",
+                            json={"secret_name": name},
+                        )
+                        if get_id_response.status_code == 200:
+                            old_secret_id = get_id_response.json()
+                            if old_secret_id:
+                                await self.delete_secret(old_secret_id)
+                                return await self._create_secret_directly(name, secret, description)
+                        break  # No ID found, stop retrying
+                    except Exception as retry_err:
+                        if attempt < 2:
+                            import asyncio
+                            await asyncio.sleep(0.1 * (attempt + 1))
+                            logger.debug(f"Retry {attempt + 1} for secret '{name}': {retry_err}")
+                        else:
+                            logger.warning(f"All retries exhausted for secret '{name}'")
+                return None
             else:
                 logger.error(f"Failed to store secret '{name}': HTTP {response.status_code} - {response.text}")
                 return None
