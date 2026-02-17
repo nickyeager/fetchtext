@@ -5,7 +5,7 @@
  * browser-native EventSource which is GET-only).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config';
 
@@ -97,6 +97,13 @@ export function useProcessingStream(): UseProcessingStreamReturn {
     abortRef.current = null;
   }, []);
 
+  // Cleanup: abort any active stream when the component unmounts
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const startProcessing = useCallback(
     (
       file: File,
@@ -181,7 +188,7 @@ export function useProcessingStream(): UseProcessingStreamReturn {
             const entry: ProcessingLogEntry = {
               stage: data.stage,
               message: data.message,
-              progress: data.progress ?? progress,
+              progress: data.progress ?? 0,
               elapsed_ms: data.elapsed_ms ?? 0,
               timestamp: Date.now(),
               status: 'error',
@@ -223,7 +230,7 @@ export function useProcessingStream(): UseProcessingStreamReturn {
         setStatus('error');
       });
     },
-    [progress],
+    [],
   );
 
   return { startProcessing, abort, logs, progress, status, result, error };

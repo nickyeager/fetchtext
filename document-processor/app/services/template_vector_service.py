@@ -82,6 +82,7 @@ class TemplateVectorService:
                     vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
                 )
                 # Payload indexes for filtered search
+                index_failures = []
                 for field, schema in [
                     ("template_id", qdrant_models.PayloadSchemaType.INTEGER),
                     ("category", qdrant_models.PayloadSchemaType.KEYWORD),
@@ -93,8 +94,14 @@ class TemplateVectorService:
                             field_name=field,
                             field_schema=schema,
                         )
-                    except Exception:
-                        pass  # index may already exist
+                    except Exception as idx_err:
+                        # "already exists" errors are expected and safe to ignore
+                        if "already exists" in str(idx_err).lower():
+                            pass
+                        else:
+                            index_failures.append(f"{field}: {idx_err}")
+                if index_failures:
+                    logger.warning(f"Some Qdrant indexes failed (non-fatal): {index_failures}")
                 logger.info(f"Created Qdrant collection '{self.collection_name}'")
             else:
                 logger.info(f"Qdrant collection '{self.collection_name}' already exists")

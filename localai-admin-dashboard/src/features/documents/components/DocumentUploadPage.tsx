@@ -14,6 +14,7 @@ import { useProcessingStream } from '@/hooks/use-processing-stream';
 import type { StreamResult } from '@/hooks/use-processing-stream';
 import { UploadSource } from '@/services/unified-document-service';
 import { Sparkles, ArrowRight, Settings, FileText, Zap, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { withAuthentication } from '@/lib/supabase-auth-utils';
@@ -154,6 +155,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
               console.log('[DocumentUpload] Generated template saved:', savedGeneratedTemplate?.id);
             } catch (saveErr) {
               console.error('[DocumentUpload] Failed to save generated template:', saveErr);
+              toast.error('Template was generated but failed to save. You can recreate it from the document.');
             }
           }
         }
@@ -210,7 +212,9 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         setError(err instanceof Error ? err.message : 'Failed to finalize document');
       }
     })();
-  }, [stream.status, stream.result, documentId, documentManager, queryClient, navigate, onDocumentProcessed]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stream.result intentionally excluded to prevent
+  // double-firing when the result object reference changes. handledResultRef guards against duplicate processing.
+  }, [stream.status, documentId, documentManager, queryClient, navigate, onDocumentProcessed]);
 
   // Propagate stream errors
   useEffect(() => {

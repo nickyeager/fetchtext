@@ -447,8 +447,10 @@ async def process_document_stream(
 
     async def event_stream() -> AsyncGenerator[str, None]:
         nonlocal temp_file_path
+        upload_complete = False
         try:
             temp_file_path = await _save_uploaded_file(file)
+            upload_complete = True
 
             async for event in _process_document_stream(
                 file_path=temp_file_path,
@@ -462,10 +464,11 @@ async def process_document_stream(
                 yield event
 
         except Exception as exc:
-            logger.error(f"Stream processing error: {exc}")
+            stage = "upload" if not upload_complete else "processing"
+            logger.error(f"Stream {stage} error: {exc}")
             yield _sse_event("error", {
-                "stage": "unknown",
-                "message": f"Unexpected error: {exc}",
+                "stage": stage,
+                "message": f"{'Upload' if not upload_complete else 'Processing'} failed: {exc}",
                 "elapsed_ms": 0,
             })
 
