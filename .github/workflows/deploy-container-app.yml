@@ -84,6 +84,7 @@ jobs:
           az containerapp update \
             --name "$AZURE_CONTAINERAPP_NAME" \
             --resource-group "$AZURE_CONTAINERAPPS_RESOURCE_GROUP" \
+            --container-name "$AZURE_CONTAINERAPP_NAME" \
             --image "${AZURE_ACR_NAME}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}" \
             --set-env-vars \
               AZURE_OPENAI_API_KEY=secretref:azure-openai-key \
@@ -98,8 +99,8 @@ jobs:
               SENDGRID_FROM_NAME=FetchText \
               APP_URL=https://fetchtext.io \
               ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io" \
-              QDRANT_HOST=${{ secrets.QDRANT_HOST }} \
-              QDRANT_PORT=443 \
+              QDRANT_HOST=localhost \
+              QDRANT_PORT=6333 \
               QDRANT_API_KEY=secretref:qdrant-api-key
 
       - name: Wait for deployment to stabilize
