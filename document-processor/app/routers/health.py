@@ -87,6 +87,45 @@ async def readiness_check() -> Dict[str, Any]:
         return JSONResponse(status_code=status_code, content=response)
     return response
 
+@router.get("/health/qdrant", status_code=200)
+@router.get("/health/qdrant/", status_code=200, include_in_schema=False)
+async def qdrant_check() -> Dict[str, Any]:
+    """Live Qdrant connectivity test — performs a real operation against Qdrant."""
+    try:
+        from ..services.template_vector_service import template_vector_service
+
+        if not template_vector_service.available or not template_vector_service.client:
+            return JSONResponse(status_code=503, content={
+                "status": "unavailable",
+                "detail": "Qdrant client not connected",
+            })
+
+        client = template_vector_service.client
+        collections = client.get_collections().collections
+        collection_info = {}
+        for c in collections:
+            try:
+                info = client.get_collection(c.name)
+                collection_info[c.name] = {
+                    "points_count": info.points_count,
+                    "status": str(info.status),
+                }
+            except Exception as e:
+                collection_info[c.name] = {"error": str(e)}
+
+        return {
+            "status": "connected",
+            "host": os.getenv("QDRANT_HOST", "qdrant"),
+            "port": os.getenv("QDRANT_PORT", "6333"),
+            "collections_count": len(collections),
+            "collections": collection_info,
+        }
+    except Exception as e:
+        return JSONResponse(status_code=503, content={
+            "status": "error",
+            "detail": str(e),
+        })
+
 @router.get("/health/cors", status_code=200)
 @router.get("/health/cors/", status_code=200, include_in_schema=False)
 async def cors_check() -> Dict[str, Any]:
