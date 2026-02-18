@@ -56,9 +56,9 @@ class TemplateVectorService:
 
         try:
             if host.startswith("http") or "." in host:
-                # External Qdrant (production via Caddy/HTTPS)
+                # External Qdrant (production Container App / HTTPS)
                 url = host if host.startswith("http") else f"https://{host}"
-                self.client = QdrantClient(url=url, api_key=api_key, timeout=10)
+                self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
                 conn_label = url
             else:
                 # Docker internal (local dev)
