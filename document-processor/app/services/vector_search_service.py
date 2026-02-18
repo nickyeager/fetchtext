@@ -55,9 +55,9 @@ class VectorSearchService:
             try:
                 api_key = os.getenv("QDRANT_API_KEY")
                 if self.host.startswith("http") or "." in self.host:
-                    # External Qdrant (production via Caddy/HTTPS)
+                    # External Qdrant (production Container App / HTTPS)
                     url = self.host if self.host.startswith("http") else f"https://{self.host}"
-                    self.client = QdrantClient(url=url, api_key=api_key, timeout=10)
+                    self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
                     logger.info(f"Qdrant client initialized at {url} (external)")
                 else:
                     # Docker internal (local dev)
