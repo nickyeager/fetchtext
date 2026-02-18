@@ -54,22 +54,27 @@ class TemplateVectorService:
             logger.warning("qdrant-client not installed — template vector search disabled")
             return
 
-        try:
-            if host.startswith("http") or "." in host:
-                # External Qdrant (production Container App / HTTPS)
-                url = host if host.startswith("http") else f"https://{host}"
-                self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
-                conn_label = url
-            else:
-                # Docker internal (local dev)
-                self.client = QdrantClient(host=host, port=port, api_key=api_key, timeout=10)
-                conn_label = f"{host}:{port}"
-            # Quick connectivity check
-            self.client.get_collections()
-            self.available = True
-            logger.info(f"TemplateVectorService connected to Qdrant at {conn_label}")
-        except Exception as e:
-            logger.warning(f"Qdrant not reachable at {host} — template vector search disabled: {e}")
+        import time
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                if host.startswith("http") or "." in host:
+                    url = host if host.startswith("http") else f"https://{host}"
+                    self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
+                    conn_label = url
+                else:
+                    self.client = QdrantClient(host=host, port=port, api_key=api_key, timeout=10)
+                    conn_label = f"{host}:{port}"
+                self.client.get_collections()
+                self.available = True
+                logger.info(f"TemplateVectorService connected to Qdrant at {conn_label}")
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.info(f"Qdrant not ready at {host} (attempt {attempt}/{max_retries}), retrying in 3s...")
+                    time.sleep(3)
+                else:
+                    logger.warning(f"Qdrant not reachable at {host} after {max_retries} attempts — template vector search disabled: {e}")
 
     # ------------------------------------------------------------------
     # Collection management

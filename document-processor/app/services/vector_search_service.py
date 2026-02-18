@@ -50,24 +50,30 @@ class VectorSearchService:
         self.collection_name = collection_name
         self.embedding_service = EmbeddingService()
 
-        # Initialize Qdrant client
+        # Initialize Qdrant client with retry for sidecar startup race
         if QDRANT_AVAILABLE:
-            try:
-                api_key = os.getenv("QDRANT_API_KEY")
-                if self.host.startswith("http") or "." in self.host:
-                    # External Qdrant (production Container App / HTTPS)
-                    url = self.host if self.host.startswith("http") else f"https://{self.host}"
-                    self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
-                    logger.info(f"Qdrant client initialized at {url} (external)")
-                else:
-                    # Docker internal (local dev)
-                    self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, timeout=10)
-                    logger.info(f"Qdrant client initialized at {self.host}:{self.port} (docker)")
-                self.available = True
-            except Exception as e:
-                logger.error(f"Failed to initialize Qdrant client: {e}")
-                self.client = None
-                self.available = False
+            import time
+            api_key = os.getenv("QDRANT_API_KEY")
+            max_retries = 5
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if self.host.startswith("http") or "." in self.host:
+                        url = self.host if self.host.startswith("http") else f"https://{self.host}"
+                        self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
+                    else:
+                        self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, timeout=10)
+                    self.client.get_collections()
+                    self.available = True
+                    logger.info(f"Qdrant client connected at {self.host}:{self.port}")
+                    break
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.info(f"Qdrant not ready (attempt {attempt}/{max_retries}), retrying in 3s...")
+                        time.sleep(3)
+                    else:
+                        logger.error(f"Failed to connect to Qdrant after {max_retries} attempts: {e}")
+                        self.client = None
+                        self.available = False
         else:
             logger.warning("Qdrant client not available - install qdrant-client")
             self.client = None
