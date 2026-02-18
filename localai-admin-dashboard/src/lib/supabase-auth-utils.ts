@@ -63,7 +63,15 @@ export async function withAuthentication<T>(
     return await operation(user);
   } catch (error) {
     if (context) {
-      console.error(`🚫 ${context} - Authentication failed:`, error);
+      // Don't log network aborts as auth failures - they're navigation artifacts
+      const msg = error instanceof Error ? error.message :
+        (typeof error === 'object' && error !== null && 'message' in error)
+          ? String((error as Record<string, unknown>).message) : '';
+      if (msg.includes('Failed to fetch') || msg.includes('AbortError')) {
+        console.warn(`⚠️ ${context} - Request aborted (navigation in progress)`);
+      } else {
+        console.error(`🚫 ${context} - Authentication failed:`, error);
+      }
     }
     throw error;
   }

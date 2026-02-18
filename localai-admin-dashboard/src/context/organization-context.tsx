@@ -115,8 +115,13 @@ export const OrganizationProvider = ({ children }: PropsWithChildren) => {
       // If a newer load was started, don't surface this error
       if (currentLoadId !== loadIdRef.current) return;
 
-      // Suppress network aborts during navigation (ERR_ABORTED / Failed to fetch)
-      const message = err instanceof Error ? err.message : String(err);
+      // Suppress network aborts during navigation (ERR_ABORTED / Failed to fetch).
+      // Supabase PostgREST errors are plain objects with a message property, not Error instances.
+      const message =
+        err instanceof Error ? err.message :
+        (typeof err === 'object' && err !== null && 'message' in err)
+          ? String((err as Record<string, unknown>).message)
+          : String(err);
       if (message.includes('Failed to fetch') || message.includes('AbortError')) {
         console.warn('Organization load aborted (navigation in progress), will retry');
         return;

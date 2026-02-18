@@ -33,7 +33,12 @@ export class OrganizationService {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error fetching user organizations:', error);
+        // Don't log network aborts as errors - they're navigation artifacts
+        const isAbort = typeof error.message === 'string' &&
+          (error.message.includes('Failed to fetch') || error.message.includes('AbortError'));
+        if (!isAbort) {
+          console.error('Error fetching user organizations:', error);
+        }
         throw error;
       }
 
