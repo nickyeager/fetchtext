@@ -69,7 +69,10 @@ jobs:
           VITE_APP_URL: https://fetchtext.io
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
           VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          VITE_SENDGRID_API_KEY: ${{ secrets.VITE_SENDGRID_API_KEY }}
           VITE_SENDGRID_FROM_EMAIL: ${{ secrets.VITE_SENDGRID_FROM_EMAIL }}
+          VITE_SENDGRID_FROM_NAME: ${{ secrets.VITE_SENDGRID_FROM_NAME }}
+          VITE_SENDGRID_REPLY_TO: ${{ secrets.VITE_SENDGRID_REPLY_TO }}
         run: pnpm build
 
       - name: Validate backend CORS accepts this frontend
