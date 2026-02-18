@@ -63,7 +63,7 @@ class TemplateVectorService:
                     self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
                     conn_label = url
                 else:
-                    self.client = QdrantClient(host=host, port=port, api_key=api_key, timeout=10)
+                    self.client = QdrantClient(host=host, port=port, api_key=api_key, https=False, timeout=10)
                     conn_label = f"{host}:{port}"
                 self.client.get_collections()
                 self.available = True
