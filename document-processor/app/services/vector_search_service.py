@@ -61,7 +61,7 @@ class VectorSearchService:
                         url = self.host if self.host.startswith("http") else f"https://{self.host}"
                         self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
                     else:
-                        self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, timeout=10)
+                        self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, https=False, timeout=10)
                     self.client.get_collections()
                     self.available = True
                     logger.info(f"Qdrant client connected at {self.host}:{self.port}")
