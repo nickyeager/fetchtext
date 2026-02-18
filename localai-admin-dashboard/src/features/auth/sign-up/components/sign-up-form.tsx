@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 import { supabase } from '@/lib/supabase'
+import { getUserFriendlyAuthError } from '@/lib/auth-error-messages'
 import { OrganizationService } from '@/lib/organization-service'
 
 interface SignUpFormProps extends HTMLAttributes<HTMLFormElement> {
@@ -69,9 +70,10 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
       })
 
       if (error) {
-        toast.error('Sign up failed: ' + error.message)
+        const userMessage = getUserFriendlyAuthError(error.message)
+        toast.error('Sign up failed: ' + userMessage)
         form.setError('email', {
-          message: error.message,
+          message: userMessage,
         })
       } else if (authData.user && authData.session) {
         // User is authenticated immediately (email verification disabled or auto-confirmed)
@@ -102,6 +104,11 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
         toast.success('Account created! Please check your email for verification.')
         navigate({ to: '/sign-in', search: { redirect: redirect || '' } })
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const userMessage = getUserFriendlyAuthError(message)
+      form.setError('email', { message: userMessage })
+      toast.error('Sign up failed: ' + userMessage)
     } finally {
       setIsLoading(false)
     }

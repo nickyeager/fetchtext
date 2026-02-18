@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 import { supabase } from '@/lib/supabase'
+import { getUserFriendlyAuthError } from '@/lib/auth-error-messages'
 
 type UserAuthFormProps = HTMLAttributes<HTMLFormElement>
 
@@ -58,16 +59,20 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       })
 
       if (error) {
-        form.setError('password', {
-          message: error.message,
-        })
-        toast.error('Login failed: ' + error.message)
+        const userMessage = getUserFriendlyAuthError(error.message)
+        form.setError('password', { message: userMessage })
+        toast.error('Login failed: ' + userMessage)
       } else if (authData.user) {
         toast.success('Successfully logged in!')
         // Redirect to the intended page or dashboard
         const redirectTo = (search as any)?.redirect || '/dashboard'
         navigate({ to: redirectTo })
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const userMessage = getUserFriendlyAuthError(message)
+      form.setError('password', { message: userMessage })
+      toast.error('Login failed: ' + userMessage)
     } finally {
       setIsLoading(false)
     }
@@ -85,10 +90,11 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       })
 
       if (error) {
-        toast.error('GitHub login failed: ' + error.message)
+        toast.error('GitHub login failed: ' + getUserFriendlyAuthError(error.message))
       }
-    } catch {
-      toast.error('GitHub login failed')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error('GitHub login failed: ' + getUserFriendlyAuthError(message))
     } finally {
       setIsLoading(false)
     }
