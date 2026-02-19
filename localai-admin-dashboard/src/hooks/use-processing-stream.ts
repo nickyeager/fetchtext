@@ -1,12 +1,12 @@
 /**
  * Hook for streaming document processing progress via SSE.
  *
- * Uses @microsoft/fetch-event-source (supports POST + FormData, unlike the
- * browser-native EventSource which is GET-only).
+ * Uses raw fetch() + ReadableStream instead of @microsoft/fetch-event-source
+ * because that library silently drops long-lived SSE connections through
+ * Azure Container Apps' Envoy proxy.  Raw fetch streaming works reliably.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { DOCUMENT_PROCESSOR_URL } from '@/lib/api-config';
 
 // ---------------------------------------------------------------------------
@@ -82,6 +82,45 @@ const STAGE_ORDER = [
 ];
 
 // ---------------------------------------------------------------------------
+// Minimal SSE parser for ReadableStream chunks
+// ---------------------------------------------------------------------------
+
+interface SSEEvent {
+  event: string;
+  data: string;
+}
+
+function parseSSEChunk(buffer: string): { events: SSEEvent[]; remaining: string } {
+  const events: SSEEvent[] = [];
+  // SSE events are separated by blank lines (\n\n)
+  const blocks = buffer.split('\n\n');
+  // The last element is either empty (complete event) or a partial event
+  const remaining = blocks.pop() ?? '';
+
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    let eventType = 'message';
+    const dataLines: string[] = [];
+
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim();
+      } else if (line.startsWith('data: ')) {
+        dataLines.push(line.slice(6));
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5));
+      }
+    }
+
+    if (dataLines.length > 0) {
+      events.push({ event: eventType, data: dataLines.join('\n') });
+    }
+  }
+
+  return { events, remaining };
+}
+
+// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
@@ -151,96 +190,113 @@ export function useProcessingStream(): UseProcessingStreamReturn {
 
       const url = `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/process-document-stream?${params.toString()}`;
 
-      fetchEventSource(url, {
-        method: 'POST',
-        body: formData,
-        signal: ctrl.signal,
+      const handleEvent = (ev: SSEEvent) => {
+        if (!ev.data) return;
 
-        onopen: async (response) => {
-          if (response.ok) {
-            setStatus('streaming');
-          } else {
+        let data: any;
+        try {
+          data = JSON.parse(ev.data);
+        } catch {
+          return;
+        }
+
+        // Skip keepalive events — they're just for proxy idle-timeout prevention
+        if (ev.event === 'keepalive') return;
+
+        if (ev.event === 'stage') {
+          const entry: ProcessingLogEntry = {
+            stage: data.stage,
+            message: data.message,
+            progress: data.progress ?? 0,
+            elapsed_ms: data.elapsed_ms ?? 0,
+            timestamp: Date.now(),
+            status: 'completed',
+          };
+
+          setLogs((prev) => {
+            const updated = prev.map((e) => ({
+              ...e,
+              status: 'completed' as const,
+            }));
+            return [...updated, { ...entry, status: 'active' as const }];
+          });
+          setProgress(data.progress ?? 0);
+        }
+
+        if (ev.event === 'error') {
+          const entry: ProcessingLogEntry = {
+            stage: data.stage,
+            message: data.message,
+            progress: data.progress ?? 0,
+            elapsed_ms: data.elapsed_ms ?? 0,
+            timestamp: Date.now(),
+            status: 'error',
+          };
+          setLogs((prev) => [...prev, entry]);
+          setError(data.message);
+          setStatus('error');
+        }
+
+        if (ev.event === 'complete') {
+          setLogs((prev) =>
+            prev.map((e) => ({ ...e, status: 'completed' as const })),
+          );
+          setProgress(100);
+          setResult(data.result ?? null);
+          setStatus('complete');
+        }
+      };
+
+      (async () => {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+            signal: ctrl.signal,
+          });
+
+          if (!response.ok) {
             const text = await response.text();
             throw new Error(`Server responded with ${response.status}: ${text}`);
           }
-        },
 
-        onmessage: (ev) => {
-          if (!ev.data) return;
-
-          let data: any;
-          try {
-            data = JSON.parse(ev.data);
-          } catch {
-            return;
+          if (!response.body) {
+            throw new Error('Response body is null — streaming not supported');
           }
 
-          if (ev.event === 'stage') {
-            const entry: ProcessingLogEntry = {
-              stage: data.stage,
-              message: data.message,
-              progress: data.progress ?? 0,
-              elapsed_ms: data.elapsed_ms ?? 0,
-              timestamp: Date.now(),
-              status: 'completed',
-            };
+          setStatus('streaming');
 
-            setLogs((prev) => {
-              // Mark all previous entries as completed, add new one as active
-              const updated = prev.map((e) => ({
-                ...e,
-                status: 'completed' as const,
-              }));
-              return [...updated, { ...entry, status: 'active' as const }];
-            });
-            setProgress(data.progress ?? 0);
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const { events, remaining } = parseSSEChunk(buffer);
+            buffer = remaining;
+
+            for (const ev of events) {
+              handleEvent(ev);
+            }
           }
 
-          if (ev.event === 'error') {
-            const entry: ProcessingLogEntry = {
-              stage: data.stage,
-              message: data.message,
-              progress: data.progress ?? 0,
-              elapsed_ms: data.elapsed_ms ?? 0,
-              timestamp: Date.now(),
-              status: 'error',
-            };
-            setLogs((prev) => [...prev, entry]);
-            setError(data.message);
-            setStatus('error');
+          // Process any remaining buffer
+          if (buffer.trim()) {
+            const { events } = parseSSEChunk(buffer + '\n\n');
+            for (const ev of events) {
+              handleEvent(ev);
+            }
           }
-
-          if (ev.event === 'complete') {
-            // Mark last log entry as completed
-            setLogs((prev) =>
-              prev.map((e) => ({ ...e, status: 'completed' as const })),
-            );
-            setProgress(100);
-            setResult(data.result ?? null);
-            setStatus('complete');
-          }
-        },
-
-        onerror: (err) => {
-          // If we aborted intentionally, don't treat as error
+        } catch (err) {
           if (ctrl.signal.aborted) return;
-
-          console.error('[useProcessingStream] SSE error:', err);
+          console.error('[useProcessingStream] stream error:', err);
           setError(err instanceof Error ? err.message : 'Connection lost');
           setStatus('error');
-
-          // Don't retry — the library retries by default; throw to stop
-          throw err;
-        },
-
-        // Don't let the library auto-open on close
-        openWhenHidden: true,
-      }).catch((err) => {
-        if (ctrl.signal.aborted) return;
-        console.error('[useProcessingStream] fetch failed:', err);
-        setError(err instanceof Error ? err.message : 'Failed to connect');
-        setStatus('error');
-      });
+        }
+      })();
     },
     [],
   );
