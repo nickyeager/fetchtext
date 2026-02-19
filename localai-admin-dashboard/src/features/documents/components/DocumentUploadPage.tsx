@@ -90,6 +90,14 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
   // Track whether we've already handled the stream error to prevent infinite markDocumentFailed loop
   const handledErrorRef = useRef(false);
 
+  // Keep a ref to the latest activeOrganization so the stream-completion
+  // useEffect always reads the current value even though activeOrganization
+  // is NOT in its dependency array (to prevent double-firing).
+  const activeOrgRef = useRef(activeOrganization);
+  useEffect(() => {
+    activeOrgRef.current = activeOrganization;
+  }, [activeOrganization]);
+
   // Debug authentication state
   useEffect(() => {
     console.log('[DocumentUpload] Auth state:', {
@@ -133,57 +141,69 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
           const primaryType = (result.evaluation?.type_evaluation?.primary_type) || 'document';
 
           if (Array.isArray(templateVariables) && templateVariables.length > 0) {
-            try {
-              savedGeneratedTemplate = await withAuthentication(async (authUser) => {
-                const { data, error: dbError } = await supabase
-                  .from('smart_templates')
-                  .insert({
-                    name: genTemplate.name || `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
-                    description: genTemplate.description || `Auto-generated template for ${primaryType} documents`,
-                    category: genTemplate.category || primaryType,
-                    smart_variables: templateVariables,
-                    extraction_rules: genTemplate.extraction_rules || [],
-                    is_public: false,
-                    created_by: authUser.id,
-                    organization_id: activeOrganization!.id,
-                    template_type: 'smart',
-                    template_content: genTemplate.template_content || '',
-                    tags: genTemplate.tags || ['ai-generated', primaryType],
-                  })
-                  .select()
-                  .single();
+            // Read organization from ref (always up-to-date, even though
+            // activeOrganization is not in this useEffect's dep array).
+            const currentOrg = activeOrgRef.current;
+            if (!currentOrg) {
+              console.warn('[DocumentUpload] Cannot save template: No active organization (stale ref)');
+              toast.error('Template generated but could not be saved — organization context was lost. Please try again.');
+            } else {
+              try {
+                savedGeneratedTemplate = await withAuthentication(async (authUser) => {
+                  const { data, error: dbError } = await supabase
+                    .from('smart_templates')
+                    .insert({
+                      name: genTemplate.name || `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
+                      description: genTemplate.description || `Auto-generated template for ${primaryType} documents`,
+                      category: primaryType || genTemplate.category || 'document',
+                      smart_variables: templateVariables,
+                      extraction_rules: genTemplate.extraction_rules || [],
+                      is_public: false,
+                      created_by: authUser.id,
+                      organization_id: currentOrg.id,
+                      template_type: 'smart',
+                      template_content: genTemplate.template_content || '',
+                      tags: genTemplate.tags || ['ai-generated', primaryType],
+                    })
+                    .select()
+                    .single();
 
-                if (dbError) throw dbError;
-                return data;
-              }, 'Save Generated Template');
+                  if (dbError) throw dbError;
+                  return data;
+                }, 'Save Generated Template');
 
-              console.log('[DocumentUpload] Generated template saved:', savedGeneratedTemplate?.id);
+                console.log('[DocumentUpload] Generated template saved:', savedGeneratedTemplate?.id);
 
-              // Index the template in Qdrant for vector search so the next
-              // upload of a similar document matches immediately.
-              if (savedGeneratedTemplate?.id) {
-                try {
-                  await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      template_id: savedGeneratedTemplate.id,
-                      name: savedGeneratedTemplate.name || '',
-                      description: savedGeneratedTemplate.description || '',
-                      category: savedGeneratedTemplate.category || '',
-                      smart_variables: savedGeneratedTemplate.smart_variables || [],
-                      is_public: savedGeneratedTemplate.is_public || false,
-                    }),
-                  });
-                  console.log('[DocumentUpload] Template indexed in Qdrant:', savedGeneratedTemplate.id);
-                } catch (indexErr) {
-                  // Non-fatal: template will be indexed on next container restart
-                  console.warn('[DocumentUpload] Failed to index template in Qdrant (non-fatal):', indexErr);
+                // Index the template in Qdrant for vector search so the next
+                // upload of a similar document matches immediately.
+                if (savedGeneratedTemplate?.id) {
+                  try {
+                    await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        template_id: savedGeneratedTemplate.id,
+                        name: savedGeneratedTemplate.name || '',
+                        description: savedGeneratedTemplate.description || '',
+                        category: savedGeneratedTemplate.category || '',
+                        smart_variables: savedGeneratedTemplate.smart_variables || [],
+                        is_public: savedGeneratedTemplate.is_public || false,
+                        // Send source document text for exemplar embedding —
+                        // enables much higher cosine similarity on future
+                        // uploads of similar documents (doc-to-doc matching).
+                        document_text: result.content ? result.content.substring(0, 2000) : undefined,
+                      }),
+                    });
+                    console.log('[DocumentUpload] Template indexed in Qdrant:', savedGeneratedTemplate.id);
+                  } catch (indexErr) {
+                    // Non-fatal: template will be indexed on next container restart
+                    console.warn('[DocumentUpload] Failed to index template in Qdrant (non-fatal):', indexErr);
+                  }
                 }
+              } catch (saveErr) {
+                console.error('[DocumentUpload] Failed to save generated template:', saveErr);
+                toast.error('Template was generated but failed to save. You can recreate it from the document.');
               }
-            } catch (saveErr) {
-              console.error('[DocumentUpload] Failed to save generated template:', saveErr);
-              toast.error('Template was generated but failed to save. You can recreate it from the document.');
             }
           }
         }
