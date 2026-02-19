@@ -26,6 +26,7 @@ export const API_ENDPOINTS = {
   smartExtract: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/smart-extract`,
   evaluate: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/evaluate`,
   fieldPositions: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/field-positions`,
+  indexTemplateEmbedding: `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/index-template-embedding`,
 
   // Model management
   models: `${DOCUMENT_PROCESSOR_URL}/models`,
