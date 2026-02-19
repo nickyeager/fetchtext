@@ -323,7 +323,8 @@ Return JSON only:"""
                 prompt=full_prompt,
                 provider="azure_openai",
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=800,
+                response_format={"type": "json_object"},
             )
 
             self.logger.info(f"Azure OpenAI response received: {len(response) if response else 0} chars")

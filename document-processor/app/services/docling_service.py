@@ -146,23 +146,27 @@ class DoclingService:
         return mime_mapping.get(suffix, 'application/octet-stream')
     
     async def process_document(
-        self, 
-        file_path: Path, 
+        self,
+        file_path: Path,
         extract_text: bool = True,
         extract_metadata: bool = True,
         extract_structure: bool = False
     ) -> Dict[str, Any]:
         """Process document and extract content using Docling"""
-        
+        import time as _time
+
         start_time = datetime.utcnow()
+        t0 = _time.monotonic()
         job_id = str(uuid.uuid4())
-        
+
         try:
-            logger.info(f"Starting document processing: {file_path.name} (job_id: {job_id})")
-            
+            file_size = file_path.stat().st_size if file_path.exists() else -1
+            logger.info(f"[DOCLING_TIMING] process_document START | file={file_path.name} | size={file_size} bytes | job_id={job_id}")
+
             # Extract metadata
             metadata = None
             if extract_metadata:
+                t_meta = _time.monotonic()
                 metadata_obj = await self.extract_metadata(file_path)
                 metadata = {
                     "filename": metadata_obj.filename,
@@ -173,32 +177,35 @@ class DoclingService:
                     "modified_at": metadata_obj.modified_at.isoformat(),
                     "title": metadata_obj.title,
                 }
-            
+                logger.info(f"[DOCLING_TIMING] extract_metadata DONE | file={file_path.name} | took={_time.monotonic() - t_meta:.2f}s")
+
             # Choose processing method based on file type and Docling availability
             file_suffix = file_path.suffix.lower()
-            
+            logger.info(f"[DOCLING_TIMING] Routing file | suffix={file_suffix} | use_real_docling={self.use_real_docling} | has_converter={bool(self.converter)}")
+
             # Text files and unsupported formats use enhanced text processing
             if file_suffix in ['.txt', '.text']:
                 logger.info(f"Using enhanced text processing for: {file_path.name}")
                 content = await self._enhanced_text_extract_content(
-                    file_path, 
-                    extract_text, 
+                    file_path,
+                    extract_text,
                     extract_structure
                 )
             elif self.use_real_docling and self.converter:
                 logger.info(f"Using real Docling for processing: {file_path.name}")
                 content = await self._real_extract_content(
-                    file_path, 
-                    extract_text, 
+                    file_path,
+                    extract_text,
                     extract_structure
                 )
             else:
                 raise RuntimeError(f"Docling is not available - cannot process document: {file_path.name}. Real docling: {self.use_real_docling}, Converter: {bool(self.converter)}")
-            
+
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds()
-            
-            logger.info(f"Document processing completed: {file_path.name} in {processing_time:.2f}s")
+            total_wall = _time.monotonic() - t0
+
+            logger.info(f"[DOCLING_TIMING] process_document DONE | file={file_path.name} | processing_time={processing_time:.2f}s | wall={total_wall:.2f}s")
             
             return {
                 "job_id": job_id,
@@ -224,19 +231,30 @@ class DoclingService:
     
     
     async def _real_extract_content(
-        self, 
-        file_path: Path, 
+        self,
+        file_path: Path,
         extract_text: bool = True,
         extract_structure: bool = False
     ) -> Dict[str, Any]:
         """Enhanced content extraction leveraging Docling's DoclingDocument structure"""
-        
+
+        import time as _time
+
         try:
-            logger.info(f"Processing document with real Docling: {file_path}")
-            
-            # Convert document using Docling
-            result = self.converter.convert(str(file_path))
-            
+            file_size = file_path.stat().st_size if file_path.exists() else -1
+            logger.info(f"[DOCLING_TIMING] _real_extract_content START | file={file_path.name} | size={file_size} bytes | extract_text={extract_text} | extract_structure={extract_structure}")
+            t0 = _time.monotonic()
+
+            # Convert document using Docling.
+            # Run in a thread so the synchronous Docling call doesn't block
+            # the asyncio event loop (which would prevent SSE keepalives and
+            # freeze all other requests for the duration of the conversion).
+            logger.info(f"[DOCLING_TIMING] converter.convert() START | file={file_path.name}")
+            t_convert_start = _time.monotonic()
+            result = await asyncio.to_thread(self.converter.convert, str(file_path))
+            t_convert_end = _time.monotonic()
+            logger.info(f"[DOCLING_TIMING] converter.convert() DONE | file={file_path.name} | took={t_convert_end - t_convert_start:.2f}s")
+
             content = {
                 "text": "",
                 "markdown": "",
@@ -246,13 +264,21 @@ class DoclingService:
                 "document_structure": {},
                 "chunks": []
             }
-            
+
             if extract_text:
                 # Extract both text and markdown formats
+                logger.info(f"[DOCLING_TIMING] export_to_text() START | file={file_path.name}")
+                t_text_start = _time.monotonic()
                 content["text"] = result.document.export_to_text()
+                t_text_end = _time.monotonic()
+                logger.info(f"[DOCLING_TIMING] export_to_text() DONE | file={file_path.name} | took={t_text_end - t_text_start:.2f}s | chars={len(content['text'])}")
                 # Try to extract markdown if available
                 try:
+                    logger.info(f"[DOCLING_TIMING] export_to_markdown() START | file={file_path.name}")
+                    t_md_start = _time.monotonic()
                     content["markdown"] = result.document.export_to_markdown()
+                    t_md_end = _time.monotonic()
+                    logger.info(f"[DOCLING_TIMING] export_to_markdown() DONE | file={file_path.name} | took={t_md_end - t_md_start:.2f}s | chars={len(content['markdown'])}")
                 except AttributeError:
                     content["markdown"] = content["text"]  # Fallback to text
                 logger.info(f"Extracted {len(content['text'])} characters of text and {len(content['markdown'])} characters of markdown")
@@ -284,10 +310,12 @@ class DoclingService:
                         "error": str(e)
                     }
             
+            t_total = _time.monotonic() - t0
+            logger.info(f"[DOCLING_TIMING] _real_extract_content DONE | file={file_path.name} | total={t_total:.2f}s")
             return content
-            
+
         except Exception as e:
-            logger.error(f"Error in real Docling extraction: {e}")
+            logger.error(f"Error in real Docling extraction: {e}", exc_info=True)
             raise RuntimeError(f"Document processing failed: {str(e)}")
 
 
@@ -1336,8 +1364,9 @@ class DoclingService:
                 logger.warning("Docling not available for position extraction, falling back to text search")
                 return await self._find_text_positions_in_text_file(file_path, search_texts)
 
-            # Convert document using Docling
-            result = self.converter.convert(str(file_path))
+            # Convert document using Docling.
+            # Run in a thread to avoid blocking the event loop.
+            result = await asyncio.to_thread(self.converter.convert, str(file_path))
             doc = result.document
 
             # Build page height lookup for coordinate conversion

@@ -67,10 +67,10 @@ export interface UseProcessingStreamReturn {
 
 const STAGE_ORDER = [
   'received',
-  'evaluating',
-  'evaluated',
   'extracting_text',
   'text_extracted',
+  'evaluating',
+  'evaluated',
   'matching_template',
   'template_matched',
   'generating_template',

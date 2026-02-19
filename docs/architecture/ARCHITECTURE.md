@@ -1,9 +1,82 @@
-# Local AI Packaged - System Architecture
+# FetchText Platform - System Architecture
 
 ## Overview
-This document provides a comprehensive overview of all services, their ports, and how they interconnect in the Local AI Packaged system.
+This document provides a comprehensive overview of all services, their ports, and how they interconnect in the FetchText platform. The system runs as a **hybrid deployment**: some services are Azure-managed, while others run on a self-hosted Azure VM via Docker Compose.
 
-## Service Architecture Diagram
+## Production Deployment Architecture
+
+### Hybrid Topology
+
+FetchText production uses three deployment surfaces:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Internet / Browser                           │
+└────────────┬─────────────────┬─────────────────┬─────────────────────┘
+             │                 │                 │
+   ┌─────────▼──────┐  ┌──────▼───────┐  ┌──────▼──────────────────┐
+   │  Azure Static   │  │ Azure        │  │ Azure VM (Docker Compose│
+   │  Web App        │  │ Container App│  │ + Caddy reverse proxy)  │
+   │                 │  │              │  │                         │
+   │  fetchtext.io   │  │ doc-processor│  │ n8n.fetchtext.io → N8N  │
+   │  (React SPA)    │  │ (FastAPI)    │  │ Qdrant (internal:6333)  │
+   │                 │  │              │  │ Neo4j  (internal:7474)  │
+   │                 │  │              │  │ Ollama (internal:11434) │
+   │                 │  │              │  │ Langfuse, MinIO, Redis  │
+   └────────┬────────┘  └──────┬───────┘  └───────────────────────┘
+            │                  │
+            │           ┌──────▼───────┐
+            └──────────►│  Managed     │
+                        │  Supabase    │
+                        │  (Database,  │
+                        │   Auth,      │
+                        │   Storage)   │
+                        └──────────────┘
+```
+
+### Production Service Map
+
+| Service | Hosting | Production URL | Deployment Workflow |
+|---------|---------|---------------|-------------------|
+| **Frontend (Dashboard)** | Azure Static Web Apps | `https://fetchtext.io` | `deploy-dashboard.yml` |
+| **Document Processor** | Azure Container App | `https://ft-dev-document-processor-*.azurecontainerapps.io` | `deploy-container-app.yml` |
+| **Database / Auth** | Managed Supabase | `https://rawhmcrtzfdhryyfovee.supabase.co` | SQL Editor / MCP tool |
+| **N8N** | Azure VM (Docker + Caddy) | `https://n8n.fetchtext.io` | `deploy-vm.yml` |
+| **Qdrant** | Azure VM (Docker) | Internal only (`qdrant:6333`) | `deploy-vm.yml` |
+| **Neo4j** | Azure VM (Docker) | Internal only | `deploy-vm.yml` |
+| **Ollama** | Azure VM (Docker) | Internal only | `deploy-vm.yml` |
+| **Langfuse** | Azure VM (Docker) | Internal only (not exposed via Caddy) | `deploy-vm.yml` |
+| **MinIO** | Azure VM (Docker) | Internal only | `deploy-vm.yml` |
+| **Redis** | Azure VM (Docker) | Internal only | `deploy-vm.yml` |
+
+### Connectivity Gaps (Known Issues)
+
+| Issue | Impact | Status |
+|-------|--------|--------|
+| **Document Processor (Container App) cannot reach Qdrant (VM)** | Vector search / Template-RAG disabled in production | Not connected |
+| **Document Processor (Container App) cannot reach Ollama (VM)** | Local LLM fallback unavailable (uses Azure OpenAI only) | By design |
+| **Qdrant has no Caddy subdomain** | Cannot be reached externally without direct IP:port | Not exposed |
+
+### Deployment Workflows
+
+1. **`deploy-dashboard.yml`** - Builds React SPA → deploys to Azure Static Web Apps
+2. **`deploy-container-app.yml`** - Builds Docker image → pushes to ACR → deploys to Azure Container App
+3. **`deploy-vm.yml`** - SSHs into Azure VM → `git pull` → `docker compose up -d --build`
+4. **Database migrations** - Applied via Supabase SQL Editor or MCP tool
+
+### Azure VM Details
+
+- **Deploy path**: `/srv/supabase`
+- **Access**: SSH via `VM_SSH_PRIVATE_KEY` / `VM_PUBLIC_IP` GitHub secrets
+- **Stack**: Full `docker-compose.yml` with `--environment public` flag
+- **Reverse proxy**: Caddy with auto Let's Encrypt SSL for configured hostnames
+- **Hostname env vars**: Set in `.env` on the VM (e.g., `N8N_HOSTNAME=n8n.fetchtext.io`)
+
+---
+
+## Local Development Architecture
+
+### Service Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -105,7 +178,9 @@ Browser → Caddy (:8001) → N8N (:5678) → PostgreSQL (:5432)
 
 ### Document Processing Flow
 ```
-Browser → Document Processor (:8090) → Shared Volume → Background Processing
+Browser → Document Processor (:8090) → Docling (parse) → LLM (extract fields)
+                                    → Qdrant (:6333) (template vector search / Template-RAG)
+                                    → Supabase (persist results)
 ```
 
 ### AI Observability Flow
@@ -281,5 +356,52 @@ Document Upload → Document Processor → Docling (Structure) → LLM Service �
                                                           ↓
                                                     Ollama (Local) / Azure OpenAI (Cloud)
 ```
+
+## Qdrant Vector Database
+
+### Role in the Platform
+Qdrant provides vector similarity search for two features:
+
+1. **Template-RAG** (`template_vector_service.py`): Embeds smart templates at creation/update time, then searches for the best-matching template when a new document is uploaded. This powers the `/decide-template` and `/stream` endpoints.
+2. **Document Search** (`vector_search_service.py`): Indexes document chunks for hybrid (vector + text) search across uploaded documents.
+
+### Collections
+| Collection | Purpose | Vector Size | Used By |
+|-----------|---------|-------------|---------|
+| `template_embeddings` | Template similarity search | 1536 (Azure OpenAI) | `TemplateVectorService` |
+| `documents` | Document chunk search | 1536 (Azure OpenAI) | `VectorSearchService` |
+
+### Environment Variables
+| Variable | Default | Service | Notes |
+|----------|---------|---------|-------|
+| `QDRANT_HOST` | `qdrant` | `template_vector_service.py` | Docker service name or external host |
+| `QDRANT_PORT` | `6333` | `template_vector_service.py` | REST API port |
+| *(hardcoded)* | `qdrant:6333` | `vector_search_service.py` | Does NOT read env vars (constructor defaults) |
+
+### Graceful Degradation
+Both services silently disable themselves when Qdrant is unreachable:
+- `template_vector_service.available = False` → template matching falls back to non-vector methods
+- `vector_search_service.available = False` → document search returns empty results
+- Health endpoint (`/health/ready`) reports `"qdrant": false` and status `"degraded"` (not `"not_ready"`)
+
+### Production Status
+- **Azure VM**: Qdrant runs as a Docker container (internal only, ports 6333/6334)
+- **Azure Container App**: No Qdrant connectivity. `QDRANT_HOST`/`QDRANT_PORT` env vars are not set in `deploy-container-app.yml`, so vector search is disabled.
+
+### Docker Configuration
+```yaml
+# docker-compose.yml
+qdrant:
+  image: qdrant/qdrant
+  container_name: qdrant
+  restart: unless-stopped
+  expose:
+    - 6333/tcp   # REST API
+    - 6334/tcp   # gRPC
+  volumes:
+    - qdrant_storage:/qdrant/storage
+```
+
+Note: No health check defined, no pinned image version, no API key authentication.
 
 This architecture provides a comprehensive, scalable AI platform with proper separation of concerns, security, and monitoring capabilities.

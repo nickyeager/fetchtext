@@ -10,7 +10,7 @@ import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
 
 export enum DocumentStatus {
   UPLOADED = 'uploaded',
-  ANALYZING = 'analyzing', 
+  ANALYZING = 'analyzing',
   PROCESSING = 'processing',
   COMPLETED = 'completed',
   FAILED = 'failed'
@@ -45,13 +45,13 @@ export interface DocumentMetadata {
   upload_source: UploadSource;
   processing_status: DocumentStatus;
   original_filename: string;
-  
+
   // Processing information
   template_id?: number;
   template_name?: string;
   // Allow broader set of processing methods used across the app
   processing_method?: string;
-  
+
   // AI Analysis results (from smart upload)
   document_type?: string;
   type_confidence?: number;
@@ -60,7 +60,7 @@ export interface DocumentMetadata {
     confidence_score: number;
     detection_method: string;
   };
-  
+
   // Template suggestions (from smart upload)
   template_suggestions?: Array<{
     template_id: number;
@@ -69,7 +69,7 @@ export interface DocumentMetadata {
     category: string;
     field_count: number;
   }>;
-  
+
   // Processing results
   extracted_fields?: Record<string, {
     value: any;
@@ -80,7 +80,7 @@ export interface DocumentMetadata {
       position?: number;
     };
   }>;
-  
+
   // Quality metrics
   extraction_quality?: number;
   confidence_distribution?: {
@@ -88,18 +88,18 @@ export interface DocumentMetadata {
     medium: number;
     low: number;
   };
-  
+
   // Processing timeline
   uploaded_at: string;
   analysis_started_at?: string;
   analysis_completed_at?: string;
   processing_started_at?: string;
   processing_completed_at?: string;
-  
+
   // Error tracking
   error_message?: string;
   error_details?: any;
-  
+
   // Additional context
   processing_settings?: any;
   user_notes?: string;
@@ -131,7 +131,7 @@ export class UnifiedDocumentService {
   private static async triggerAIAnalysis(documentId: string): Promise<void> {
     try {
       console.log('🤖 Triggering AI analysis for document:', documentId);
-      
+
       // Get the document record
       const document = await this.getDocumentById(documentId);
       if (!document) {
@@ -152,7 +152,7 @@ export class UnifiedDocumentService {
             analysis_completed_at: new Date().toISOString(),
           },
         });
-        
+
         // Trigger template extraction directly
         setTimeout(() => this.triggerTemplateExtraction(documentId), 100);
         return;
@@ -187,7 +187,7 @@ export class UnifiedDocumentService {
 
       if (downloadError || !fileData) {
         console.error('Failed to download file for analysis:', downloadError);
-        
+
         // If storage fails but we have VALID template metadata (not 0), try template extraction with original file
         const hasValidTemplateForStorageFallback = document.metadata?.template_id && document.metadata.template_id !== 0;
         if (hasValidTemplateForStorageFallback) {
@@ -202,20 +202,20 @@ export class UnifiedDocumentService {
               analysis_completed_at: new Date().toISOString(),
             },
           });
-          
+
           // Trigger template extraction with fallback
           setTimeout(() => this.triggerTemplateExtractionWithFallback(documentId), 100);
           return;
         }
-        
+
         // If no template and storage fails, mark as failed
         await this.markDocumentFailed(documentId, 'Failed to download file for analysis and no template selected');
         return;
       }
 
       // Create File object for document processor
-      const file = new File([fileData], document.name, { 
-        type: document.file_type 
+      const file = new File([fileData], document.name, {
+        type: document.file_type
       });
 
       // Initialize document processor
@@ -296,15 +296,15 @@ export class UnifiedDocumentService {
 
     } catch (error) {
       console.error('❌ AI analysis failed for document:', documentId, error);
-      
+
       // Check if it's a timeout or network error - provide fallback processing
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const isNetworkError = errorMessage.includes('timeout') || 
-                            errorMessage.includes('network') || 
-                            errorMessage.includes('AbortError') ||
-                            errorMessage.includes('Failed to fetch') ||
-                            errorMessage.includes('Document evaluation failed');
-      
+      const isNetworkError = errorMessage.includes('timeout') ||
+        errorMessage.includes('network') ||
+        errorMessage.includes('AbortError') ||
+        errorMessage.includes('Failed to fetch') ||
+        errorMessage.includes('Document evaluation failed');
+
       if (isNetworkError) {
         console.log('🔄 Network error detected, attempting fallback analysis...');
         try {
@@ -325,7 +325,7 @@ export class UnifiedDocumentService {
                 confidence_level: 'medium'
               }
             };
-            
+
             // Update with fallback analysis
             await this.updateDocumentStatus(documentId, {
               status: DocumentStatus.PROCESSING,
@@ -344,7 +344,7 @@ export class UnifiedDocumentService {
                 backend_unavailable: true
               },
             });
-            
+
             console.log('✅ Fallback analysis completed for document:', documentId);
             return;
           }
@@ -352,10 +352,10 @@ export class UnifiedDocumentService {
           console.error('❌ Fallback analysis also failed:', fallbackError);
         }
       }
-      
+
       // Mark document as failed if analysis fails
       await this.markDocumentFailed(
-        documentId, 
+        documentId,
         `AI analysis failed: ${errorMessage}`
       );
     }
@@ -366,11 +366,11 @@ export class UnifiedDocumentService {
    */
   private static guessDocumentType(filename: string): string {
     const name = filename.toLowerCase();
-    
+
     if (name.includes('invoice') || name.includes('bill')) {
       return 'invoice';
     } else if (name.includes('receipt')) {
-      return 'receipt';  
+      return 'receipt';
     } else if (name.includes('contract') || name.includes('agreement')) {
       return 'contract';
     } else if (name.includes('report')) {
@@ -388,7 +388,7 @@ export class UnifiedDocumentService {
   private static async triggerTemplateExtractionWithFallback(documentId: string): Promise<void> {
     try {
       console.log('🎯 Triggering fallback template extraction for document:', documentId);
-      
+
       // Get the document with template metadata
       const document = await this.getDocumentById(documentId);
       if (!document) {
@@ -403,7 +403,7 @@ export class UnifiedDocumentService {
 
       // Get the template
       const template = await templateService.getTemplate(Number(templateId));
-      
+
       if (!template) {
         console.error('Template not found:', templateId);
         await this.markDocumentFailed(documentId, `Template not found: ${templateId}`);
@@ -411,7 +411,7 @@ export class UnifiedDocumentService {
       }
 
       console.log('⚠️ Storage unavailable, completing with template metadata only');
-      
+
       // Create a minimal extraction result since we can't process the actual file
       const fallbackResult = {
         content: `Document uploaded for template "${template.name}" (ID: ${template.id}). File processing skipped due to storage unavailability.`,
@@ -447,7 +447,7 @@ export class UnifiedDocumentService {
     } catch (error) {
       console.error('❌ Fallback template extraction failed for document:', documentId, error);
       await this.markDocumentFailed(
-        documentId, 
+        documentId,
         `Fallback template extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
@@ -474,7 +474,7 @@ export class UnifiedDocumentService {
   private static async triggerGenericTextExtraction(documentId: string): Promise<void> {
     try {
       console.log('📄 Triggering generic text extraction for document:', documentId);
-      
+
       // Get the document
       const document = await this.getDocumentById(documentId);
       if (!document) {
@@ -493,8 +493,8 @@ export class UnifiedDocumentService {
       }
 
       // Create File object for document processor
-      const file = new File([fileData], document.name, { 
-        type: document.file_type 
+      const file = new File([fileData], document.name, {
+        type: document.file_type
       });
 
       // Initialize document processor and perform basic text extraction
@@ -502,7 +502,7 @@ export class UnifiedDocumentService {
       const documentProcessor = new DocumentProcessorEnhanced();
 
       console.log('🔄 Starting generic text extraction...');
-      
+
       // Use processDocumentWithDocling for basic text extraction
       const extractionResult = await documentProcessor.processDocumentWithDocling(file);
 
@@ -523,7 +523,7 @@ export class UnifiedDocumentService {
     } catch (error) {
       console.error('❌ Generic text extraction failed for document:', documentId, error);
       await this.markDocumentFailed(
-        documentId, 
+        documentId,
         `Generic text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
@@ -535,7 +535,7 @@ export class UnifiedDocumentService {
   private static async triggerTemplateExtraction(documentId: string): Promise<void> {
     try {
       console.log('🎯 Triggering template extraction for document:', documentId);
-      
+
       // Get the document with template metadata
       const document = await this.getDocumentById(documentId);
       if (!document) {
@@ -562,8 +562,8 @@ export class UnifiedDocumentService {
       }
 
       // Create File object for document processor
-      const file = new File([fileData], document.name, { 
-        type: document.file_type 
+      const file = new File([fileData], document.name, {
+        type: document.file_type
       });
 
       // Get the template
@@ -604,14 +604,14 @@ export class UnifiedDocumentService {
       const documentProcessor = new DocumentProcessorEnhanced();
 
       console.log('🔄 Starting template extraction...');
-      
+
       // Set processing timeout (5 minutes for template extraction)
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Template extraction timeout')), 5 * 60 * 1000);
       });
 
       const extractionPromise = documentProcessor.processDocumentWithTemplate(file, template as any);
-      
+
       const extractionResult = await Promise.race([extractionPromise, timeoutPromise]) as {
         content: string;
         extractedFields?: Record<string, unknown>;
@@ -622,8 +622,8 @@ export class UnifiedDocumentService {
 
       // Finalize document with extraction results
       await this.finalizeDocument(documentId, {
-  content_text: extractionResult?.content,
-  extracted_fields: extractionResult?.extractedFields as Record<string, any>,
+        content_text: extractionResult?.content,
+        extracted_fields: extractionResult?.extractedFields as Record<string, any>,
         processing_method: 'smart_template',
         quality_metrics: {
           extraction_quality: extractionResult?.qualityScore || 0.8,
@@ -636,19 +636,19 @@ export class UnifiedDocumentService {
         metadata: {
           template_extraction_completed_at: new Date().toISOString(),
           template_used: template.name,
-      field_count: Object.keys(extractionResult?.extractedFields || {}).length
+          field_count: Object.keys(extractionResult?.extractedFields || {}).length
         }
       });
 
     } catch (error) {
       console.error('❌ Template extraction failed for document:', documentId, error);
-      
+
       // Check if it's a timeout error
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const isTimeoutError = errorMessage.includes('timeout') || 
-                            errorMessage.includes('AbortError') ||
-                            errorMessage.includes('Failed to fetch');
-      
+      const isTimeoutError = errorMessage.includes('timeout') ||
+        errorMessage.includes('AbortError') ||
+        errorMessage.includes('Failed to fetch');
+
       if (isTimeoutError) {
         console.log('⏰ Template extraction timeout, attempting fallback...');
         try {
@@ -668,10 +668,10 @@ export class UnifiedDocumentService {
           console.error('❌ Fallback processing also failed:', fallbackError);
         }
       }
-      
+
       // Mark document as failed if extraction fails
       await this.markDocumentFailed(
-        documentId, 
+        documentId,
         `Template extraction failed: ${errorMessage}`
       );
     }
@@ -682,7 +682,7 @@ export class UnifiedDocumentService {
    */
   static async forceRetryAnalysis(documentId: string): Promise<void> {
     console.log('🔄 Force retrying analysis for document:', documentId);
-    
+
     try {
       // Reset status to analyzing to trigger fresh analysis
       await this.updateDocumentStatus(documentId, {
@@ -704,7 +704,7 @@ export class UnifiedDocumentService {
    */
   static async forceCompleteDocument(documentId: string): Promise<DocumentRecord> {
     console.log('⚡ Force completing stuck document:', documentId);
-    
+
     try {
       const document = await this.getDocumentById(documentId);
       if (!document) {
@@ -751,28 +751,28 @@ export class UnifiedDocumentService {
     try {
       const document = await this.getDocumentById(documentId);
       if (!document) return false;
-      
+
       const status = document.processing_status || document.status;
       if (status !== 'processing') return false; // Only auto-complete stuck processing documents
-      
+
       // Check if document has processing results that indicate completion
       const hasContent = !!document.content_text;
       const hasExtractedFields = !!(document.extracted_fields || document.metadata?.extracted_fields);
       const hasTemplateExtracted = !!(document.metadata?.template_extraction_completed_at);
-  const hasProcessingCompleted = !!(document.metadata?.processing_completed_at);
+      const hasProcessingCompleted = !!(document.metadata?.processing_completed_at);
       const hasProcessingStarted = !!(document.metadata?.processing_started_at);
-      
+
       // Check processing time
-      const processingTime = hasProcessingStarted && document.metadata?.processing_started_at ? 
+      const processingTime = hasProcessingStarted && document.metadata?.processing_started_at ?
         (Date.now() - new Date(document.metadata.processing_started_at).getTime()) : 0;
-      
+
       // Check if document appears to be actually completed (must have meaningful content)
       const hasMeaningfulContent = hasContent && document.content_text && document.content_text.length > 50;
       const isActuallyCompleted = hasMeaningfulContent || hasExtractedFields || hasTemplateExtracted || hasProcessingCompleted;
-      
+
       if (isActuallyCompleted) {
         console.log('🔄 Auto-completing document that appears to be processed but stuck:', documentId);
-        
+
         await this.finalizeDocument(documentId, {
           content_text: document.content_text || 'Document processing completed',
           extracted_fields: document.extracted_fields || document.metadata?.extracted_fields || {},
@@ -784,10 +784,10 @@ export class UnifiedDocumentService {
             original_processing_method: document.metadata?.processing_method,
           }
         });
-        
+
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('❌ Failed to auto-complete document:', error);
@@ -813,7 +813,7 @@ export class UnifiedDocumentService {
         .replace(/_{2,}/g, '_') // Replace multiple underscores with single
         .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
       const fileName = `${user.id}/${Date.now()}_${sanitizedFileName}`;
-      
+
       // Initialize metadata
       const metadata: DocumentMetadata = {
         upload_source: options.uploadSource,
@@ -838,7 +838,7 @@ export class UnifiedDocumentService {
       };
 
       console.log('Creating document record:', documentData);
-      
+
       const { data: rawData, error } = await supabase
         .from('documents')
         .insert(documentData)
@@ -887,7 +887,7 @@ export class UnifiedDocumentService {
         });
         return data;
       }
-      
+
       // Update status to uploaded (successful storage upload)
       await UnifiedDocumentService.updateDocumentStatus(data.id, {
         status: DocumentStatus.UPLOADED,
@@ -908,7 +908,7 @@ export class UnifiedDocumentService {
       // Convert File to Blob to avoid extended attributes issues on some file systems
       const arrayBuffer = await file.arrayBuffer();
       const blob = new Blob([arrayBuffer], { type: file.type });
-      
+
       const { error } = await supabase.storage
         .from('documents')
         .upload(filePath, blob, {
@@ -923,25 +923,25 @@ export class UnifiedDocumentService {
       }
     } catch (error) {
       console.error('File upload error:', error);
-      
+
       // If it's an extended attributes error, try alternative approach
       if (error instanceof Error && error.message.includes('extended attributes')) {
         console.warn('Extended attributes not supported, trying alternative upload method...');
-        
+
         try {
           // Create a new File object without extended attributes
           const cleanFile = new File([await file.arrayBuffer()], file.name, {
             type: file.type,
             lastModified: file.lastModified
           });
-          
+
           const { error: retryError } = await supabase.storage
             .from('documents')
             .upload(filePath, cleanFile, {
               cacheControl: '3600',
               upsert: false
             });
-            
+
           if (retryError) {
             throw new Error(`Failed to upload file (retry): ${retryError.message}`);
           }
@@ -981,7 +981,7 @@ export class UnifiedDocumentService {
       console.error('❌ Status validation failed:', error.message);
       throw error;
     }
-    
+
     try {
       // Get current document to merge metadata
       const { data: currentDoc, error: fetchError } = await supabase
@@ -1062,13 +1062,13 @@ export class UnifiedDocumentService {
           code: error.code,
           details: error.details,
           hint: error.hint,
-          updateData 
+          updateData
         });
         throw new Error(`Failed to update document status: ${error.message}`);
       }
 
-      console.log('✅ Document status updated successfully:', { 
-        documentId, 
+      console.log('✅ Document status updated successfully:', {
+        documentId,
         newStatus: data.processing_status,
         timestamp: new Date().toISOString()
       });
@@ -1233,7 +1233,7 @@ export class UnifiedDocumentService {
   }> {
     try {
       const documents = await UnifiedDocumentService.getUserDocuments();
-      
+
       const analytics = {
         total: documents.length,
         byStatus: {} as Record<DocumentStatus, number>,
@@ -1247,25 +1247,25 @@ export class UnifiedDocumentService {
 
       documents.forEach(doc => {
         const metadata = doc.metadata as DocumentMetadata;
-        
+
         // Count by status
         const status = metadata.processing_status;
         analytics.byStatus[status] = (analytics.byStatus[status] || 0) + 1;
-        
+
         // Count by source
         const source = metadata.upload_source;
         analytics.bySource[source] = (analytics.bySource[source] || 0) + 1;
-        
+
         // Count by method
         if (metadata.processing_method) {
-          analytics.byMethod[metadata.processing_method] = 
+          analytics.byMethod[metadata.processing_method] =
             (analytics.byMethod[metadata.processing_method] || 0) + 1;
         }
-        
+
         // Calculate processing time
         if (metadata.uploaded_at && metadata.processing_completed_at) {
-          const processingTime = 
-            new Date(metadata.processing_completed_at).getTime() - 
+          const processingTime =
+            new Date(metadata.processing_completed_at).getTime() -
             new Date(metadata.uploaded_at).getTime();
           totalProcessingTime += processingTime;
           completedDocs++;
@@ -1317,8 +1317,8 @@ export class UnifiedDocumentService {
    * Apply a specific template to a document and trigger extraction
    */
   static async applyTemplateToDocument(
-    documentId: string, 
-    templateId: number, 
+    documentId: string,
+    templateId: number,
     templateName?: string
   ): Promise<DocumentRecord> {
     try {
@@ -1398,7 +1398,7 @@ export class UnifiedDocumentService {
     const hasTemplateId = !!document.metadata?.template_id;
     const hasSuggestions = !!(document.metadata?.template_suggestions?.length);
     const isProcessing = document.processing_status === 'processing' || document.status === 'processing';
-    
+
     return isProcessing && !hasTemplateId && hasSuggestions;
   }
 }
