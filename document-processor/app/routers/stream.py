@@ -556,9 +556,10 @@ async def process_document_stream(
     temp_file_path: Optional[Path] = None
 
     # Keepalive interval — read from env so it can be tuned per-deployment
-    # without a container rebuild (Azure Front Door ~60s idle timeout;
-    # 15s default keeps us well under that).
-    KEEPALIVE_INTERVAL = int(os.environ.get("SSE_KEEPALIVE_INTERVAL", "15"))
+    # without a container rebuild.  Azure Container Apps' Envoy proxy can
+    # buffer small SSE comments, so we send real SSE events every 5s to
+    # ensure data flows through the proxy and the connection stays alive.
+    KEEPALIVE_INTERVAL = int(os.environ.get("SSE_KEEPALIVE_INTERVAL", "5"))
 
     # Sentinel pushed to the queue when the pipeline finishes.
     _DONE = object()
@@ -600,15 +601,21 @@ async def process_document_stream(
                 await queue.put(_DONE)
 
         async def _keepalive(stop_event: asyncio.Event) -> None:
-            """Emit SSE comment lines to keep the connection alive."""
+            """Emit SSE keepalive events to prevent proxy idle-timeout.
+
+            Uses a real ``event: keepalive`` frame instead of an SSE comment
+            because Azure Container Apps' Envoy proxy may buffer small
+            comment-only lines without flushing them to the client.
+            """
             while not stop_event.is_set():
                 try:
                     await asyncio.wait_for(
                         stop_event.wait(), timeout=KEEPALIVE_INTERVAL
                     )
                 except asyncio.TimeoutError:
-                    # stop_event not set yet — send a keepalive
-                    await queue.put(": keepalive\n\n")
+                    await queue.put(
+                        _sse_event("keepalive", {"ts": time.time()})
+                    )
 
         stop = asyncio.Event()
         pipeline_task = asyncio.create_task(_run_pipeline())
