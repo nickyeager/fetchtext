@@ -640,8 +640,9 @@ async def process_document_stream(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
         },
     )
