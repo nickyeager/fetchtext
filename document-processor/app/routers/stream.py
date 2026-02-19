@@ -556,11 +556,12 @@ async def process_document_stream(
     temp_file_path: Optional[Path] = None
 
     # Keepalive interval — read from env so it can be tuned per-deployment
-    # without a container rebuild.  Azure Container Apps' Envoy proxy kills
-    # idle HTTP/2 streams after ~5s, so we default to 2s keepalives to stay
-    # well within that window.  HTTP/1.1 clients (curl, requests) are more
-    # tolerant, but browsers connect via HTTP/2 and hit the tighter limit.
-    KEEPALIVE_INTERVAL = int(os.environ.get("SSE_KEEPALIVE_INTERVAL", "2"))
+    # without a container rebuild.  Azure Container Apps' Envoy proxy has a
+    # very aggressive idle-stream timeout for HTTP/2 browser connections
+    # (~1.5s measured empirically).  We default to 1s keepalives to stay
+    # well within that window.  curl/requests over HTTP/1.1 are far more
+    # tolerant, but browsers negotiate HTTP/2 via ALPN and hit this limit.
+    KEEPALIVE_INTERVAL = float(os.environ.get("SSE_KEEPALIVE_INTERVAL", "1"))
 
     # Sentinel pushed to the queue when the pipeline finishes.
     _DONE = object()
@@ -607,7 +608,13 @@ async def process_document_stream(
             Uses a real ``event: keepalive`` frame instead of an SSE comment
             because Azure Container Apps' Envoy proxy may buffer small
             comment-only lines without flushing them to the client.
+
+            Sends an immediate keepalive on start to prime the stream,
+            then continues at KEEPALIVE_INTERVAL.
             """
+            # Prime: send one keepalive immediately so the proxy sees
+            # data flowing right from the start.
+            await queue.put(_sse_event("keepalive", {"ts": time.time()}))
             while not stop_event.is_set():
                 try:
                     await asyncio.wait_for(
