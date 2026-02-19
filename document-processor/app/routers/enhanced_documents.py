@@ -1131,12 +1131,15 @@ async def save_generated_template(
         logger.error(f"Failed to save generated template: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
 
-async def _index_template_embedding(template: Dict[str, Any]) -> None:
+async def _index_template_embedding(
+    template: Dict[str, Any],
+    document_text: Optional[str] = None,
+) -> None:
     """Fire-and-forget: index a saved template's embedding in Qdrant."""
     try:
         from app.services.template_vector_service import template_vector_service
         if template_vector_service.available:
-            await template_vector_service.index_template(template)
+            await template_vector_service.index_template(template, document_text=document_text)
     except Exception as e:
         logger.warning(f"Failed to index template embedding (non-fatal): {e}")
 
@@ -1148,6 +1151,7 @@ class IndexTemplateRequest(BaseModel):
     category: str = ""
     smart_variables: list = []
     is_public: bool = False
+    document_text: Optional[str] = None  # Source doc text for exemplar embedding
 
 
 @router.post("/index-template-embedding")
@@ -1184,7 +1188,7 @@ async def index_template_embedding(request: IndexTemplateRequest):
         except Exception as e:
             logger.warning(f"Could not fetch template {request.template_id} from DB: {e}")
 
-    await _index_template_embedding(template_dict)
+    await _index_template_embedding(template_dict, document_text=request.document_text)
 
     return JSONResponse(content={
         "success": True,

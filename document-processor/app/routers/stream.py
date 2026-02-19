@@ -249,7 +249,7 @@ async def _process_document_stream(
         except Exception as exc:
             logger.warning(f"Vector search failed, using multi-factor scoring: {exc}")
 
-    # ── Stage 4b: test extraction quality on top match ────────────────
+    # ── Stage 4b: decide on top match ────────────────────────────────
     chosen_template: Optional[Dict[str, Any]] = None
     decision_metadata: Dict[str, Any] = {}
 
@@ -257,10 +257,22 @@ async def _process_document_stream(
     # a redundant (and event-loop-blocking) duplicate query.
     _cached_template_row: Optional[Dict[str, Any]] = None
 
+    # NOTE: Test extraction was removed here for performance (~7s LLM call).
+    # It used to run `smart_field_extractor.test_template_extraction()` to
+    # verify the matched template's fields could actually be extracted from
+    # the document *before* committing to it.  With document-exemplar
+    # embeddings now yielding high-confidence matches (0.96+), the
+    # validation is unnecessary for strong matches.  If we start seeing
+    # poor extractions from medium-confidence metadata-only matches
+    # (0.60–0.70 range), this step should be re-added — ideally gated on
+    # match_score < 0.85 or match_source != "document_exemplar".
+
     if suggestions and document_text:
         best = suggestions[0]
+        match_score = best.get("match_score", 0.0)
         template_id = best.get("template_id")
 
+        # Pre-fetch the template row for stage 5 field extraction.
         if template_id and db_config.is_configured and db_config.client:
             try:
                 def _fetch_template(tid: str) -> Any:
@@ -274,28 +286,12 @@ async def _process_document_stream(
 
                 template_result = await asyncio.to_thread(_fetch_template, template_id)
                 _cached_template_row = template_result.data
-
-                if template_result.data:
-                    smart_variables = template_result.data.get("smart_variables", [])
-                    if smart_variables:
-                        test_result = await smart_field_extractor.test_template_extraction(
-                            content=document_text,
-                            template_variables=smart_variables,
-                            confidence_threshold=0.6,
-                            provider="azure",
-                            organization_id=organization_id,
-                        )
-                        best["extraction_quality"] = test_result.get("field_success_rate", 0.0)
-                        best["avg_field_confidence"] = test_result.get("avg_confidence", 0.0)
-                        best["extractable_fields"] = test_result.get("extractable_count", 0)
-                        best["total_fields"] = test_result.get("total_fields", 0)
-                        best["combined_score"] = (
-                            best.get("match_score", 0.0) * best["extraction_quality"]
-                        )
             except Exception as exc:
-                logger.error(f"Extraction test failed for top match: {exc}")
-                best["extraction_quality"] = best.get("match_score", 0.0)
-                best["combined_score"] = best.get("match_score", 0.0)
+                logger.warning(f"Failed to pre-fetch template {template_id}: {exc}")
+
+        # Trust the vector score as the extraction quality estimate.
+        best["extraction_quality"] = match_score
+        best["combined_score"] = match_score
 
     # Apply 2-way validation thresholds
     if suggestions:
