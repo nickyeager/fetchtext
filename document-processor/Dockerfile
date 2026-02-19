@@ -16,6 +16,27 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
+# Pre-download RapidOCR models so they're baked into the image layer.
+# Without this, the first Docling request downloads ~40MB from modelscope.cn,
+# adding 60-90s to the first document processing call.
+RUN python -c "\
+from rapidocr import RapidOCR; \
+from rapidocr.utils.parse_parameters import EngineType; \
+RapidOCR(params={ \
+  'Det.engine_type': EngineType.TORCH, \
+  'Cls.engine_type': EngineType.TORCH, \
+  'Rec.engine_type': EngineType.TORCH, \
+}); \
+print('RapidOCR torch models cached')" \
+    || echo "WARN: RapidOCR model pre-download skipped (non-fatal)"
+
+# Pre-download Docling ML models (layout analysis + table structure, ~506MB).
+# Without this, the first PDF conversion stalls for 2+ minutes downloading
+# from HuggingFace, often exceeding the SSE stream timeout.
+RUN docling-tools models download layout tableformer --quiet \
+    && echo "Docling layout + tableformer models cached" \
+    || echo "WARN: Docling model pre-download skipped (non-fatal)"
+
 # Copy application code
 COPY . .
 

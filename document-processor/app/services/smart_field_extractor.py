@@ -259,6 +259,7 @@ Return ONLY this JSON format (no markdown, no explanations):
             'provider': provider,
             'temperature': 0.1,  # Start with low temperature for consistency
             'max_tokens': 600,   # Base token count
+            'response_format': {"type": "json_object"},  # Force valid JSON output
         }
         
         # Adjust based on document complexity

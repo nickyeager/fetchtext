@@ -86,6 +86,8 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
 
   // Track whether we've already handled the stream result to prevent double-navigation
   const handledResultRef = useRef(false);
+  // Track whether we've already handled the stream error to prevent infinite markDocumentFailed loop
+  const handledErrorRef = useRef(false);
 
   // Debug authentication state
   useEffect(() => {
@@ -142,7 +144,9 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
                     extraction_rules: genTemplate.extraction_rules || [],
                     is_public: false,
                     created_by: authUser.id,
+                    organization_id: activeOrganization!.id,
                     template_type: 'smart',
+                    template_content: genTemplate.template_content || '',
                     tags: genTemplate.tags || ['ai-generated', primaryType],
                   })
                   .select()
@@ -167,6 +171,11 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         const evaluation = result.evaluation || {};
         const typeEval = evaluation.type_evaluation || {};
 
+        // Build custom_template_content for the detail view's right panel.
+        // For generated templates, use template_content from the generator.
+        // For existing templates, the detail view fetches content via template_id.
+        const customTemplateContent = result.generated_template?.template_content ?? undefined;
+
         await documentManager.finalizeDocument(documentId, {
           status: 'completed',
           content_text: result.content,
@@ -181,6 +190,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
             },
             template_id: appliedTemplate?.template_id,
             template_name: appliedTemplate?.template_name,
+            custom_template_content: customTemplateContent,
             template_decision: {
               action: result.action,
               validation_level: result.decision_metadata?.validation_level,
@@ -212,19 +222,22 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         setError(err instanceof Error ? err.message : 'Failed to finalize document');
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- stream.result intentionally excluded to prevent
-  // double-firing when the result object reference changes. handledResultRef guards against duplicate processing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stream.result intentionally excluded to prevent
+    // double-firing when the result object reference changes. handledResultRef guards against duplicate processing.
   }, [stream.status, documentId, documentManager, queryClient, navigate, onDocumentProcessed]);
 
-  // Propagate stream errors
+  // Propagate stream errors (guarded to prevent infinite loop —
+  // documentManager is an unstable ref that changes every render)
   useEffect(() => {
-    if (stream.status === 'error' && stream.error) {
+    if (stream.status === 'error' && stream.error && !handledErrorRef.current) {
+      handledErrorRef.current = true;
       setError(stream.error);
       if (documentId) {
         documentManager.markDocumentFailed(documentId, stream.error);
       }
     }
-  }, [stream.status, stream.error, documentId, documentManager]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- documentManager excluded: unstable ref
+  }, [stream.status, stream.error, documentId]);
 
   // ── Pre-selected template handler (unchanged) ──────────────────────
   const handleActionSelect = useCallback(async (action: ProcessingAction) => {
@@ -283,6 +296,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
     setSelectedFile(file);
     setError(null);
     handledResultRef.current = false;
+    handledErrorRef.current = false;
 
     // Verify user is authenticated before proceeding
     if (!user || !session) {
@@ -387,6 +401,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
     setError(null);
     setIsProcessing(false);
     handledResultRef.current = false;
+    handledErrorRef.current = false;
     stream.abort();
   }, [stream]);
 
