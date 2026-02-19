@@ -49,6 +49,8 @@ export interface UseProcessingStreamReturn {
   ) => void;
   /** Abort the current stream. */
   abort: () => void;
+  /** Abort and reset all state back to idle (for "Try Again" flows). */
+  reset: () => void;
   /** Ordered list of log entries (newest last). */
   logs: ProcessingLogEntry[];
   /** Overall progress 0–100. */
@@ -95,6 +97,16 @@ export function useProcessingStream(): UseProcessingStreamReturn {
   const abort = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+  }, []);
+
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLogs([]);
+    setProgress(0);
+    setStatus('idle');
+    setResult(null);
+    setError(null);
   }, []);
 
   // Cleanup: abort any active stream when the component unmounts
@@ -233,5 +245,5 @@ export function useProcessingStream(): UseProcessingStreamReturn {
     [],
   );
 
-  return { startProcessing, abort, logs, progress, status, result, error };
+  return { startProcessing, abort, reset, logs, progress, status, result, error };
 }

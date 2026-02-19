@@ -1141,6 +1141,58 @@ async def _index_template_embedding(template: Dict[str, Any]) -> None:
         logger.warning(f"Failed to index template embedding (non-fatal): {e}")
 
 
+class IndexTemplateRequest(BaseModel):
+    template_id: int
+    name: str = ""
+    description: str = ""
+    category: str = ""
+    smart_variables: list = []
+    is_public: bool = False
+
+
+@router.post("/index-template-embedding")
+async def index_template_embedding(request: IndexTemplateRequest):
+    """Index an already-saved template's embedding in Qdrant for vector search.
+
+    Called by the frontend after saving a generated template directly to
+    Supabase, so the template becomes discoverable via vector search
+    immediately (without waiting for a container restart).
+    """
+    template_dict = {
+        "id": request.template_id,
+        "name": request.name,
+        "description": request.description,
+        "category": request.category,
+        "smart_variables": request.smart_variables,
+        "is_public": request.is_public,
+    }
+
+    # If minimal data was sent, try to fetch full template from Supabase
+    if not request.name and db_config.is_configured and db_config.client:
+        try:
+            def _fetch(tid: int):
+                return (
+                    db_config.client.table("smart_templates")
+                    .select("id, name, description, category, smart_variables, is_public")
+                    .eq("id", tid)
+                    .single()
+                    .execute()
+                )
+            result = await asyncio.to_thread(_fetch, request.template_id)
+            if result.data:
+                template_dict = result.data
+        except Exception as e:
+            logger.warning(f"Could not fetch template {request.template_id} from DB: {e}")
+
+    await _index_template_embedding(template_dict)
+
+    return JSONResponse(content={
+        "success": True,
+        "template_id": request.template_id,
+        "message": f"Template {request.template_id} indexed in Qdrant",
+    })
+
+
 async def _test_template_extraction(document_path: Path, template: Dict[str, Any]) -> Dict[str, Any]:
     """Test template extraction on the source document"""
     

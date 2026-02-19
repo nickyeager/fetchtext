@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { withAuthentication } from '@/lib/supabase-auth-utils';
+import { API_ENDPOINTS } from '@/lib/api-config';
 
 interface DocumentEvaluation {
   document_info: {
@@ -157,6 +158,29 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
               }, 'Save Generated Template');
 
               console.log('[DocumentUpload] Generated template saved:', savedGeneratedTemplate?.id);
+
+              // Index the template in Qdrant for vector search so the next
+              // upload of a similar document matches immediately.
+              if (savedGeneratedTemplate?.id) {
+                try {
+                  await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      template_id: savedGeneratedTemplate.id,
+                      name: savedGeneratedTemplate.name || '',
+                      description: savedGeneratedTemplate.description || '',
+                      category: savedGeneratedTemplate.category || '',
+                      smart_variables: savedGeneratedTemplate.smart_variables || [],
+                      is_public: savedGeneratedTemplate.is_public || false,
+                    }),
+                  });
+                  console.log('[DocumentUpload] Template indexed in Qdrant:', savedGeneratedTemplate.id);
+                } catch (indexErr) {
+                  // Non-fatal: template will be indexed on next container restart
+                  console.warn('[DocumentUpload] Failed to index template in Qdrant (non-fatal):', indexErr);
+                }
+              }
             } catch (saveErr) {
               console.error('[DocumentUpload] Failed to save generated template:', saveErr);
               toast.error('Template was generated but failed to save. You can recreate it from the document.');
@@ -402,7 +426,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
     setIsProcessing(false);
     handledResultRef.current = false;
     handledErrorRef.current = false;
-    stream.abort();
+    stream.reset();
   }, [stream]);
 
   const isStreamActive = stream.status === 'connecting' || stream.status === 'streaming';
