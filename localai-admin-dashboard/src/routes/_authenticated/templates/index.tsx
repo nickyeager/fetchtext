@@ -4,6 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Settings, FileText, Eye } from 'lucide-react';
 import { toast } from 'sonner';
+import { Header } from '@/components/layout/header';
+import { Main } from '@/components/layout/main';
+import { ProfileDropdown } from '@/components/profile-dropdown';
+import { Search } from '@/components/search';
+import { ThemeSwitch } from '@/components/theme-switch';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { templateService, SmartTemplate } from '@/services/template-service';
 import { useOrganization } from '@/context/organization-context';
@@ -109,47 +114,65 @@ export function TemplatesIndexPage() {
 
   if (isEditing) {
     return (
-      <div className="container mx-auto p-6">
-        <TemplateEditor
-          template={selectedTemplate}
-          onSave={handleSaveTemplate}
-          onCancel={handleCancel}
-          isNew={!selectedTemplate?.id}
-        />
-      </div>
+      <>
+        <Header>
+          <Search />
+          <div className='ml-auto flex items-center space-x-4'>
+            <ThemeSwitch />
+            <ProfileDropdown />
+          </div>
+        </Header>
+        <Main>
+          <TemplateEditor
+            template={selectedTemplate}
+            onSave={handleSaveTemplate}
+            onCancel={handleCancel}
+            isNew={!selectedTemplate?.id}
+          />
+        </Main>
+      </>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Templates</h1>
-            <p className="text-muted-foreground mt-2">
-              AI-powered templates for document processing with smart variable extraction and regex fallback
-            </p>
-          </div>
-          <Button onClick={handleCreateTemplate}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Template
-          </Button>
+    <>
+      <Header>
+        <Search />
+        <div className='ml-auto flex items-center space-x-4'>
+          <ThemeSwitch />
+          <ProfileDropdown />
         </div>
-      </div>
+      </Header>
+      <Main>
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Templates</h1>
+              <p className="text-muted-foreground mt-2">
+                AI-powered templates for document processing with smart variable extraction and regex fallback
+              </p>
+            </div>
+            <Button onClick={handleCreateTemplate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Template
+            </Button>
+          </div>
+        </div>
 
-      {/* Templates Grid View */}
-      <TemplateList 
-        templates={templates}
-        selectedTemplate={null}
-        isLoading={isLoading}
-        onTemplateSelect={handleViewTemplate}
-        onTemplateEdit={handleEditTemplate}
-        onTemplateDelete={handleDeleteTemplate}
-        onCreateTemplate={handleCreateTemplate}
-        gridView={true}
-      />
-    </div>
+        {/* Templates Grid View */}
+        <TemplateList
+          templates={templates}
+          selectedTemplate={null}
+          isLoading={isLoading}
+          onTemplateSelect={handleViewTemplate}
+          onTemplateEdit={handleEditTemplate}
+          onTemplateDelete={handleDeleteTemplate}
+          onCreateTemplate={handleCreateTemplate}
+          gridView={true}
+        />
+      </Main>
+    </>
   );
 }
 
