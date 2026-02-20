@@ -6,10 +6,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { TopNav } from '@/components/layout/top-nav'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
@@ -44,7 +44,6 @@ export default function Dashboard() {
   return (
     <>
       <Header>
-        <TopNav links={topNav} />
         <div className='ml-auto flex items-center space-x-4'>
           <Search />
           <ThemeSwitch />
@@ -54,7 +53,41 @@ export default function Dashboard() {
 
       <Main>
         <div className='mb-2 flex items-center justify-between space-y-2'>
-          <h1 className='text-2xl font-bold tracking-tight'>Dashboard</h1>
+          <div>
+            <h1 className='text-2xl font-bold tracking-tight'>Dashboard</h1>
+            <div className='flex items-center gap-2 mt-1'>
+              {isLoading ? (
+                <Badge variant='outline' className='text-xs font-normal text-muted-foreground'>
+                  <Loader2 className='h-3 w-3 mr-1 animate-spin' />
+                  Loading...
+                </Badge>
+              ) : (
+                <>
+                  <Badge variant='outline' className='text-xs font-normal'>
+                    <FileText className='h-3 w-3 mr-1' />
+                    {stats?.totalDocuments || 0} docs
+                  </Badge>
+                  <Badge variant='outline' className='text-xs font-normal'>
+                    <LayoutTemplate className='h-3 w-3 mr-1' />
+                    {stats?.totalTemplates || 0} templates
+                  </Badge>
+                  <Badge variant={
+                    stats && stats.successRate >= 90 ? 'default' :
+                    stats && stats.successRate >= 70 ? 'secondary' : 'destructive'
+                  } className='text-xs font-normal'>
+                    <CheckCircle className='h-3 w-3 mr-1' />
+                    {stats?.successRate || 0}% success
+                  </Badge>
+                  {(stats?.processingNow || 0) > 0 && (
+                    <Badge variant='secondary' className='text-xs font-normal'>
+                      <Loader2 className='h-3 w-3 mr-1 animate-spin' />
+                      {stats?.processingNow} processing
+                    </Badge>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
           <div className='flex items-center space-x-2'>
             <Button variant='outline' size='sm' onClick={() => refetch()}>
               <RefreshCw className='h-4 w-4 mr-2' />
@@ -165,9 +198,3 @@ export default function Dashboard() {
   )
 }
 
-const topNav = [
-  { title: 'Overview', href: 'dashboard/overview', isActive: true, disabled: false },
-  { title: 'Documents', href: '/documents', isActive: false, disabled: false },
-  { title: 'Templates', href: '/templates', isActive: false, disabled: false },
-  { title: 'Settings', href: '/settings', isActive: false, disabled: false },
-]
