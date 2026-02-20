@@ -5,29 +5,34 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+
+  /* ── Unified Industrial Blueprint Palette (Light) ──────────────
+   *  Derived from the landing page's cyan/orange color system.
+   *  Primary = #00a8e8 (cyan), Accent highlight = #ff6b35 (orange).
+   * ──────────────────────────────────────────────────────────────── */
+  --background: oklch(0.984 0.003 228.783);       /* #f8fafb – cool blue-white */
+  --foreground: oklch(0.200 0.040 258.291);        /* #0a1628 – deep navy */
+  --card: oklch(1.000 0.000 89.876);               /* #ffffff */
+  --card-foreground: oklch(0.200 0.040 258.291);   /* #0a1628 */
+  --popover: oklch(1.000 0.000 89.876);            /* #ffffff */
+  --popover-foreground: oklch(0.200 0.040 258.291);/* #0a1628 */
+  --primary: oklch(0.690 0.146 234.817);           /* #00a8e8 – industrial cyan */
+  --primary-foreground: oklch(1.000 0.000 89.876); /* #ffffff */
+  --secondary: oklch(0.959 0.006 239.820);         /* #eef2f5 – cool gray */
+  --secondary-foreground: oklch(0.264 0.030 250.967); /* #1a2633 – steel */
+  --muted: oklch(0.959 0.006 239.820);             /* #eef2f5 */
+  --muted-foreground: oklch(0.465 0.032 241.766);  /* #4a5c6a */
+  --accent: oklch(0.959 0.006 239.820);            /* #eef2f5 */
+  --accent-foreground: oklch(0.264 0.030 250.967); /* #1a2633 */
+  --destructive: oklch(0.705 0.193 39.231);        /* #ff6b35 – orange accent */
+  --border: oklch(0.918 0.013 244.263);            /* #dde5ec – blue-tinted border */
+  --input: oklch(0.918 0.013 244.263);             /* #dde5ec */
+  --ring: oklch(0.690 0.146 234.817);              /* #00a8e8 – matches primary */
+  --chart-1: oklch(0.690 0.146 234.817);           /* cyan */
+  --chart-2: oklch(0.696 0.149 162.480);           /* #10b981 emerald */
+  --chart-3: oklch(0.705 0.193 39.231);            /* #ff6b35 orange */
+  --chart-4: oklch(0.556 0.127 239.766);           /* #007bb5 dark cyan */
+  --chart-5: oklch(0.465 0.032 241.766);           /* #4a5c6a steel gray */
 
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
@@ -40,29 +45,33 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.14 0.04 259.21);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  /* ── Unified Industrial Blueprint Palette (Dark) ───────────────
+   *  Primary brightens to #00d4ff for contrast on dark backgrounds.
+   *  Backgrounds match the landing page's steel-dark tones.
+   * ──────────────────────────────────────────────────────────────── */
+  --background: oklch(0.166 0.013 248.647);        /* #0a0f14 – deep dark */
+  --foreground: oklch(0.944 0.009 247.917);        /* #e8edf2 – light steel */
+  --card: oklch(0.204 0.021 245.880);              /* #0f1820 – dark card */
+  --card-foreground: oklch(0.944 0.009 247.917);   /* #e8edf2 */
+  --popover: oklch(0.204 0.021 245.880);           /* #0f1820 */
+  --popover-foreground: oklch(0.944 0.009 247.917);/* #e8edf2 */
+  --primary: oklch(0.804 0.146 219.515);           /* #00d4ff – bright cyan */
+  --primary-foreground: oklch(0.166 0.013 248.647);/* #0a0f14 – dark bg */
+  --secondary: oklch(0.241 0.035 257.671);         /* #152030 */
+  --secondary-foreground: oklch(0.944 0.009 247.917); /* #e8edf2 */
+  --muted: oklch(0.241 0.035 257.671);             /* #152030 */
+  --muted-foreground: oklch(0.674 0.027 240.860);  /* #8899a6 */
+  --accent: oklch(0.241 0.035 257.671);            /* #152030 */
+  --accent-foreground: oklch(0.944 0.009 247.917); /* #e8edf2 */
+  --destructive: oklch(0.705 0.193 39.231);        /* #ff6b35 – orange accent */
+  --border: oklch(0.279 0.037 249.265);            /* #1a2a3a */
+  --input: oklch(0.299 0.040 241.473);             /* #1a3040 */
+  --ring: oklch(0.804 0.146 219.515);              /* #00d4ff – matches primary */
+  --chart-1: oklch(0.804 0.146 219.515);           /* bright cyan */
+  --chart-2: oklch(0.696 0.149 162.480);           /* emerald */
+  --chart-3: oklch(0.705 0.193 39.231);            /* orange */
+  --chart-4: oklch(0.648 0.119 235.023);           /* #3399cc mid cyan */
+  --chart-5: oklch(0.674 0.027 240.860);           /* #8899a6 muted steel */
 }
 
 @theme inline {
