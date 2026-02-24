@@ -41,7 +41,6 @@ describe('CI/CD Workflow Environment Variables', () => {
     'VITE_DOCUMENT_PROCESSOR_URL',
     'VITE_POSTHOG_KEY',
     'VITE_POSTHOG_HOST',
-    'VITE_SENDGRID_API_KEY',
     'VITE_SENDGRID_FROM_EMAIL',
     'VITE_SENDGRID_FROM_NAME',
     'VITE_SENDGRID_REPLY_TO',
@@ -68,16 +67,13 @@ describe('CI/CD Workflow Environment Variables', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Frontend SendGrid Configuration', () => {
-  it('VITE_SENDGRID_API_KEY must be set', () => {
+  it('VITE_SENDGRID_API_KEY must NOT be set (server-side only)', () => {
+    // The SendGrid API key must never be embedded in the browser bundle.
+    // Email delivery is handled server-side via N8N webhooks or the
+    // document-processor backend. VITE_ vars are baked into the static
+    // JS assets and are publicly visible to any browser user.
     const apiKey = import.meta.env.VITE_SENDGRID_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        'VITE_SENDGRID_API_KEY is not set. ' +
-          'In CI/CD: add it as a GitHub secret. ' +
-          'Locally: add it to localai-admin-dashboard/.env.local'
-      );
-    }
-    expect(apiKey).toBeTruthy();
+    expect(apiKey).toBeFalsy();
   });
 
   it('VITE_SENDGRID_FROM_EMAIL must be set', () => {

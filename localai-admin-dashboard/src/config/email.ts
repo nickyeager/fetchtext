@@ -1,17 +1,8 @@
 // Email Service Configuration for FetchText.io
-
-const sendgridApiKey = import.meta.env.VITE_SENDGRID_API_KEY;
-
-if (!sendgridApiKey) {
-  console.warn(
-    '[Email] VITE_SENDGRID_API_KEY is not set. Email delivery will be disabled until the key is provided via environment variables.'
-  );
-}
+// NOTE: SENDGRID_API_KEY must never be exposed here.
+// Email delivery is handled server-side via N8N webhooks or the document-processor backend.
 
 export const EMAIL_CONFIG = {
-  // SendGrid Configuration
-  SENDGRID_API_KEY: sendgridApiKey ?? '',
-
   // Email Settings - Using verified sender email
   FROM_EMAIL: import.meta.env.VITE_SENDGRID_FROM_EMAIL || 'nick@fetchtext.io',
   FROM_NAME: import.meta.env.VITE_SENDGRID_FROM_NAME || 'FetchText',
