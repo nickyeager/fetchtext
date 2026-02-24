@@ -15,7 +15,6 @@ const EXCLUDED_FILES = [
   'supabase-auth-utils.ts', // The auth utilities themselves
   'storage-cleanup.ts',     // Utility scripts
   'document-processing-monitor.ts', // Monitoring - may use service role
-  'document-processing-queue.ts',   // Queue processing - may use service role
 ];
 
 // Mock Supabase client to track usage patterns

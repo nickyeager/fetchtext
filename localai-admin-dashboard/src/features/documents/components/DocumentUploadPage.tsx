@@ -68,6 +68,10 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref that always holds the current document ID synchronously, avoiding stale-closure issues
+  // when callbacks created before the state update calls markDocumentFailed / finalizeDocument.
+  const documentIdRef = useRef<string | null>(null);
+
   // Debug pre-selected template
   useEffect(() => {
     if (preSelectedTemplate) {
@@ -222,17 +226,19 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
     }
   }, [stream.status, stream.error, documentId, documentManager]);
 
-  // ── Pre-selected template handler (unchanged) ──────────────────────
+  // ── Pre-selected template handler ──────────────────────────────────
   const handleActionSelect = useCallback(async (action: ProcessingAction) => {
-    if (!selectedFile || !documentId) return;
-    if (!preSelectedTemplate) return;
+    // Use the ref so we always have the current document ID even if the state
+    // update from setDocumentId has not yet been applied to this closure.
+    const currentDocId = documentIdRef.current;
+    if (!selectedFile || !currentDocId) return;
 
     console.log('[DocumentUpload] handleActionSelect (pre-selected):', action);
     setIsProcessing(true);
     setError(null);
 
     try {
-      await documentManager.updateDocumentStatus(documentId, {
+      await documentManager.updateDocumentStatus(currentDocId, {
         status: 'processing' as any,
         metadata: {
           processing_method: 'template_guided',
@@ -248,7 +254,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
 
       console.log('[DocumentUpload] Pre-selected template processing complete:', result);
 
-      await documentManager.finalizeDocument(documentId, {
+      await documentManager.finalizeDocument(currentDocId, {
         content_text: result?.content || '',
         extracted_fields: result?.extractedFields || result?.extracted_fields,
         processing_method: 'template_guided',
@@ -256,21 +262,19 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       });
 
       await queryClient.invalidateQueries({ queryKey: ['processedDocuments'] });
-      navigate({ to: `/documents/${documentId}` });
+      navigate({ to: `/documents/${currentDocId}` });
 
     } catch (err) {
       console.error('[DocumentUpload] Pre-selected template processing failed:', err);
       setError(err instanceof Error ? err.message : 'Document processing failed');
-      if (documentId) {
-        await documentManager.markDocumentFailed(
-          documentId,
-          err instanceof Error ? err.message : 'Document processing failed',
-        );
-      }
+      await documentManager.markDocumentFailed(
+        currentDocId,
+        err instanceof Error ? err.message : 'Document processing failed',
+      );
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, documentId, documentManager, documentProcessor, queryClient, navigate, preSelectedTemplate]);
+  }, [selectedFile, documentManager, documentProcessor, queryClient, navigate]);
 
   // ── Main file select handler ───────────────────────────────────────
   const handleFileSelect = useCallback(async (file: File) => {
@@ -306,6 +310,9 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         throw new Error('Document record created without a valid ID');
       }
 
+      // Update ref synchronously so subsequent callbacks (handleActionSelect, catch
+      // block) have the correct ID regardless of when the state flush occurs.
+      documentIdRef.current = documentRecord.id;
       setDocumentId(documentRecord.id);
 
       const metadata = documentRecord.metadata as any;
@@ -313,7 +320,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
         console.warn('[DocumentUpload] File storage failed, processing will continue:', metadata.storage_error);
       }
 
-      // ── Pre-selected template path (unchanged) ───────────────────
+      // ── Pre-selected template path ───────────────────────────────
       if (preSelectedTemplate) {
         console.log('[DocumentUpload] Using pre-selected template:', preSelectedTemplate);
         setIsProcessing(true);
@@ -339,9 +346,7 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
           console.error('[DocumentUpload] Pre-selected template error:', templateErr);
           setError(templateErr instanceof Error ? templateErr.message : 'Processing failed with selected template');
           setIsProcessing(false);
-          if (documentRecord.id) {
-            setTimeout(() => navigate({ to: `/documents/${documentRecord.id}` }), 2000);
-          }
+          setTimeout(() => navigate({ to: `/documents/${documentRecord.id}` }), 2000);
           return;
         }
       }
@@ -368,17 +373,21 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
       console.error('[DocumentUpload] Document upload failed:', err);
       setError(err instanceof Error ? err.message : 'Document upload failed');
 
-      if (documentId) {
+      // Use the ref rather than the state variable; the state update from
+      // setDocumentId may not yet have been applied to this closure.
+      const failedDocId = documentIdRef.current;
+      if (failedDocId) {
         await documentManager.markDocumentFailed(
-          documentId,
+          failedDocId,
           err instanceof Error ? err.message : 'Document upload failed',
         );
       }
     }
-  }, [documentProcessor, documentManager, documentId, preSelectedTemplate, handleActionSelect, user, session, navigate, activeOrganization, stream]);
+  }, [documentProcessor, documentManager, preSelectedTemplate, handleActionSelect, user, session, navigate, activeOrganization, stream]);
 
   const resetUpload = useCallback(() => {
     setSelectedFile(null);
+    documentIdRef.current = null;
     setDocumentId(null);
     setError(null);
     setIsProcessing(false);
