@@ -52,6 +52,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(enhanced_documents.router)
+app.include_router(enhanced_documents.public_router)
 app.include_router(models.router)
 app.include_router(google_docs.router)
 app.include_router(email.router)
