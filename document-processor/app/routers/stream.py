@@ -12,15 +12,11 @@ import logging
 import os
 import sys
 import time
-import uuid
-import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any, AsyncGenerator
 
-from fastapi import APIRouter, UploadFile, File, Query, HTTPException
+from fastapi import APIRouter, UploadFile, File, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-
-import aiofiles
 
 # Safe logger initialization for Docker environment
 try:
@@ -36,30 +32,25 @@ except Exception:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     logger = logging.getLogger(__name__)
 
+from ..middleware.file_validation import validate_and_save_uploaded_file
+from ..middleware.admin_auth import admin_auth
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.embedding_service import embedding_service
 from ..config.database import db_config
 
-router = APIRouter(prefix="/api/enhanced-documents", tags=["streaming"])
+router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["streaming"],
+    dependencies=[Depends(admin_auth.get_current_user)]
+)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _save_uploaded_file(upload_file: UploadFile) -> Path:
-    """Save an uploaded file to a temporary location and return the path."""
-    temp_dir = Path(tempfile.gettempdir()) / "docling_uploads"
-    temp_dir.mkdir(exist_ok=True)
-    file_extension = Path(upload_file.filename or "unknown").suffix
-    temp_filename = f"{uuid.uuid4()}{file_extension}"
-    temp_path = temp_dir / temp_filename
-    async with aiofiles.open(temp_path, "wb") as f:
-        content = await upload_file.read()
-        await f.write(content)
-    return temp_path
 
 
 async def _cleanup_temp_file(file_path: Path):
@@ -572,7 +563,7 @@ async def process_document_stream(
             upload_complete = False
             try:
                 nonlocal temp_file_path
-                temp_file_path = await _save_uploaded_file(file)
+                temp_file_path = await validate_and_save_uploaded_file(file)
                 upload_complete = True
 
                 async for event in _process_document_stream(
