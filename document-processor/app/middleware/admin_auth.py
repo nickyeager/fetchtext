@@ -3,15 +3,26 @@ Admin Dashboard Authentication Middleware
 
 Provides JWT validation for admin dashboard users accessing the API.
 This is separate from third-party API key authentication.
+
+Supports two verification modes:
+- JWKS (asymmetric ES256): Used by managed Supabase in production.
+  Configured via SUPABASE_URL env var — fetches public keys from
+  {SUPABASE_URL}/auth/v1/.well-known/jwks.json
+- Shared secret (symmetric HS256): Used by local Docker Supabase.
+  Configured via JWT_SECRET or SUPABASE_JWT_SECRET env var.
 """
 
 import logging
 import sys
 import os
+import time
 from typing import Dict, Any, Optional
 
 from fastapi import HTTPException, Depends, Header
 import jwt
+from jose import jwk
+from jose.utils import base64url_decode
+import httpx
 
 from ..config.database import db_config
 
@@ -36,10 +47,75 @@ class AdminAuth:
     Also verifies organization membership for organization-scoped operations.
     """
 
+    # Cache JWKS keys for 1 hour
+    JWKS_CACHE_TTL = 3600
+
     def __init__(self):
-        # Get JWT secret from environment (same as Supabase config)
         self.jwt_secret = os.getenv('JWT_SECRET', os.getenv('SUPABASE_JWT_SECRET', ''))
-        self.jwt_algorithms = ['HS256']
+        self.supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
+        self.jwks_uri = f"{self.supabase_url}/auth/v1/.well-known/jwks.json" if self.supabase_url else ''
+        self._jwks_cache: Optional[Dict] = None
+        self._jwks_fetched_at: float = 0
+
+        if self.jwks_uri:
+            logger.info(f"Auth configured for JWKS verification: {self.jwks_uri}")
+        elif self.jwt_secret:
+            logger.info("Auth configured for HS256 symmetric verification")
+        else:
+            logger.warning("Auth NOT configured — no SUPABASE_URL or JWT_SECRET set")
+
+    def _fetch_jwks(self) -> Dict:
+        """Fetch and cache JWKS keys from Supabase discovery endpoint."""
+        now = time.time()
+        if self._jwks_cache and (now - self._jwks_fetched_at) < self.JWKS_CACHE_TTL:
+            return self._jwks_cache
+
+        try:
+            resp = httpx.get(self.jwks_uri, timeout=10)
+            resp.raise_for_status()
+            self._jwks_cache = resp.json()
+            self._jwks_fetched_at = now
+            key_count = len(self._jwks_cache.get('keys', []))
+            logger.info(f"Fetched {key_count} JWKS key(s) from {self.jwks_uri}")
+            return self._jwks_cache
+        except Exception as e:
+            logger.error(f"Failed to fetch JWKS from {self.jwks_uri}: {e}")
+            if self._jwks_cache:
+                logger.warning("Using stale JWKS cache")
+                return self._jwks_cache
+            raise
+
+    def _decode_with_jwks(self, token: str) -> Dict[str, Any]:
+        """Decode a JWT using JWKS public keys (ES256)."""
+        jwks_data = self._fetch_jwks()
+        keys = jwks_data.get('keys', [])
+        if not keys:
+            raise jwt.InvalidTokenError("No keys found in JWKS endpoint")
+
+        # Get the kid from the token header to find the right key
+        unverified_header = jwt.get_unverified_header(token)
+        token_kid = unverified_header.get('kid')
+
+        signing_key = None
+        for key_data in keys:
+            if token_kid and key_data.get('kid') == token_kid:
+                signing_key = key_data
+                break
+
+        if not signing_key:
+            # If no kid match, use the first key
+            signing_key = keys[0]
+
+        # Convert JWK to PEM for verification
+        key_obj = jwk.construct(signing_key)
+        pem_key = key_obj.to_pem()
+
+        return jwt.decode(
+            token,
+            pem_key,
+            algorithms=[signing_key.get('alg', 'ES256')],
+            audience="authenticated"
+        )
 
     async def get_current_user(
         self,
@@ -74,18 +150,32 @@ class AdminAuth:
         token = parts[1]
 
         try:
-            # Decode JWT token
-            if not self.jwt_secret:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Authentication service misconfigured — JWT_SECRET not set"
-                )
-            else:
+            if self.jwks_uri:
+                try:
+                    payload = self._decode_with_jwks(token)
+                except jwt.InvalidTokenError:
+                    # JWKS may return empty keys (e.g. local Docker Supabase uses HS256)
+                    if self.jwt_secret:
+                        logger.info("JWKS verification failed, falling back to HS256")
+                        payload = jwt.decode(
+                            token,
+                            self.jwt_secret,
+                            algorithms=['HS256'],
+                            audience="authenticated"
+                        )
+                    else:
+                        raise
+            elif self.jwt_secret:
                 payload = jwt.decode(
                     token,
                     self.jwt_secret,
-                    algorithms=self.jwt_algorithms,
+                    algorithms=['HS256'],
                     audience="authenticated"
+                )
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Authentication service misconfigured — no SUPABASE_URL or JWT_SECRET set"
                 )
 
             user_id = payload.get('sub')
