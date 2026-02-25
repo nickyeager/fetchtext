@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -28,6 +28,9 @@ except Exception:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     logger = logging.getLogger(__name__)
 
+from ..middleware.file_validation import validate_and_save_uploaded_file
+from ..middleware.admin_auth import admin_auth
+from ..middleware.demo_rate_limit import check_demo_rate_limit
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.ai_template_generator import ai_template_generator
 from ..services.document_evaluator import document_evaluator
@@ -38,28 +41,18 @@ from ..services.template_generation_service import template_generation_service
 from ..services.embedding_service import embedding_service
 from ..config.database import db_config
 
-router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
+router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["enhanced-documents"],
+    dependencies=[Depends(admin_auth.get_current_user)]
+)
 
-async def save_uploaded_file(upload_file: UploadFile) -> Path:
-    """Save uploaded file to temporary location"""
-    try:
-        # Create temporary file
-        temp_dir = Path(tempfile.gettempdir()) / "docling_uploads"
-        temp_dir.mkdir(exist_ok=True)
-        
-        file_extension = Path(upload_file.filename or "unknown").suffix
-        temp_filename = f"{uuid.uuid4()}{file_extension}"
-        temp_path = temp_dir / temp_filename
-        
-        # Save file content
-        async with aiofiles.open(temp_path, 'wb') as f:
-            content = await upload_file.read()
-            await f.write(content)
-        
-        return temp_path
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+# Public sub-router for endpoints that don't require authentication
+public_router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["enhanced-documents"],
+)
+
 
 async def cleanup_temp_file(file_path: Path):
     """Clean up temporary file"""
@@ -101,7 +94,7 @@ async def batch_process_with_ai_enhancement(
     
     try:
         # Save all uploaded files
-        save_tasks = [save_uploaded_file(file) for file in files]
+        save_tasks = [validate_and_save_uploaded_file(file) for file in files]
         temp_files = await asyncio.gather(*save_tasks)
         
         # Process files with limited concurrency
@@ -250,7 +243,7 @@ async def extract_with_text(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
 
-@router.get("/supported-categories")
+@public_router.get("/supported-categories")
 async def get_supported_document_categories():
     """Get list of supported document categories for classification"""
     
@@ -339,7 +332,7 @@ async def extract_with_template(
                 raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
         
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # For template-guided extraction, create minimal processing result to bypass all AI
         if template_variables:
@@ -447,7 +440,7 @@ async def decide_template_strategy(
     temp_file_path: Optional[Path] = None
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # 1) Evaluate document (type + suggestions)
         evaluation = await document_evaluator.evaluate_document(
@@ -716,7 +709,7 @@ async def evaluate_document_type(
     
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # For PDFs and binary files, extract clean text using Docling first
         clean_text = None
@@ -868,7 +861,7 @@ async def extract_with_smart_template(
             raise HTTPException(status_code=400, detail="No smart template variables provided")
         
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # Extract text content from document
         try:
@@ -1036,7 +1029,7 @@ async def smart_field_extraction(request: SmartExtractRequest):
         logger.error(f"Smart extraction failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Smart extraction failed: {str(e)}")
 
-@router.post("/analyze-document")
+@public_router.post("/analyze-document", dependencies=[Depends(check_demo_rate_limit)])
 async def analyze_document_for_template_generation(
     file: UploadFile = File(...),
     confidence_threshold: float = Query(0.7, description="Minimum confidence for field detection"),
@@ -1066,7 +1059,7 @@ async def analyze_document_for_template_generation(
     
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # Perform document analysis
         analysis = await ai_template_generator.analyze_document_structure(temp_file_path)
@@ -1405,7 +1398,7 @@ async def get_field_positions(
             })
 
         # Save file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # Find positions using docling service
         from app.services.docling_service import docling_service
