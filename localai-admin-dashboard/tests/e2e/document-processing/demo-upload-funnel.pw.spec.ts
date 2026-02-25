@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { preflight } from '../utils/preflight'
 import {
@@ -8,6 +9,7 @@ import {
   assertNoCriticalErrors,
 } from '../helpers/auth'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const invoicePath = path.resolve(
   __dirname,
   '../../fixtures/real-test-invoice.txt'
