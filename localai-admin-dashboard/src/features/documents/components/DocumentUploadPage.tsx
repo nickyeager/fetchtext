@@ -453,28 +453,16 @@ export function DocumentUploadPage({ onDocumentProcessed, preSelectedTemplate }:
   const showProcessingLog = isStreamActive || stream.status === 'complete' || stream.status === 'error';
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate({ to: '/documents' })}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Documents
-          </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Smart Upload</h1>
             <p className="text-gray-600 dark:text-gray-300 mt-1">
               Upload your document and let AI automatically detect its type and suggest the best processing approach.
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-8 w-8 text-purple-600" />
         </div>
       </div>
 

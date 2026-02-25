@@ -1,5 +1,5 @@
 import {
-  
+
   IconFile,
 
   IconLayoutDashboard,
@@ -21,6 +21,7 @@ import {
   IconUpload,
   IconPhoto,
   IconDatabase,
+  IconCode,
 } from '@tabler/icons-react'
 import { AudioWaveform, Command, GalleryVerticalEnd } from 'lucide-react'
 import { ClerkLogo } from '@/assets/clerk-logo'
@@ -108,6 +109,11 @@ export const sidebarData: SidebarData = {
               title: 'AI Models',
               url: '/settings/ai-models',
               icon: IconCpu,
+            },
+            {
+              title: 'Developer',
+              url: '/settings/developer',
+              icon: IconCode,
             },
             {
               title: 'Notifications',

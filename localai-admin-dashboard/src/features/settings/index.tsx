@@ -7,6 +7,7 @@ import {
   IconCpu,
   IconApi,
   IconCreditCard,
+  IconCode,
 } from '@tabler/icons-react'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/layout/header'
@@ -76,6 +77,11 @@ const sidebarNavItems = [
     title: 'Integrations',
     icon: <IconApi size={18} />,
     href: '/settings/integrations',
+  },
+  {
+    title: 'Developer',
+    icon: <IconCode size={18} />,
+    href: '/settings/developer',
   },
   {
     title: 'Appearance',
