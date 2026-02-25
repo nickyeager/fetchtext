@@ -131,10 +131,11 @@ export function DocumentDetailView({
   const [fieldsForTemplate, setFieldsForTemplate] = useState<any[]>([])
   const [documentFileUrl, setDocumentFileUrl] = useState<string | null>(null)
 
-  const documentProcessor = React.useMemo(
-    () => new DocumentProcessorEnhanced(),
-    []
-  )
+  const documentProcessor = React.useMemo(() => {
+    const dp = new DocumentProcessorEnhanced()
+    dp.setAccessToken(session?.access_token)
+    return dp
+  }, [session?.access_token])
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true })
 
   // State for formatted template output (moved to top to avoid hooks order issues)

@@ -211,6 +211,26 @@ interface BackendResponse {
 export class DocumentProcessorEnhanced {
   private readonly enhancedBaseUrl = API_ENDPOINTS.enhancedDocuments
   private readonly rootUrl = API_ENDPOINTS.health.replace('/health', '')
+  private accessToken?: string
+
+  /**
+   * Set the access token for authenticated API requests.
+   * Call this after instantiation with the user's session token.
+   */
+  setAccessToken(token?: string): void {
+    this.accessToken = token
+  }
+
+  /**
+   * Build Authorization headers if an access token is set.
+   */
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {}
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`
+    }
+    return headers
+  }
 
   private readonly supportedFormats = [
     'application/pdf',
@@ -459,6 +479,7 @@ export class DocumentProcessorEnhanced {
 
       const response = await fetch(extractUrl, {
         method: 'POST',
+        headers: this.getAuthHeaders(),
         mode: 'cors',
         credentials: 'omit',
         signal: AbortSignal.timeout(90000),
@@ -680,6 +701,7 @@ export class DocumentProcessorEnhanced {
           `${this.enhancedBaseUrl}/extract-with-smart-template`,
           {
             method: 'POST',
+            headers: this.getAuthHeaders(),
             body: formData,
             mode: 'cors',
             credentials: 'omit',
@@ -776,6 +798,7 @@ export class DocumentProcessorEnhanced {
 
       const response = await fetch(endpointUrl, {
         method: 'POST',
+        headers: this.getAuthHeaders(),
         body: formData,
         mode: 'cors',
         credentials: 'omit',
@@ -1556,6 +1579,7 @@ export class DocumentProcessorEnhanced {
         `${this.enhancedBaseUrl}/evaluate-document-type?${params}`,
         {
           method: 'POST',
+          headers: this.getAuthHeaders(),
           body: formData,
           signal: AbortSignal.timeout(30000), // 30 seconds should be sufficient for Azure OpenAI
         }
@@ -1656,6 +1680,7 @@ export class DocumentProcessorEnhanced {
         `${this.enhancedBaseUrl}/decide-template?${params}`,
         {
           method: 'POST',
+          headers: this.getAuthHeaders(),
           body: formData,
           signal: AbortSignal.timeout(45000), // 45 seconds for extraction testing
         }
@@ -1849,6 +1874,7 @@ export class DocumentProcessorEnhanced {
           `${this.enhancedBaseUrl}/decide-template?${decideParams}`,
           {
             method: 'POST',
+            headers: this.getAuthHeaders(),
             body: decideForm,
           }
         )
@@ -2248,6 +2274,7 @@ Template Version: 1.0`
       `${this.enhancedBaseUrl}/extract-with-template`,
       {
         method: 'POST',
+        headers: this.getAuthHeaders(),
         body: formData,
         mode: 'cors',
         credentials: 'omit',
@@ -2590,10 +2617,12 @@ Template Version: 1.0`
         JSON.stringify(fieldValues.map((f) => f.value))
       )
 
-      // Call the backend endpoint
+      // Call the backend endpoint — use explicit accessToken if provided, else fall back to instance token
       const headers: Record<string, string> = {}
       if (accessToken) {
         headers['Authorization'] = `Bearer ${accessToken}`
+      } else if (this.accessToken) {
+        headers['Authorization'] = `Bearer ${this.accessToken}`
       }
       const response = await fetch(API_ENDPOINTS.fieldPositions, {
         method: 'POST',
