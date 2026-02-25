@@ -95,10 +95,11 @@ export function DocumentUploadPage({
   const { user, session } = useAuth()
   const { activeOrganization, isLoading: isLoadingOrg } = useOrganization()
   const queryClient = useQueryClient()
-  const documentProcessor = React.useMemo(
-    () => new DocumentProcessorEnhanced(),
-    []
-  )
+  const documentProcessor = React.useMemo(() => {
+    const dp = new DocumentProcessorEnhanced()
+    dp.setAccessToken(session?.access_token)
+    return dp
+  }, [session?.access_token])
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true })
   const stream = useProcessingStream()
 
