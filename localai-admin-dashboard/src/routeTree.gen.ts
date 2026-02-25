@@ -48,6 +48,7 @@ import { Route as ClerkauthSignInImport } from './routes/clerk/(auth)/sign-in'
 import { Route as AuthenticatedTemplatesTemplateIdImport } from './routes/_authenticated/templates/$templateId'
 import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_authenticated/settings/notifications'
 import { Route as AuthenticatedSettingsIntegrationsImport } from './routes/_authenticated/settings/integrations'
+import { Route as AuthenticatedSettingsDeveloperImport } from './routes/_authenticated/settings/developer'
 import { Route as AuthenticatedSettingsBillingImport } from './routes/_authenticated/settings/billing'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
@@ -296,6 +297,13 @@ const AuthenticatedSettingsIntegrationsRoute =
   AuthenticatedSettingsIntegrationsImport.update({
     id: '/integrations',
     path: '/integrations',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+
+const AuthenticatedSettingsDeveloperRoute =
+  AuthenticatedSettingsDeveloperImport.update({
+    id: '/developer',
+    path: '/developer',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
@@ -653,6 +661,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsBillingImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
+    '/_authenticated/settings/developer': {
+      id: '/_authenticated/settings/developer'
+      path: '/developer'
+      fullPath: '/settings/developer'
+      preLoaderRoute: typeof AuthenticatedSettingsDeveloperImport
+      parentRoute: typeof AuthenticatedSettingsRouteImport
+    }
     '/_authenticated/settings/integrations': {
       id: '/_authenticated/settings/integrations'
       path: '/integrations'
@@ -824,6 +839,7 @@ interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAiModelsRoute: typeof AuthenticatedSettingsAiModelsRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsDeveloperRoute: typeof AuthenticatedSettingsDeveloperRoute
   AuthenticatedSettingsIntegrationsRoute: typeof AuthenticatedSettingsIntegrationsRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
@@ -835,6 +851,7 @@ const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteCh
     AuthenticatedSettingsAiModelsRoute: AuthenticatedSettingsAiModelsRoute,
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
     AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+    AuthenticatedSettingsDeveloperRoute: AuthenticatedSettingsDeveloperRoute,
     AuthenticatedSettingsIntegrationsRoute:
       AuthenticatedSettingsIntegrationsRoute,
     AuthenticatedSettingsNotificationsRoute:
@@ -1030,6 +1047,7 @@ export interface FileRoutesByFullPath {
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
@@ -1084,6 +1102,7 @@ export interface FileRoutesByTo {
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
@@ -1143,6 +1162,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/_authenticated/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
@@ -1202,6 +1222,7 @@ export interface FileRouteTypes {
     | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/billing'
+    | '/settings/developer'
     | '/settings/integrations'
     | '/settings/notifications'
     | '/templates/$templateId'
@@ -1255,6 +1276,7 @@ export interface FileRouteTypes {
     | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/billing'
+    | '/settings/developer'
     | '/settings/integrations'
     | '/settings/notifications'
     | '/templates/$templateId'
@@ -1312,6 +1334,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/ai-models'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/developer'
     | '/_authenticated/settings/integrations'
     | '/_authenticated/settings/notifications'
     | '/_authenticated/templates/$templateId'
@@ -1451,6 +1474,7 @@ export const routeTree = rootRoute
         "/_authenticated/settings/ai-models",
         "/_authenticated/settings/appearance",
         "/_authenticated/settings/billing",
+        "/_authenticated/settings/developer",
         "/_authenticated/settings/integrations",
         "/_authenticated/settings/notifications",
         "/_authenticated/settings/"
@@ -1561,6 +1585,10 @@ export const routeTree = rootRoute
     },
     "/_authenticated/settings/billing": {
       "filePath": "_authenticated/settings/billing.tsx",
+      "parent": "/_authenticated/settings"
+    },
+    "/_authenticated/settings/developer": {
+      "filePath": "_authenticated/settings/developer.tsx",
       "parent": "/_authenticated/settings"
     },
     "/_authenticated/settings/integrations": {
