@@ -76,9 +76,10 @@ class AdminAuth:
         try:
             # Decode JWT token
             if not self.jwt_secret:
-                logger.warning("JWT_SECRET not configured - using permissive mode for development")
-                # In development without JWT secret, decode without verification
-                payload = jwt.decode(token, options={"verify_signature": False})
+                raise HTTPException(
+                    status_code=503,
+                    detail="Authentication service misconfigured — JWT_SECRET not set"
+                )
             else:
                 payload = jwt.decode(
                     token,
