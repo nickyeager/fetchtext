@@ -130,3 +130,12 @@ azure-credentials.json
 # Snowflake test keys
 .snowflake-keys/
 .env.snowflake-test
+
+# Playwright auth state (contains session tokens)
+localai-admin-dashboard/playwright/.auth/
+
+# Claude Code local config
+.claude/
+
+# Service logs
+start_services.log

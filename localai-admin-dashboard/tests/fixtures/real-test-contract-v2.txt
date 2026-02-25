@@ -1,0 +1,60 @@
+SERVICE AGREEMENT
+
+Contract Number: SA-2024-0087
+Effective Date: March 10, 2024
+Expiration Date: March 9, 2025
+
+PARTIES:
+Service Provider: CloudNet Systems Inc.
+Address: 1200 Innovation Way, Suite 500
+         Tech Valley, WA 98101
+Phone: (206) 555-7890
+Email: legal@cloudnetsystems.com
+
+Client: Pacific Coast Logistics LLC
+Address: 890 Harbor Drive
+         Port City, OR 97201
+Contact: Sarah Chen, Operations Director
+Phone: (503) 555-2468
+Email: s.chen@pacificcoastlogistics.com
+
+SCOPE OF SERVICES:
+1. Managed IT Infrastructure
+   - 24/7 system monitoring and alerting
+   - Quarterly security audits
+   - Infrastructure capacity planning
+
+2. Technical Support Services
+   - Tier 1, 2, and 3 support coverage
+   - Response time: 2 hours (business hours)
+   - On-site support available upon request
+
+3. Data Management and Backup
+   - Nightly incremental backups
+   - 60-day retention policy
+   - Annual disaster recovery testing
+
+FINANCIAL TERMS:
+Monthly Service Fee: $6,200.00
+Setup Fee (One-time): $2,500.00
+Additional Support Hours: $150.00 per hour
+
+Payment Terms: Net 45 days
+Late Payment Fee: 2.0% per month
+
+TERM AND TERMINATION:
+Initial Term: 24 months
+Auto-renewal: Yes (12-month terms)
+Termination Notice: 90 days written notice
+
+SERVICE LEVEL AGREEMENT:
+- System Uptime: 99.9% guaranteed
+- Support Response: 2 hours
+- Critical Issue Response: 1 hour
+
+This agreement is governed by the laws of Washington State.
+Both parties acknowledge receipt and understanding of all terms.
+
+Authorized Signatures:
+Service Provider: _________________ Date: _________
+Client: _________________________ Date: _________
