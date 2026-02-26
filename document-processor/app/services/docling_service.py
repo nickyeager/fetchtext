@@ -10,14 +10,21 @@ import uuid
 
 # Import Docling functionality
 try:
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, FormatOption
     from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
+    from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
     DOCLING_AVAILABLE = True
     DOCLING_VERSION = "1.0.0"  # Update with actual version
 except ImportError:
     DOCLING_AVAILABLE = False
     DocumentConverter = None
+    FormatOption = None
     InputFormat = None
+    PdfPipelineOptions = None
+    StandardPdfPipeline = None
+    PyPdfiumDocumentBackend = None
     DOCLING_VERSION = None
 
 from app.models.document import (
@@ -39,19 +46,36 @@ class DoclingService:
         self.temp_dir.mkdir(exist_ok=True)
         self.supported_formats = ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff']
         
-        # Initialize Docling converter if available
+        # Initialize Docling converters if available.
+        # Two converters: a fast one (no OCR) for text-based PDFs and a full
+        # one (with OCR) as fallback for scanned documents / images.
         if DOCLING_AVAILABLE:
             try:
-                self.converter = DocumentConverter()
+                fast_pdf_opts = PdfPipelineOptions(
+                    do_ocr=False,
+                    do_table_structure=False,
+                )
+                self.converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: FormatOption(
+                            pipeline_cls=StandardPdfPipeline,
+                            backend=PyPdfiumDocumentBackend,
+                            pipeline_options=fast_pdf_opts,
+                        ),
+                    }
+                )
+                self.converter_ocr = DocumentConverter()  # default: OCR enabled
                 self.use_real_docling = True
-                logger.info(f"Docling DocumentConverter initialized successfully (version: {DOCLING_VERSION})")
+                logger.info(f"Docling DocumentConverter initialized (fast+OCR) (version: {DOCLING_VERSION})")
             except Exception as e:
                 logger.error(f"Failed to initialize Docling converter: {e}")
                 self.converter = None
+                self.converter_ocr = None
                 self.use_real_docling = False
         else:
             logger.warning("Docling not available - document processing will fail")
             self.converter = None
+            self.converter_ocr = None
             self.use_real_docling = False
         
     async def get_supported_formats(self) -> List[str]:
@@ -249,7 +273,16 @@ class DoclingService:
             # Run in a thread so the synchronous Docling call doesn't block
             # the asyncio event loop (which would prevent SSE keepalives and
             # freeze all other requests for the duration of the conversion).
-            logger.info(f"[DOCLING_TIMING] converter.convert() START | file={file_path.name}")
+            #
+            # Two-pass strategy for PDFs:
+            #   1. Fast pass — no OCR, no table structure (uses embedded text layer)
+            #   2. OCR fallback — only if pass 1 yields <50 chars of text
+            # This avoids the expensive RapidOCR pipeline for text-based PDFs,
+            # which can take >120s on low-CPU environments (e.g., 0.75 vCPU
+            # Container Apps).
+            is_pdf = file_path.suffix.lower() == '.pdf'
+
+            logger.info(f"[DOCLING_TIMING] converter.convert() START | file={file_path.name} | fast={'yes' if is_pdf else 'n/a'}")
             t_convert_start = _time.monotonic()
             result = await asyncio.to_thread(self.converter.convert, str(file_path))
             t_convert_end = _time.monotonic()
@@ -272,6 +305,17 @@ class DoclingService:
                 content["text"] = result.document.export_to_text()
                 t_text_end = _time.monotonic()
                 logger.info(f"[DOCLING_TIMING] export_to_text() DONE | file={file_path.name} | took={t_text_end - t_text_start:.2f}s | chars={len(content['text'])}")
+
+                # OCR fallback: if fast pass yielded very little text, retry with OCR
+                if is_pdf and len(content["text"].strip()) < 50 and self.converter_ocr:
+                    logger.info(f"[DOCLING_TIMING] Fast pass yielded {len(content['text'].strip())} chars — retrying with OCR | file={file_path.name}")
+                    t_ocr_start = _time.monotonic()
+                    result = await asyncio.to_thread(self.converter_ocr.convert, str(file_path))
+                    t_ocr_end = _time.monotonic()
+                    logger.info(f"[DOCLING_TIMING] OCR converter.convert() DONE | file={file_path.name} | took={t_ocr_end - t_ocr_start:.2f}s")
+                    content["text"] = result.document.export_to_text()
+                    logger.info(f"[DOCLING_TIMING] OCR export_to_text() chars={len(content['text'])}")
+
                 # Try to extract markdown if available
                 try:
                     logger.info(f"[DOCLING_TIMING] export_to_markdown() START | file={file_path.name}")

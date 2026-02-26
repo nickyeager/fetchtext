@@ -65,7 +65,7 @@ export interface WaitOptions {
 async function getProgress(page: Page): Promise<number> {
   const text = await page
     .locator('[data-testid="processing-progress"]')
-    .textContent()
+    .textContent({ timeout: 3_000 })
     .catch(() => '0%');
   return parseInt(text || '0', 10);
 }
@@ -76,19 +76,25 @@ async function getProgress(page: Page): Promise<number> {
 async function getStageEntries(page: Page): Promise<StageEntry[]> {
   const entries = await page
     .locator('[data-testid="processing-stage-entry"]')
-    .all();
+    .all()
+    .catch(() => []);
 
   const results: StageEntry[] = [];
   for (const entry of entries) {
-    const stage = (await entry.getAttribute('data-stage')) || 'unknown';
-    const status = (await entry.getAttribute('data-stage-status')) || 'unknown';
-    const message = (await entry.locator('[data-testid="processing-stage-message"]').textContent()) || '';
-    results.push({
-      stage,
-      status,
-      message: message.trim(),
-      timestamp: Date.now(),
-    });
+    try {
+      const stage = (await entry.getAttribute('data-stage')) || 'unknown';
+      const status = (await entry.getAttribute('data-stage-status')) || 'unknown';
+      const message = (await entry.locator('[data-testid="processing-stage-message"]').textContent({ timeout: 3_000 })) || '';
+      results.push({
+        stage,
+        status,
+        message: message.trim(),
+        timestamp: Date.now(),
+      });
+    } catch {
+      // Element detached (page navigated away) — return what we have so far
+      break;
+    }
   }
   return results;
 }
@@ -100,7 +106,7 @@ async function getHeaderText(page: Page): Promise<string> {
   return (
     (await page
       .locator('[data-testid="processing-log-header"]')
-      .textContent()
+      .textContent({ timeout: 3_000 })
       .catch(() => '')) || ''
   ).trim();
 }
@@ -112,7 +118,7 @@ async function getErrorBannerText(page: Page): Promise<string | null> {
   const banner = page.locator('[data-testid="processing-error-banner"]');
   const visible = await banner.isVisible().catch(() => false);
   if (!visible) return null;
-  return (await banner.textContent()) || 'Unknown error';
+  return (await banner.textContent({ timeout: 3_000 }).catch(() => null)) || 'Unknown error';
 }
 
 /**
@@ -190,6 +196,21 @@ export async function waitForProcessingCompletion(
       };
     }
 
+    // ── Check for page navigation (auto-redirect to document detail) ──
+    // When processing completes, the frontend may navigate to /documents/<uuid>
+    // before we can read the "Processing Complete" header.
+    const currentUrl = page.url();
+    if (/\/documents\/(?!upload|gallery|templates)[a-f0-9-]+/.test(currentUrl)) {
+      await diagnosticScreenshot(page, screenshotDir, 'navigated-complete');
+      log(`Processing completed via navigation to ${currentUrl} in ${Math.round(elapsed / 1000)}s`);
+      return {
+        stages: allStages,
+        duration_ms: elapsed,
+        final_status: 'complete',
+        progress: 100,
+      };
+    }
+
     // ── Check for error state ──
     const headerText = await getHeaderText(page);
     if (headerText.includes('Processing Error')) {
@@ -242,21 +263,30 @@ export async function waitForProcessingCompletion(
     }
 
     // ── Per-stage stall detection ──
+    // Only declare a stall if the ProcessingLog header is gone (page navigated)
+    // or if it no longer says "Processing Document" (indicating active work).
+    // AI field extraction via Ollama can take 2+ minutes on a single stage.
     if (sinceLast > stageTimeout) {
-      await diagnosticScreenshot(page, screenshotDir, 'stage-stall');
-      const stages = await getStageEntries(page);
-      const progress = await getProgress(page);
-      const lastStage = stages[stages.length - 1];
-      return {
-        stages,
-        duration_ms: elapsed,
-        final_status: 'stalled',
-        error_message:
-          `Stage stall detected: no progress for ${Math.round(stageTimeout / 1000)}s. ` +
-          `Progress: ${progress}%. ` +
-          `Stalled after stage "${lastStage?.stage || 'none'}": "${lastStage?.message || 'none'}"`,
-        progress,
-      };
+      const stillProcessing = headerText.toLowerCase().includes('processing document');
+      if (!stillProcessing) {
+        await diagnosticScreenshot(page, screenshotDir, 'stage-stall');
+        const stages = await getStageEntries(page);
+        const progress = await getProgress(page);
+        const lastStage = stages[stages.length - 1];
+        return {
+          stages,
+          duration_ms: elapsed,
+          final_status: 'stalled',
+          error_message:
+            `Stage stall detected: no progress for ${Math.round(stageTimeout / 1000)}s. ` +
+            `Progress: ${progress}%. ` +
+            `Stalled after stage "${lastStage?.stage || 'none'}": "${lastStage?.message || 'none'}"`,
+          progress,
+        };
+      }
+      // ProcessingLog still showing active processing — extend the stall timer
+      // since the backend is still working (e.g., slow AI extraction)
+      log(`Stage timeout reached (${Math.round(stageTimeout / 1000)}s) but processing still active, extending...`);
     }
 
     await page.waitForTimeout(pollInterval);

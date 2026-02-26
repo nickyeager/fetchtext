@@ -184,14 +184,16 @@ export function DocumentUploadPage({
               )
             } else {
               try {
+                const templateName =
+                  genTemplate.name ||
+                  `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`
+
                 savedGeneratedTemplate = await withAuthentication(
                   async (authUser) => {
                     const { data, error: dbError } = await supabase
                       .from('smart_templates')
                       .insert({
-                        name:
-                          genTemplate.name ||
-                          `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`,
+                        name: templateName,
                         description:
                           genTemplate.description ||
                           `Auto-generated template for ${primaryType} documents`,
@@ -209,7 +211,21 @@ export function DocumentUploadPage({
                       .select()
                       .single()
 
-                    if (dbError) throw dbError
+                    if (dbError) {
+                      // Duplicate name — reuse existing template instead of failing
+                      if (dbError.code === '23505') {
+                        console.log(
+                          `[DocumentUpload] Template "${templateName}" already exists, reusing`
+                        )
+                        const { data: existing } = await supabase
+                          .from('smart_templates')
+                          .select()
+                          .eq('name', templateName)
+                          .single()
+                        if (existing) return existing
+                      }
+                      throw dbError
+                    }
                     return data
                   },
                   'Save Generated Template'
