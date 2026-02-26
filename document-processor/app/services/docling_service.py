@@ -8,6 +8,14 @@ import os
 from datetime import datetime
 import uuid
 
+# Import PyMuPDF for fast text extraction from text-based PDFs.
+# This bypasses Docling's ML pipeline entirely and runs in ~0.1s.
+try:
+    import fitz as pymupdf  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
 # Import Docling functionality
 try:
     from docling.document_converter import DocumentConverter, FormatOption
@@ -260,7 +268,14 @@ class DoclingService:
         extract_text: bool = True,
         extract_structure: bool = False
     ) -> Dict[str, Any]:
-        """Enhanced content extraction leveraging Docling's DoclingDocument structure"""
+        """Enhanced content extraction with three-tier PDF strategy.
+
+        For PDFs:
+          1. PyMuPDF (fitz) — extracts embedded text in ~0.1s, no ML needed
+          2. Docling fast pass — no OCR, no table structure (layout model only)
+          3. Docling full pass — with OCR for scanned documents
+        Each tier is only tried when the previous one yields <50 chars.
+        """
 
         import time as _time
 
@@ -269,19 +284,56 @@ class DoclingService:
             logger.info(f"[DOCLING_TIMING] _real_extract_content START | file={file_path.name} | size={file_size} bytes | extract_text={extract_text} | extract_structure={extract_structure}")
             t0 = _time.monotonic()
 
-            # Convert document using Docling.
-            # Run in a thread so the synchronous Docling call doesn't block
-            # the asyncio event loop (which would prevent SSE keepalives and
-            # freeze all other requests for the duration of the conversion).
-            #
-            # Two-pass strategy for PDFs:
-            #   1. Fast pass — no OCR, no table structure (uses embedded text layer)
-            #   2. OCR fallback — only if pass 1 yields <50 chars of text
-            # This avoids the expensive RapidOCR pipeline for text-based PDFs,
-            # which can take >120s on low-CPU environments (e.g., 0.75 vCPU
-            # Container Apps).
             is_pdf = file_path.suffix.lower() == '.pdf'
 
+            # ── Tier 1: PyMuPDF fast extraction (PDFs only) ──
+            # Extracts embedded text without any ML models — completes in <1s
+            # even on 0.75 CPU containers. Sufficient for text-based PDFs.
+            pymupdf_text = ""
+            if is_pdf and PYMUPDF_AVAILABLE and extract_text:
+                try:
+                    logger.info(f"[DOCLING_TIMING] PyMuPDF extract START | file={file_path.name}")
+                    t_fitz = _time.monotonic()
+                    pymupdf_text = await asyncio.to_thread(
+                        self._extract_text_with_pymupdf, file_path
+                    )
+                    logger.info(
+                        f"[DOCLING_TIMING] PyMuPDF extract DONE | file={file_path.name} "
+                        f"| took={_time.monotonic() - t_fitz:.2f}s | chars={len(pymupdf_text)}"
+                    )
+                except Exception as e:
+                    logger.warning(f"[DOCLING_TIMING] PyMuPDF failed, will fall through to Docling | error={e}")
+                    pymupdf_text = ""
+
+            # If PyMuPDF got enough text, skip Docling entirely
+            if pymupdf_text and len(pymupdf_text.strip()) >= 50:
+                content = {
+                    "text": pymupdf_text,
+                    "markdown": pymupdf_text,
+                    "images": [],
+                    "tables": [],
+                    "layout_info": {},
+                    "document_structure": {},
+                    "chunks": []
+                }
+                logger.info(
+                    f"[DOCLING_TIMING] Using PyMuPDF text ({len(pymupdf_text)} chars), "
+                    f"skipping Docling | file={file_path.name}"
+                )
+
+                if extract_structure and content["text"]:
+                    content["document_structure"] = await self._analyze_text_file_structure(content["text"])
+                    content["layout_info"] = {
+                        "pages": 1,
+                        "layout_detected": True,
+                        "processing_method": "pymupdf_fast",
+                    }
+
+                t_total = _time.monotonic() - t0
+                logger.info(f"[DOCLING_TIMING] _real_extract_content DONE (PyMuPDF fast) | file={file_path.name} | total={t_total:.2f}s")
+                return content
+
+            # ── Tier 2 & 3: Docling (fast then OCR) ──
             logger.info(f"[DOCLING_TIMING] converter.convert() START | file={file_path.name} | fast={'yes' if is_pdf else 'n/a'}")
             t_convert_start = _time.monotonic()
             result = await asyncio.to_thread(self.converter.convert, str(file_path))
@@ -299,7 +351,6 @@ class DoclingService:
             }
 
             if extract_text:
-                # Extract both text and markdown formats
                 logger.info(f"[DOCLING_TIMING] export_to_text() START | file={file_path.name}")
                 t_text_start = _time.monotonic()
                 content["text"] = result.document.export_to_text()
@@ -316,7 +367,6 @@ class DoclingService:
                     content["text"] = result.document.export_to_text()
                     logger.info(f"[DOCLING_TIMING] OCR export_to_text() chars={len(content['text'])}")
 
-                # Try to extract markdown if available
                 try:
                     logger.info(f"[DOCLING_TIMING] export_to_markdown() START | file={file_path.name}")
                     t_md_start = _time.monotonic()
@@ -324,28 +374,17 @@ class DoclingService:
                     t_md_end = _time.monotonic()
                     logger.info(f"[DOCLING_TIMING] export_to_markdown() DONE | file={file_path.name} | took={t_md_end - t_md_start:.2f}s | chars={len(content['markdown'])}")
                 except AttributeError:
-                    content["markdown"] = content["text"]  # Fallback to text
+                    content["markdown"] = content["text"]
                 logger.info(f"Extracted {len(content['text'])} characters of text and {len(content['markdown'])} characters of markdown")
-            
+
             if extract_structure:
-                # Enhanced structure extraction using DoclingDocument features
                 try:
-                    # Extract document hierarchy and structure
                     content["document_structure"] = await self._extract_document_hierarchy(result.document)
-                    
-                    # Enhanced layout information
                     content["layout_info"] = await self._extract_enhanced_layout(result.document)
-                    
-                    # Extract tables with rich metadata
                     content["tables"] = await self._extract_enhanced_tables(result.document)
-                    
-                    # Extract images with metadata  
                     content["images"] = await self._extract_enhanced_images(result.document)
-                    
-                    # Intelligent chunking based on document structure
                     if extract_text and content["text"]:
                         content["chunks"] = await self._create_intelligent_chunks(result.document, content["text"])
-                            
                 except Exception as e:
                     logger.warning(f"Error extracting structure: {e}")
                     content["layout_info"] = {
@@ -353,7 +392,7 @@ class DoclingService:
                         "layout_detected": False,
                         "error": str(e)
                     }
-            
+
             t_total = _time.monotonic() - t0
             logger.info(f"[DOCLING_TIMING] _real_extract_content DONE | file={file_path.name} | total={t_total:.2f}s")
             return content
@@ -361,6 +400,21 @@ class DoclingService:
         except Exception as e:
             logger.error(f"Error in real Docling extraction: {e}", exc_info=True)
             raise RuntimeError(f"Document processing failed: {str(e)}")
+
+    @staticmethod
+    def _extract_text_with_pymupdf(file_path: Path) -> str:
+        """Extract text from a PDF using PyMuPDF (fitz).
+
+        Synchronous — call via ``asyncio.to_thread``.
+        """
+        doc = pymupdf.open(str(file_path))
+        try:
+            pages_text = []
+            for page in doc:
+                pages_text.append(page.get_text())
+            return "\n\n".join(pages_text)
+        finally:
+            doc.close()
 
 
     async def _enhanced_text_extract_content(
