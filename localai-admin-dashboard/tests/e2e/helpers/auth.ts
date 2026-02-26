@@ -42,14 +42,14 @@ export async function uiLogin(
   let emailInput = page.getByPlaceholder('name@example.com');
   let loginButton = page.getByRole('button', { name: 'Login' });
 
-  if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
+  if (!(await emailInput.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false))) {
     log('fallback to /sign-in');
     await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
     emailInput = page.getByPlaceholder('name@example.com');
     loginButton = page.getByRole('button', { name: 'Login' });
   }
 
-  if (await loginButton.isVisible().catch(() => false)) {
+  if (await loginButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)) {
     log('filling login form');
     await emailInput.fill(email);
     await page.getByPlaceholder('********').fill(password);

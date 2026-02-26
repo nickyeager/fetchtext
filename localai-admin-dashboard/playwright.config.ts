@@ -47,14 +47,16 @@ export default defineConfig({
   globalSetup: process.env.E2E_SKIP_GLOBAL_SETUP === '1' ? undefined : './tests/auth/global-setup.ts',
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.TARGET === 'production' ? 'https://fetchtext.io' : 'http://localhost:5173',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Screenshots */
     screenshot: 'only-on-failure',
     /* Video */
   video: 'retain-on-failure',
-  storageState: fs.existsSync('playwright/.auth/user.json') ? 'playwright/.auth/user.json' : undefined,
+  storageState: process.env.TARGET === 'production'
+    ? undefined  // Don't reuse local auth state for production tests
+    : fs.existsSync('playwright/.auth/user.json') ? 'playwright/.auth/user.json' : undefined,
   },
 
   /* Configure projects for major browsers */
@@ -82,8 +84,8 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: [
+  /* Run your local dev server before starting the tests (skip for production) */
+  webServer: process.env.TARGET === 'production' ? [] : [
     {
   command: 'npx pnpm build && npx pnpm preview --host localhost --port 5173 --strictPort',
   port: 5173,
