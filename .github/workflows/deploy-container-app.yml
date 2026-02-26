@@ -65,43 +65,58 @@ jobs:
           QDRANT_KEY_SECRET: ${{ secrets.QDRANT_API_KEY }}
           JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
         run: |
+          # Build secrets list (jwt-secret is optional — auth falls back to Supabase API)
+          SECRETS_ARGS=(
+            supabase-url="$SUPABASE_URL_SECRET"
+            supabase-anon-key="$SUPABASE_ANON_SECRET"
+            supabase-service-role="$SUPABASE_SERVICE_ROLE_SECRET"
+            azure-openai-key="$AZURE_OPENAI_KEY_SECRET"
+            azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT_SECRET"
+            sendgrid-api-key="$SENDGRID_KEY_SECRET"
+            qdrant-api-key="$QDRANT_KEY_SECRET"
+          )
+          if [ -n "$JWT_SECRET_VALUE" ]; then
+            SECRETS_ARGS+=(jwt-secret="$JWT_SECRET_VALUE")
+            echo "Including JWT_SECRET in container secrets"
+          else
+            echo "::warning::JWT_SECRET not set — auth will use Supabase API fallback"
+          fi
           az containerapp secret set \
             --name "$AZURE_CONTAINERAPP_NAME" \
             --resource-group "$AZURE_CONTAINERAPPS_RESOURCE_GROUP" \
-            --secrets \
-              supabase-url="$SUPABASE_URL_SECRET" \
-              supabase-anon-key="$SUPABASE_ANON_SECRET" \
-              supabase-service-role="$SUPABASE_SERVICE_ROLE_SECRET" \
-              azure-openai-key="$AZURE_OPENAI_KEY_SECRET" \
-              azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT_SECRET" \
-              sendgrid-api-key="$SENDGRID_KEY_SECRET" \
-              qdrant-api-key="$QDRANT_KEY_SECRET" \
-              jwt-secret="$JWT_SECRET_VALUE"
+            --secrets "${SECRETS_ARGS[@]}"
 
       - name: Update Container App
+        env:
+          JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
         run: |
+          # Build env vars list (JWT_SECRET is optional)
+          ENV_VARS=(
+            AZURE_OPENAI_API_KEY=secretref:azure-openai-key
+            AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint
+            AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
+            AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}
+            SUPABASE_URL=secretref:supabase-url
+            SUPABASE_ANON_KEY=secretref:supabase-anon-key
+            SERVICE_ROLE_KEY=secretref:supabase-service-role
+            SENDGRID_API_KEY=secretref:sendgrid-api-key
+            SENDGRID_FROM_EMAIL=nick@fetchtext.io
+            SENDGRID_FROM_NAME=FetchText
+            APP_URL=https://fetchtext.io
+            "ALLOWED_ORIGINS=https://fetchtext.io,https://www.fetchtext.io"
+            QDRANT_HOST=localhost
+            QDRANT_PORT=6333
+            QDRANT_API_KEY=secretref:qdrant-api-key
+          )
+          if [ -n "$JWT_SECRET_VALUE" ]; then
+            ENV_VARS+=(JWT_SECRET=secretref:jwt-secret)
+          fi
           az containerapp update \
             --name "$AZURE_CONTAINERAPP_NAME" \
             --resource-group "$AZURE_CONTAINERAPPS_RESOURCE_GROUP" \
             --container-name "$AZURE_CONTAINERAPP_NAME" \
             --image "${AZURE_ACR_NAME}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}" \
-            --set-env-vars \
-              AZURE_OPENAI_API_KEY=secretref:azure-openai-key \
-              AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
-              AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }} \
-              AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }} \
-              SUPABASE_URL=secretref:supabase-url \
-              SUPABASE_ANON_KEY=secretref:supabase-anon-key \
-              SERVICE_ROLE_KEY=secretref:supabase-service-role \
-              SENDGRID_API_KEY=secretref:sendgrid-api-key \
-              SENDGRID_FROM_EMAIL=nick@fetchtext.io \
-              SENDGRID_FROM_NAME=FetchText \
-              APP_URL=https://fetchtext.io \
-              ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io" \
-              QDRANT_HOST=localhost \
-              QDRANT_PORT=6333 \
-              QDRANT_API_KEY=secretref:qdrant-api-key \
-              JWT_SECRET=secretref:jwt-secret
+            --set-env-vars "${ENV_VARS[@]}"
 
       - name: Wait for deployment to stabilize
         run: |
