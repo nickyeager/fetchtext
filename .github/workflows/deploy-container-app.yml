@@ -63,6 +63,7 @@ jobs:
           AZURE_OPENAI_ENDPOINT_SECRET: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           SENDGRID_KEY_SECRET: ${{ secrets.SENDGRID_API_KEY }}
           QDRANT_KEY_SECRET: ${{ secrets.QDRANT_API_KEY }}
+          JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
         run: |
           az containerapp secret set \
             --name "$AZURE_CONTAINERAPP_NAME" \
@@ -74,7 +75,8 @@ jobs:
               azure-openai-key="$AZURE_OPENAI_KEY_SECRET" \
               azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT_SECRET" \
               sendgrid-api-key="$SENDGRID_KEY_SECRET" \
-              qdrant-api-key="$QDRANT_KEY_SECRET"
+              qdrant-api-key="$QDRANT_KEY_SECRET" \
+              jwt-secret="$JWT_SECRET_VALUE"
 
       - name: Update Container App
         run: |
@@ -98,7 +100,8 @@ jobs:
               ALLOWED_ORIGINS="https://fetchtext.io,https://www.fetchtext.io" \
               QDRANT_HOST=localhost \
               QDRANT_PORT=6333 \
-              QDRANT_API_KEY=secretref:qdrant-api-key
+              QDRANT_API_KEY=secretref:qdrant-api-key \
+              JWT_SECRET=secretref:jwt-secret
 
       - name: Wait for deployment to stabilize
         run: |
