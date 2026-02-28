@@ -8,6 +8,7 @@ import {
   IconApi,
   IconCreditCard,
   IconCode,
+  IconWebhook,
 } from '@tabler/icons-react'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/layout/header'
@@ -82,6 +83,11 @@ const sidebarNavItems = [
     title: 'Developer',
     icon: <IconCode size={18} />,
     href: '/settings/developer',
+  },
+  {
+    title: 'Webhooks',
+    icon: <IconWebhook size={18} />,
+    href: '/settings/webhooks',
   },
   {
     title: 'Appearance',
