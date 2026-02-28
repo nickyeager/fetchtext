@@ -38,6 +38,7 @@ from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.embedding_service import embedding_service
+from ..services.document_event_bus import document_event_bus
 from ..config.database import db_config
 
 router = APIRouter(
@@ -505,6 +506,26 @@ async def _process_document_stream(
         "elapsed_ms": elapsed_ms(),
         "result": result,
     })
+
+    # ── Emit document event for webhook subscriptions ──────────────
+    try:
+        await document_event_bus.emit(
+            event_type="document.processed",
+            organization_id=organization_id or "",
+            data={
+                "document_id": result.get("metadata", {}).get("document_id"),
+                "filename": file.filename,
+                "document_type": evaluation.get("document_type") if evaluation else None,
+                "extracted_fields": extracted_fields,
+                "template_id": chosen_template.get("id") if chosen_template else None,
+                "template_name": chosen_template.get("name") if chosen_template else None,
+                "match_confidence": decision_metadata.get("match_score") if decision_metadata else None,
+                "action": result.get("action"),
+                "processing_time_ms": elapsed_ms(),
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"[Stream] Failed to emit document event: {exc}")
 
 
 # ---------------------------------------------------------------------------
