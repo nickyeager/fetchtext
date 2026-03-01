@@ -9,6 +9,7 @@ import {
   IconCreditCard,
   IconCode,
   IconWebhook,
+  IconShieldLock,
 } from '@tabler/icons-react'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/layout/header'
@@ -88,6 +89,11 @@ const sidebarNavItems = [
     title: 'Webhooks',
     icon: <IconWebhook size={18} />,
     href: '/settings/webhooks',
+  },
+  {
+    title: 'SSO',
+    icon: <IconShieldLock size={18} />,
+    href: '/settings/organization',
   },
   {
     title: 'Appearance',
