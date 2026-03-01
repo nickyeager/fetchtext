@@ -12,6 +12,7 @@ from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing, snowflake
 from app.routers import stream
 from app.routers import webhooks
+from app.routers import sharepoint, sso
 
 # Import OpenAPI configuration
 from app.openapi_config import get_openapi_config, get_custom_openapi_schema, API_TAGS
@@ -62,6 +63,8 @@ app.include_router(billing.router)
 app.include_router(snowflake.router)
 app.include_router(stream.router)
 app.include_router(webhooks.router)
+app.include_router(sharepoint.router)
+app.include_router(sso.router)
 
 # Third-party API routers
 app.include_router(api_v1.router)
