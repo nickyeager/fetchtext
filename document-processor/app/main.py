@@ -84,6 +84,17 @@ async def startup_sync_template_embeddings():
         logger.warning(f"Template embedding sync failed on startup (non-fatal): {e}")
 
 
+@app.on_event("startup")
+async def startup_sharepoint_watcher():
+    from app.services.sharepoint_watcher import start_poller
+    start_poller()
+
+@app.on_event("shutdown")
+async def shutdown_sharepoint_watcher():
+    from app.services.sharepoint_watcher import stop_poller
+    stop_poller()
+
+
 @app.get("/")
 async def root():
     return {
