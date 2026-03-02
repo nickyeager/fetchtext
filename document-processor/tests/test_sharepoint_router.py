@@ -238,24 +238,38 @@ class TestSharePointWatcher:
 
 
 @skip_if_not_configured
-class TestSharePointLiveAPI:
+class TestSharePointConfigured:
     """
-    Live SharePoint API tests — require Microsoft 365 OAuth configured
-    and an active token for the test organization.
-
-    These tests verify real Graph API calls through our backend endpoints.
+    Tests that run when Microsoft OAuth credentials are present.
+    Verify the integration shows as configured and OAuth initiation works.
     """
 
-    def test_list_sites(self, backend_available):
-        """List SharePoint sites accessible to the connected account."""
-        # This would require an authenticated request with a valid JWT
-        # For now, this serves as a placeholder for when OAuth is configured
-        pytest.skip("Requires authenticated session with Microsoft OAuth token")
+    def test_microsoft_shows_configured(self, backend_available):
+        """When MICROSOFT_CLIENT_ID is set, integration must be configured."""
+        response = httpx.get(f"{BACKEND_URL}/api/integrations/")
+        assert response.status_code == 200
 
-    def test_get_onedrive(self, backend_available):
-        """Get the user's OneDrive root."""
-        pytest.skip("Requires authenticated session with Microsoft OAuth token")
+        integrations = response.json()
+        microsoft = next((i for i in integrations if i["id"] == "microsoft"), None)
+        assert microsoft is not None
+        assert microsoft["configured"] is True, "Microsoft should be configured when CLIENT_ID is set"
 
-    def test_browse_drive_items(self, backend_available):
-        """Browse items in a drive folder."""
-        pytest.skip("Requires authenticated session with Microsoft OAuth token")
+    def test_oauth_initiation_requires_auth(self, backend_available):
+        """OAuth initiation without auth token should return 401/403."""
+        response = httpx.get(
+            f"{BACKEND_URL}/api/integrations/microsoft/oauth/initiate",
+            params={"organization_id": TEST_ORG_ID, "scope_preset": "sharepoint"},
+            timeout=10.0,
+            follow_redirects=False,
+        )
+        assert response.status_code in (401, 403), f"Expected auth required, got {response.status_code}"
+
+    def test_sharepoint_health_when_configured(self, backend_available):
+        """Health endpoint should reflect configured state."""
+        response = httpx.get(
+            f"{BACKEND_URL}/api/sharepoint/health",
+            params={"organization_id": TEST_ORG_ID},
+            timeout=5.0,
+        )
+        # Health may require auth or be public — should not 500
+        assert response.status_code < 500
