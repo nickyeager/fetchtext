@@ -159,7 +159,7 @@ async def set_active_provider(request: ProviderSelectionRequest):
             detail="Internal server error while setting active provider"
         )
 
-@router.get("/", response_model=ModelsResponse)
+@router.get("", response_model=ModelsResponse)
 async def get_available_models():
     """
     Fetch available models based on current provider

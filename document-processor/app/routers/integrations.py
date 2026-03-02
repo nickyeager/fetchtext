@@ -116,7 +116,7 @@ class TokenRefreshResult(BaseModel):
 # List Available Integrations
 # =============================================================================
 
-@router.get("/", response_model=List[IntegrationInfo])
+@router.get("", response_model=List[IntegrationInfo])
 async def list_available_integrations(
     configured_only: bool = Query(False, description="Only show integrations with credentials configured"),
 ):
