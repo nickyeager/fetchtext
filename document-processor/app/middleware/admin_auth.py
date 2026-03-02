@@ -163,12 +163,20 @@ class AdminAuth:
 
             if token_alg == 'HS256' and self.jwt_secret:
                 # Symmetric verification — local Docker or managed Supabase with JWT_SECRET
-                payload = jwt.decode(
-                    token,
-                    self.jwt_secret,
-                    algorithms=['HS256'],
-                    audience="authenticated"
-                )
+                try:
+                    payload = jwt.decode(
+                        token,
+                        self.jwt_secret,
+                        algorithms=['HS256'],
+                        audience="authenticated"
+                    )
+                except jwt.InvalidTokenError as hs256_err:
+                    # JWT_SECRET may not match managed Supabase's secret — fall back to API
+                    if self.supabase_url:
+                        logger.info(f"HS256 verification failed ({hs256_err}), falling back to Supabase auth API")
+                        payload = self._verify_via_supabase_api(token)
+                    else:
+                        raise
             elif token_alg == 'HS256' and self.supabase_url:
                 # HS256 token but no local secret — verify via Supabase Auth API
                 logger.info("No JWT_SECRET set, verifying HS256 token via Supabase auth API")
