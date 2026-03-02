@@ -77,6 +77,8 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     if (!fs.existsSync(stuccoPdfPath)) {
       throw new Error(`Fixture not found: ${stuccoPdfPath}`);
     }
+    // Ensure screenshot directory exists for manual screenshots
+    fs.mkdirSync('/tmp/test-results-production', { recursive: true });
   });
 
   // ── TEST 1: Warm backend + verify config (Node fetch, no CORS enforcement) ──
@@ -157,7 +159,7 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     // If the fetch failed with a TypeError, it's a CORS block
     if (result.error) {
       // Take screenshot for debugging
-      await page.screenshot({ path: '/tmp/prod-cors-browser-fail.png' });
+      await page.screenshot({ path: '/tmp/test-results-production/prod-cors-browser-fail.png' });
     }
 
     expect(
@@ -221,11 +223,11 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
 
     // ── Login ──
     await uiLogin(page, email, password, log);
-    await page.screenshot({ path: '/tmp/prod-pdf-01-after-login.png' });
+    await page.screenshot({ path: '/tmp/test-results-production/prod-pdf-01-after-login.png' });
 
     // ── Navigate to upload page ──
     await navigateToWorkflow(page, '/documents/upload', email, password, log);
-    await page.screenshot({ path: '/tmp/prod-pdf-02-upload-page.png' });
+    await page.screenshot({ path: '/tmp/test-results-production/prod-pdf-02-upload-page.png' });
 
     // ── Wait for drop zone to be ready ──
     const dropZone = page.locator('[data-testid="drop-zone"]');
@@ -259,12 +261,12 @@ test.describe('Production PDF Upload — Stucco Contract', () => {
     ).toBeVisible({ timeout: 30_000 });
     log('processing started');
 
-    await page.screenshot({ path: '/tmp/prod-pdf-03-processing.png' });
+    await page.screenshot({ path: '/tmp/test-results-production/prod-pdf-03-processing.png' });
 
     // ── Wait for processing to progress (don't need full completion) ──
     // Just verify the backend call succeeded (no CORS block)
     await page.waitForTimeout(10_000);
-    await page.screenshot({ path: '/tmp/prod-pdf-04-after-wait.png' });
+    await page.screenshot({ path: '/tmp/test-results-production/prod-pdf-04-after-wait.png' });
 
     // ── CORS assertions ──
     if (corsErrors.length > 0) {

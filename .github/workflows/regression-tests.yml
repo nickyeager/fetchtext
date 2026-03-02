@@ -168,5 +168,8 @@ jobs:
         if: always()
         with:
           name: production-smoke-report
-          path: /tmp/test-results-production/
+          path: |
+            /tmp/test-results-production/
+            /tmp/playwright-report-production/
+          if-no-files-found: ignore
           retention-days: 7
