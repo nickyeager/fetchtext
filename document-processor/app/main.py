@@ -29,8 +29,7 @@ app = FastAPI(
     openapi_tags=API_TAGS,
     docs_url="/swagger",
     redoc_url="/docs",
-    openapi_url="/openapi.json",
-    redirect_slashes=False,
+    openapi_url="/openapi.json"
 )
 
 # Override OpenAPI schema with custom enhancements
