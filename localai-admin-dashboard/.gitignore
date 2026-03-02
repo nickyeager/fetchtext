@@ -43,3 +43,4 @@ dist-ssr
 /current-ui-state.png
 /no-file-input-found.png
 /debug-ui-state.png
+/tests/e2e/screenshots/
