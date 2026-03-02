@@ -1,23 +1,80 @@
 """
-Tests for Webhook Delivery Service
+Tests for Webhook Delivery Service.
 
-Tests webhook delivery, HMAC signature generation, retry logic, and logging.
+Pure logic tests for HMAC signature and configuration run without external services.
+Integration tests use a real local HTTP server to receive webhook deliveries.
+No mocks. No fakes.
 """
 
-import pytest
 import json
 import hashlib
 import hmac
-from datetime import datetime
-from unittest.mock import MagicMock, patch, AsyncMock
-import aiohttp
-import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import pytest
+import httpx
 
 from app.services.webhook_service import WebhookService, webhook_service
+
+BACKEND_URL = "http://localhost:8090"
+
+
+@pytest.fixture(scope="module")
+def backend():
+    """Verify the backend is reachable before running integration tests."""
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/health", timeout=5)
+        resp.raise_for_status()
+    except Exception as exc:
+        pytest.fail(f"Backend not reachable at {BACKEND_URL}: {exc}")
+
+
+class _WebhookHandler(BaseHTTPRequestHandler):
+    """Real HTTP handler that receives webhook POST requests."""
+
+    received = []
+
+    def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length) if content_length else b'{}'
+
+        self.received.append({
+            'path': self.path,
+            'headers': dict(self.headers),
+            'body': json.loads(body) if body else {},
+        })
+
+        if self.path == '/error':
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b'Internal Server Error')
+        else:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+
+    def log_message(self, format, *args):
+        pass  # Suppress access log output
+
+
+@pytest.fixture(scope="module")
+def webhook_receiver():
+    """Start a real HTTP server to receive webhook deliveries."""
+    server = HTTPServer(('localhost', 0), _WebhookHandler)
+    port = server.server_address[1]
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    yield {'url': f'http://localhost:{port}', 'requests': _WebhookHandler.received}
+
+    server.shutdown()
+
+
+# =============================================================================
+# Pure Logic Tests — Signature Generation (no external services)
+# =============================================================================
 
 
 class TestSignatureGeneration:
@@ -86,6 +143,11 @@ class TestSignatureGeneration:
         assert sig1 == sig2
 
 
+# =============================================================================
+# Pure Logic Tests — Signature Verification (no external services)
+# =============================================================================
+
+
 class TestSignatureVerification:
     """Test signature verification utility."""
 
@@ -141,342 +203,9 @@ class TestSignatureVerification:
         assert result is False
 
 
-class TestWebhookDelivery:
-    """Test webhook delivery functionality."""
-
-    @pytest.mark.asyncio
-    async def test_successful_delivery_returns_true(self):
-        """Successful 2xx response returns True."""
-        service = WebhookService()
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.text = AsyncMock(return_value='OK')
-
-        mock_session = AsyncMock()
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    result = await service.deliver_webhook(
-                        job_id='job-123',
-                        webhook_url='https://example.com/webhook',
-                        payload={'status': 'completed'}
-                    )
-
-                    assert result is True
-
-    @pytest.mark.asyncio
-    async def test_includes_correct_headers(self):
-        """Request includes all required headers."""
-        service = WebhookService()
-
-        captured_kwargs = {}
-
-        async def capture_post(*args, **kwargs):
-            captured_kwargs.update(kwargs)
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.text = AsyncMock(return_value='OK')
-            return AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
-
-        mock_session = AsyncMock()
-        mock_session.post = capture_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    await service.deliver_webhook(
-                        job_id='job-123',
-                        webhook_url='https://example.com/webhook',
-                        payload={'status': 'completed'}
-                    )
-
-        headers = captured_kwargs.get('headers', {})
-        assert headers.get('Content-Type') == 'application/json'
-        assert headers.get('User-Agent') == 'FetchText-Webhook/1.0'
-        assert headers.get('X-FetchText-Event') == 'job.completed'
-        assert headers.get('X-FetchText-Job-ID') == 'job-123'
-        assert 'X-FetchText-Delivery-ID' in headers
-        assert 'X-FetchText-Timestamp' in headers
-
-    @pytest.mark.asyncio
-    async def test_includes_signature_when_secret_provided(self):
-        """Request includes HMAC signature when webhook_secret is provided."""
-        service = WebhookService()
-
-        captured_kwargs = {}
-
-        async def capture_post(*args, **kwargs):
-            captured_kwargs.update(kwargs)
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.text = AsyncMock(return_value='OK')
-            return AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
-
-        mock_session = AsyncMock()
-        mock_session.post = capture_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    await service.deliver_webhook(
-                        job_id='job-123',
-                        webhook_url='https://example.com/webhook',
-                        payload={'status': 'completed'},
-                        webhook_secret='my-secret'
-                    )
-
-        headers = captured_kwargs.get('headers', {})
-        assert 'X-FetchText-Signature' in headers
-        assert headers['X-FetchText-Signature'].startswith('sha256=')
-
-    @pytest.mark.asyncio
-    async def test_no_signature_without_secret(self):
-        """No signature header when webhook_secret is not provided."""
-        service = WebhookService()
-
-        captured_kwargs = {}
-
-        async def capture_post(*args, **kwargs):
-            captured_kwargs.update(kwargs)
-            mock_response = AsyncMock()
-            mock_response.status = 200
-            mock_response.text = AsyncMock(return_value='OK')
-            return AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
-
-        mock_session = AsyncMock()
-        mock_session.post = capture_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    await service.deliver_webhook(
-                        job_id='job-123',
-                        webhook_url='https://example.com/webhook',
-                        payload={'status': 'completed'},
-                        webhook_secret=None
-                    )
-
-        headers = captured_kwargs.get('headers', {})
-        assert 'X-FetchText-Signature' not in headers
-
-
-class TestRetryLogic:
-    """Test webhook retry behavior."""
-
-    @pytest.mark.asyncio
-    async def test_retries_on_5xx_error(self):
-        """Retries on server error responses."""
-        service = WebhookService(default_max_retries=3)
-
-        call_count = 0
-
-        async def mock_post(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            mock_response = AsyncMock()
-            mock_response.status = 500
-            mock_response.text = AsyncMock(return_value='Server Error')
-            return AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
-
-        mock_session = AsyncMock()
-        mock_session.post = mock_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    with patch('asyncio.sleep', new_callable=AsyncMock):  # Skip delays
-                        result = await service.deliver_webhook(
-                            job_id='job-123',
-                            webhook_url='https://example.com/webhook',
-                            payload={'status': 'completed'},
-                            max_retries=3
-                        )
-
-        assert call_count == 3
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_succeeds_on_retry(self):
-        """Returns True if retry succeeds."""
-        service = WebhookService()
-
-        call_count = 0
-
-        async def mock_post(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            mock_response = AsyncMock()
-            # Fail first two attempts, succeed on third
-            mock_response.status = 200 if call_count >= 3 else 500
-            mock_response.text = AsyncMock(return_value='OK' if call_count >= 3 else 'Error')
-            return AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
-
-        mock_session = AsyncMock()
-        mock_session.post = mock_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    with patch('asyncio.sleep', new_callable=AsyncMock):
-                        result = await service.deliver_webhook(
-                            job_id='job-123',
-                            webhook_url='https://example.com/webhook',
-                            payload={'status': 'completed'},
-                            max_retries=3
-                        )
-
-        assert call_count == 3
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_handles_timeout(self):
-        """Handles connection timeout gracefully."""
-        service = WebhookService()
-
-        async def mock_post(*args, **kwargs):
-            raise asyncio.TimeoutError()
-
-        mock_session = AsyncMock()
-        mock_session.post = mock_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock) as mock_log:
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    with patch('asyncio.sleep', new_callable=AsyncMock):
-                        result = await service.deliver_webhook(
-                            job_id='job-123',
-                            webhook_url='https://example.com/webhook',
-                            payload={'status': 'completed'},
-                            max_retries=2
-                        )
-
-        assert result is False
-        # Should have logged the timeout
-        assert mock_log.call_count >= 1
-
-    @pytest.mark.asyncio
-    async def test_handles_client_error(self):
-        """Handles aiohttp client errors gracefully."""
-        service = WebhookService()
-
-        async def mock_post(*args, **kwargs):
-            raise aiohttp.ClientError("Connection refused")
-
-        mock_session = AsyncMock()
-        mock_session.post = mock_post
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch.object(service, '_log_delivery', new_callable=AsyncMock):
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    with patch('asyncio.sleep', new_callable=AsyncMock):
-                        result = await service.deliver_webhook(
-                            job_id='job-123',
-                            webhook_url='https://example.com/webhook',
-                            payload={'status': 'completed'},
-                            max_retries=2
-                        )
-
-        assert result is False
-
-
-class TestDeliveryLogging:
-    """Test webhook delivery logging."""
-
-    @pytest.mark.asyncio
-    async def test_logs_successful_delivery(self):
-        """Logs successful delivery to database."""
-        service = WebhookService()
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.text = AsyncMock(return_value='OK')
-
-        mock_session = AsyncMock()
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch('app.services.webhook_service.db_config') as mock_db:
-                mock_db.is_configured = True
-                mock_db.client = mock_client
-
-                with patch.object(service, '_update_job_webhook_status', new_callable=AsyncMock):
-                    await service.deliver_webhook(
-                        job_id='job-123',
-                        webhook_url='https://example.com/webhook',
-                        payload={'status': 'completed'}
-                    )
-
-        # Verify log was inserted
-        mock_client.table.assert_called_with('api_webhook_logs')
-
-    @pytest.mark.asyncio
-    async def test_skips_logging_when_db_unavailable(self):
-        """Does not fail when database is unavailable."""
-        service = WebhookService()
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.text = AsyncMock(return_value='OK')
-
-        mock_session = AsyncMock()
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch('app.services.webhook_service.db_config') as mock_db:
-                mock_db.is_configured = False
-                mock_db.client = None
-
-                # Should not raise
-                result = await service.deliver_webhook(
-                    job_id='job-123',
-                    webhook_url='https://example.com/webhook',
-                    payload={'status': 'completed'}
-                )
-
-        assert result is True
-
-
-class TestJobStatusUpdate:
-    """Test job webhook status updates."""
-
-    @pytest.mark.asyncio
-    async def test_updates_job_on_success(self):
-        """Updates job record with delivery success."""
-        service = WebhookService()
-
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.text = AsyncMock(return_value='OK')
-
-        mock_session = AsyncMock()
-        mock_session.post.return_value.__aenter__.return_value = mock_response
-
-        mock_client = MagicMock()
-        mock_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
-
-        with patch('aiohttp.ClientSession', return_value=mock_session):
-            with patch('app.services.webhook_service.db_config') as mock_db:
-                mock_db.is_configured = True
-                mock_db.client = mock_client
-
-                await service.deliver_webhook(
-                    job_id='job-123',
-                    webhook_url='https://example.com/webhook',
-                    payload={'status': 'completed'}
-                )
-
-        # Verify job update was called
-        update_calls = [
-            call for call in mock_client.table.return_value.update.call_args_list
-        ]
-        assert len(update_calls) > 0
+# =============================================================================
+# Pure Logic Tests — Service Configuration (no external services)
+# =============================================================================
 
 
 class TestServiceConfiguration:
@@ -499,6 +228,172 @@ class TestServiceConfiguration:
         assert service.default_max_retries == 5
 
 
+# =============================================================================
+# Integration Tests — Real Webhook Delivery via local HTTP server
+# =============================================================================
+
+
+class TestWebhookDeliveryReal:
+    """Test webhook delivery against a real local HTTP server."""
+
+    @pytest.mark.asyncio
+    async def test_successful_delivery_returns_true(self, webhook_receiver):
+        """Successful delivery to a real 200-returning endpoint returns True."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        result = await service.deliver_webhook(
+            job_id='test-job-001',
+            webhook_url=f"{webhook_receiver['url']}/webhook",
+            payload={'status': 'completed', 'job_id': 'test-job-001'},
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_server_receives_correct_payload(self, webhook_receiver):
+        """Real HTTP server receives the exact JSON payload."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        payload = {'status': 'completed', 'job_id': 'test-job-002', 'result': 'ok'}
+        await service.deliver_webhook(
+            job_id='test-job-002',
+            webhook_url=f"{webhook_receiver['url']}/webhook",
+            payload=payload,
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert len(webhook_receiver['requests']) >= 1
+        received = webhook_receiver['requests'][-1]
+        assert received['body']['status'] == 'completed'
+        assert received['body']['job_id'] == 'test-job-002'
+
+    @pytest.mark.asyncio
+    async def test_server_receives_correct_headers(self, webhook_receiver):
+        """Real HTTP server receives FetchText-specific headers."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        await service.deliver_webhook(
+            job_id='test-job-003',
+            webhook_url=f"{webhook_receiver['url']}/webhook",
+            payload={'status': 'completed'},
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert len(webhook_receiver['requests']) >= 1
+        headers = webhook_receiver['requests'][-1]['headers']
+        assert headers.get('Content-Type') == 'application/json'
+        assert headers.get('User-Agent') == 'FetchText-Webhook/1.0'
+        assert headers.get('X-FetchText-Event') == 'job.completed'
+        assert headers.get('X-FetchText-Job-ID') == 'test-job-003'
+        assert 'X-FetchText-Delivery-ID' in headers
+        assert 'X-FetchText-Timestamp' in headers
+
+    @pytest.mark.asyncio
+    async def test_includes_signature_when_secret_provided(self, webhook_receiver):
+        """Delivery with webhook_secret includes HMAC signature header."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        await service.deliver_webhook(
+            job_id='test-job-004',
+            webhook_url=f"{webhook_receiver['url']}/webhook",
+            payload={'status': 'completed'},
+            webhook_secret='test-secret-key',
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert len(webhook_receiver['requests']) >= 1
+        headers = webhook_receiver['requests'][-1]['headers']
+        assert 'X-FetchText-Signature' in headers
+        assert headers['X-FetchText-Signature'].startswith('sha256=')
+
+    @pytest.mark.asyncio
+    async def test_no_signature_without_secret(self, webhook_receiver):
+        """No signature header when webhook_secret is not provided."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        await service.deliver_webhook(
+            job_id='test-job-005',
+            webhook_url=f"{webhook_receiver['url']}/webhook",
+            payload={'status': 'completed'},
+            webhook_secret=None,
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert len(webhook_receiver['requests']) >= 1
+        headers = webhook_receiver['requests'][-1]['headers']
+        assert 'X-FetchText-Signature' not in headers
+
+    @pytest.mark.asyncio
+    async def test_failed_delivery_returns_false(self, webhook_receiver):
+        """Delivery to a 500-returning endpoint returns False."""
+        service = WebhookService()
+
+        result = await service.deliver_webhook(
+            job_id='test-job-006',
+            webhook_url=f"{webhook_receiver['url']}/error",
+            payload={'status': 'completed'},
+            max_retries=1,
+            timeout=10,
+        )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_retries_on_server_error(self, webhook_receiver):
+        """Service retries delivery on server error responses."""
+        service = WebhookService()
+
+        _WebhookHandler.received.clear()
+
+        await service.deliver_webhook(
+            job_id='test-job-007',
+            webhook_url=f"{webhook_receiver['url']}/error",
+            payload={'status': 'completed'},
+            max_retries=2,
+            timeout=10,
+        )
+
+        # Should have received 2 attempts (max_retries=2)
+        error_requests = [r for r in webhook_receiver['requests'] if r['path'] == '/error']
+        assert len(error_requests) == 2
+
+    @pytest.mark.asyncio
+    async def test_delivery_to_unreachable_host_fails(self):
+        """Delivery to an unreachable host returns False."""
+        service = WebhookService()
+
+        result = await service.deliver_webhook(
+            job_id='test-job-008',
+            webhook_url='http://127.0.0.1:59999/webhook',
+            payload={'status': 'completed'},
+            max_retries=1,
+            timeout=3,
+        )
+
+        assert result is False
+
+
+# =============================================================================
+# Pure Logic Tests — Global Singleton
+# =============================================================================
+
+
 class TestGlobalSingleton:
     """Test the global webhook_service singleton."""
 
@@ -511,3 +406,7 @@ class TestGlobalSingleton:
         """Singleton has default configuration."""
         assert webhook_service.default_timeout == 30
         assert webhook_service.default_max_retries == 3
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

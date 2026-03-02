@@ -8,16 +8,31 @@ import os
 from datetime import datetime
 import uuid
 
+# Import PyMuPDF for fast text extraction from text-based PDFs.
+# This bypasses Docling's ML pipeline entirely and runs in ~0.1s.
+try:
+    import fitz as pymupdf  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
 # Import Docling functionality
 try:
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, FormatOption
     from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
+    from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
     DOCLING_AVAILABLE = True
     DOCLING_VERSION = "1.0.0"  # Update with actual version
 except ImportError:
     DOCLING_AVAILABLE = False
     DocumentConverter = None
+    FormatOption = None
     InputFormat = None
+    PdfPipelineOptions = None
+    StandardPdfPipeline = None
+    PyPdfiumDocumentBackend = None
     DOCLING_VERSION = None
 
 from app.models.document import (
@@ -39,19 +54,36 @@ class DoclingService:
         self.temp_dir.mkdir(exist_ok=True)
         self.supported_formats = ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff']
         
-        # Initialize Docling converter if available
+        # Initialize Docling converters if available.
+        # Two converters: a fast one (no OCR) for text-based PDFs and a full
+        # one (with OCR) as fallback for scanned documents / images.
         if DOCLING_AVAILABLE:
             try:
-                self.converter = DocumentConverter()
+                fast_pdf_opts = PdfPipelineOptions(
+                    do_ocr=False,
+                    do_table_structure=False,
+                )
+                self.converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: FormatOption(
+                            pipeline_cls=StandardPdfPipeline,
+                            backend=PyPdfiumDocumentBackend,
+                            pipeline_options=fast_pdf_opts,
+                        ),
+                    }
+                )
+                self.converter_ocr = DocumentConverter()  # default: OCR enabled
                 self.use_real_docling = True
-                logger.info(f"Docling DocumentConverter initialized successfully (version: {DOCLING_VERSION})")
+                logger.info(f"Docling DocumentConverter initialized (fast+OCR) (version: {DOCLING_VERSION})")
             except Exception as e:
                 logger.error(f"Failed to initialize Docling converter: {e}")
                 self.converter = None
+                self.converter_ocr = None
                 self.use_real_docling = False
         else:
             logger.warning("Docling not available - document processing will fail")
             self.converter = None
+            self.converter_ocr = None
             self.use_real_docling = False
         
     async def get_supported_formats(self) -> List[str]:
@@ -146,23 +178,27 @@ class DoclingService:
         return mime_mapping.get(suffix, 'application/octet-stream')
     
     async def process_document(
-        self, 
-        file_path: Path, 
+        self,
+        file_path: Path,
         extract_text: bool = True,
         extract_metadata: bool = True,
         extract_structure: bool = False
     ) -> Dict[str, Any]:
         """Process document and extract content using Docling"""
-        
+        import time as _time
+
         start_time = datetime.utcnow()
+        t0 = _time.monotonic()
         job_id = str(uuid.uuid4())
-        
+
         try:
-            logger.info(f"Starting document processing: {file_path.name} (job_id: {job_id})")
-            
+            file_size = file_path.stat().st_size if file_path.exists() else -1
+            logger.info(f"[DOCLING_TIMING] process_document START | file={file_path.name} | size={file_size} bytes | job_id={job_id}")
+
             # Extract metadata
             metadata = None
             if extract_metadata:
+                t_meta = _time.monotonic()
                 metadata_obj = await self.extract_metadata(file_path)
                 metadata = {
                     "filename": metadata_obj.filename,
@@ -173,32 +209,35 @@ class DoclingService:
                     "modified_at": metadata_obj.modified_at.isoformat(),
                     "title": metadata_obj.title,
                 }
-            
+                logger.info(f"[DOCLING_TIMING] extract_metadata DONE | file={file_path.name} | took={_time.monotonic() - t_meta:.2f}s")
+
             # Choose processing method based on file type and Docling availability
             file_suffix = file_path.suffix.lower()
-            
+            logger.info(f"[DOCLING_TIMING] Routing file | suffix={file_suffix} | use_real_docling={self.use_real_docling} | has_converter={bool(self.converter)}")
+
             # Text files and unsupported formats use enhanced text processing
             if file_suffix in ['.txt', '.text']:
                 logger.info(f"Using enhanced text processing for: {file_path.name}")
                 content = await self._enhanced_text_extract_content(
-                    file_path, 
-                    extract_text, 
+                    file_path,
+                    extract_text,
                     extract_structure
                 )
             elif self.use_real_docling and self.converter:
                 logger.info(f"Using real Docling for processing: {file_path.name}")
                 content = await self._real_extract_content(
-                    file_path, 
-                    extract_text, 
+                    file_path,
+                    extract_text,
                     extract_structure
                 )
             else:
                 raise RuntimeError(f"Docling is not available - cannot process document: {file_path.name}. Real docling: {self.use_real_docling}, Converter: {bool(self.converter)}")
-            
+
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds()
-            
-            logger.info(f"Document processing completed: {file_path.name} in {processing_time:.2f}s")
+            total_wall = _time.monotonic() - t0
+
+            logger.info(f"[DOCLING_TIMING] process_document DONE | file={file_path.name} | processing_time={processing_time:.2f}s | wall={total_wall:.2f}s")
             
             return {
                 "job_id": job_id,
@@ -224,19 +263,83 @@ class DoclingService:
     
     
     async def _real_extract_content(
-        self, 
-        file_path: Path, 
+        self,
+        file_path: Path,
         extract_text: bool = True,
         extract_structure: bool = False
     ) -> Dict[str, Any]:
-        """Enhanced content extraction leveraging Docling's DoclingDocument structure"""
-        
+        """Enhanced content extraction with three-tier PDF strategy.
+
+        For PDFs:
+          1. PyMuPDF (fitz) — extracts embedded text in ~0.1s, no ML needed
+          2. Docling fast pass — no OCR, no table structure (layout model only)
+          3. Docling full pass — with OCR for scanned documents
+        Each tier is only tried when the previous one yields <50 chars.
+        """
+
+        import time as _time
+
         try:
-            logger.info(f"Processing document with real Docling: {file_path}")
-            
-            # Convert document using Docling
-            result = self.converter.convert(str(file_path))
-            
+            file_size = file_path.stat().st_size if file_path.exists() else -1
+            logger.info(f"[DOCLING_TIMING] _real_extract_content START | file={file_path.name} | size={file_size} bytes | extract_text={extract_text} | extract_structure={extract_structure}")
+            t0 = _time.monotonic()
+
+            is_pdf = file_path.suffix.lower() == '.pdf'
+
+            # ── Tier 1: PyMuPDF fast extraction (PDFs only) ──
+            # Extracts embedded text without any ML models — completes in <1s
+            # even on 0.75 CPU containers. Sufficient for text-based PDFs.
+            pymupdf_text = ""
+            if is_pdf and PYMUPDF_AVAILABLE and extract_text:
+                try:
+                    logger.info(f"[DOCLING_TIMING] PyMuPDF extract START | file={file_path.name}")
+                    t_fitz = _time.monotonic()
+                    pymupdf_text = await asyncio.to_thread(
+                        self._extract_text_with_pymupdf, file_path
+                    )
+                    logger.info(
+                        f"[DOCLING_TIMING] PyMuPDF extract DONE | file={file_path.name} "
+                        f"| took={_time.monotonic() - t_fitz:.2f}s | chars={len(pymupdf_text)}"
+                    )
+                except Exception as e:
+                    logger.warning(f"[DOCLING_TIMING] PyMuPDF failed, will fall through to Docling | error={e}")
+                    pymupdf_text = ""
+
+            # If PyMuPDF got enough text, skip Docling entirely
+            if pymupdf_text and len(pymupdf_text.strip()) >= 50:
+                content = {
+                    "text": pymupdf_text,
+                    "markdown": pymupdf_text,
+                    "images": [],
+                    "tables": [],
+                    "layout_info": {},
+                    "document_structure": {},
+                    "chunks": []
+                }
+                logger.info(
+                    f"[DOCLING_TIMING] Using PyMuPDF text ({len(pymupdf_text)} chars), "
+                    f"skipping Docling | file={file_path.name}"
+                )
+
+                if extract_structure and content["text"]:
+                    content["document_structure"] = await self._analyze_text_file_structure(content["text"])
+                    content["layout_info"] = {
+                        "pages": 1,
+                        "layout_detected": True,
+                        "processing_method": "pymupdf_fast",
+                    }
+
+                t_total = _time.monotonic() - t0
+                logger.info(f"[DOCLING_TIMING] _real_extract_content DONE (PyMuPDF fast) | file={file_path.name} | total={t_total:.2f}s")
+                return content
+
+            # ── Tier 2 & 3: Docling (fast then OCR) ──
+            logger.info(f"[DOCLING_TIMING] converter.convert() START | file={file_path.name} | fast={'yes' if is_pdf else 'n/a'}")
+            t_convert_start = _time.monotonic()
+            result = await asyncio.to_thread(self.converter.convert, str(file_path))
+            t_convert_end = _time.monotonic()
+            logger.info(f"[DOCLING_TIMING] converter.convert() DONE | file={file_path.name} | took={t_convert_end - t_convert_start:.2f}s")
+
             content = {
                 "text": "",
                 "markdown": "",
@@ -246,36 +349,42 @@ class DoclingService:
                 "document_structure": {},
                 "chunks": []
             }
-            
+
             if extract_text:
-                # Extract both text and markdown formats
+                logger.info(f"[DOCLING_TIMING] export_to_text() START | file={file_path.name}")
+                t_text_start = _time.monotonic()
                 content["text"] = result.document.export_to_text()
-                # Try to extract markdown if available
+                t_text_end = _time.monotonic()
+                logger.info(f"[DOCLING_TIMING] export_to_text() DONE | file={file_path.name} | took={t_text_end - t_text_start:.2f}s | chars={len(content['text'])}")
+
+                # OCR fallback: if fast pass yielded very little text, retry with OCR
+                if is_pdf and len(content["text"].strip()) < 50 and self.converter_ocr:
+                    logger.info(f"[DOCLING_TIMING] Fast pass yielded {len(content['text'].strip())} chars — retrying with OCR | file={file_path.name}")
+                    t_ocr_start = _time.monotonic()
+                    result = await asyncio.to_thread(self.converter_ocr.convert, str(file_path))
+                    t_ocr_end = _time.monotonic()
+                    logger.info(f"[DOCLING_TIMING] OCR converter.convert() DONE | file={file_path.name} | took={t_ocr_end - t_ocr_start:.2f}s")
+                    content["text"] = result.document.export_to_text()
+                    logger.info(f"[DOCLING_TIMING] OCR export_to_text() chars={len(content['text'])}")
+
                 try:
+                    logger.info(f"[DOCLING_TIMING] export_to_markdown() START | file={file_path.name}")
+                    t_md_start = _time.monotonic()
                     content["markdown"] = result.document.export_to_markdown()
+                    t_md_end = _time.monotonic()
+                    logger.info(f"[DOCLING_TIMING] export_to_markdown() DONE | file={file_path.name} | took={t_md_end - t_md_start:.2f}s | chars={len(content['markdown'])}")
                 except AttributeError:
-                    content["markdown"] = content["text"]  # Fallback to text
+                    content["markdown"] = content["text"]
                 logger.info(f"Extracted {len(content['text'])} characters of text and {len(content['markdown'])} characters of markdown")
-            
+
             if extract_structure:
-                # Enhanced structure extraction using DoclingDocument features
                 try:
-                    # Extract document hierarchy and structure
                     content["document_structure"] = await self._extract_document_hierarchy(result.document)
-                    
-                    # Enhanced layout information
                     content["layout_info"] = await self._extract_enhanced_layout(result.document)
-                    
-                    # Extract tables with rich metadata
                     content["tables"] = await self._extract_enhanced_tables(result.document)
-                    
-                    # Extract images with metadata  
                     content["images"] = await self._extract_enhanced_images(result.document)
-                    
-                    # Intelligent chunking based on document structure
                     if extract_text and content["text"]:
                         content["chunks"] = await self._create_intelligent_chunks(result.document, content["text"])
-                            
                 except Exception as e:
                     logger.warning(f"Error extracting structure: {e}")
                     content["layout_info"] = {
@@ -283,12 +392,29 @@ class DoclingService:
                         "layout_detected": False,
                         "error": str(e)
                     }
-            
+
+            t_total = _time.monotonic() - t0
+            logger.info(f"[DOCLING_TIMING] _real_extract_content DONE | file={file_path.name} | total={t_total:.2f}s")
             return content
-            
+
         except Exception as e:
-            logger.error(f"Error in real Docling extraction: {e}")
+            logger.error(f"Error in real Docling extraction: {e}", exc_info=True)
             raise RuntimeError(f"Document processing failed: {str(e)}")
+
+    @staticmethod
+    def _extract_text_with_pymupdf(file_path: Path) -> str:
+        """Extract text from a PDF using PyMuPDF (fitz).
+
+        Synchronous — call via ``asyncio.to_thread``.
+        """
+        doc = pymupdf.open(str(file_path))
+        try:
+            pages_text = []
+            for page in doc:
+                pages_text.append(page.get_text())
+            return "\n\n".join(pages_text)
+        finally:
+            doc.close()
 
 
     async def _enhanced_text_extract_content(
@@ -1336,8 +1462,9 @@ class DoclingService:
                 logger.warning("Docling not available for position extraction, falling back to text search")
                 return await self._find_text_positions_in_text_file(file_path, search_texts)
 
-            # Convert document using Docling
-            result = self.converter.convert(str(file_path))
+            # Convert document using Docling.
+            # Run in a thread to avoid blocking the event loop.
+            result = await asyncio.to_thread(self.converter.convert, str(file_path))
             doc = result.document
 
             # Build page height lookup for coordinate conversion

@@ -9,6 +9,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   useMemo,
@@ -66,6 +67,7 @@ export const OrganizationProvider = ({ children }: PropsWithChildren) => {
     useState<OrganizationWithRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadIdRef = useRef(0);
 
   // Load organizations when user changes
   const loadOrganizations = useCallback(async () => {
@@ -76,11 +78,18 @@ export const OrganizationProvider = ({ children }: PropsWithChildren) => {
       return;
     }
 
+    // Increment load ID so stale responses from previous calls are ignored
+    const currentLoadId = ++loadIdRef.current;
+
     setIsLoading(true);
     setError(null);
 
     try {
       const orgs = await OrganizationService.getUserOrganizations();
+
+      // If a newer load was started while we were awaiting, discard this result
+      if (currentLoadId !== loadIdRef.current) return;
+
       setOrganizations(orgs);
 
       // Try to restore last active organization from localStorage
@@ -103,15 +112,36 @@ export const OrganizationProvider = ({ children }: PropsWithChildren) => {
         localStorage.setItem(STORAGE_KEY, activeOrg.id);
       }
     } catch (err) {
+      // If a newer load was started, don't surface this error
+      if (currentLoadId !== loadIdRef.current) return;
+
+      // Suppress network aborts during navigation (ERR_ABORTED / Failed to fetch).
+      // Supabase PostgREST errors are plain objects with a message property, not Error instances.
+      const message =
+        err instanceof Error ? err.message :
+        (typeof err === 'object' && err !== null && 'message' in err)
+          ? String((err as Record<string, unknown>).message)
+          : String(err);
+      if (message.includes('Failed to fetch') || message.includes('AbortError')) {
+        console.warn('Organization load aborted (navigation in progress), will retry');
+        return;
+      }
+
       console.error('Failed to load organizations:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load organizations');
+      setError(message);
     } finally {
-      setIsLoading(false);
+      if (currentLoadId === loadIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [user]);
 
   useEffect(() => {
     loadOrganizations();
+    return () => {
+      // Invalidate any in-flight load when effect re-runs or component unmounts
+      loadIdRef.current++;
+    };
   }, [loadOrganizations]);
 
   // Set active organization

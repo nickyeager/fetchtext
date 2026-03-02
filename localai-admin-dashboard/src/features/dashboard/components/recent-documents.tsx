@@ -33,7 +33,9 @@ async function fetchRecentDocuments(): Promise<RecentDocument[]> {
       .limit(5)
 
     if (error) {
-      console.error('[RecentDocuments] Error fetching documents:', error)
+      if (!error.message?.includes('Failed to fetch')) {
+        console.error('[RecentDocuments] Error fetching documents:', error)
+      }
       throw new Error(`Failed to fetch recent documents: ${error.message}`)
     }
 

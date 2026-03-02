@@ -28,13 +28,32 @@ _SAFE_IDENTIFIER = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*
 
 
 def _validate_identifier(name: str, label: str = "identifier") -> str:
-    """Validate a Snowflake identifier to prevent SQL injection."""
-    if not name or not _SAFE_IDENTIFIER.match(name):
+    """Validate a Snowflake identifier to prevent SQL injection.
+
+    Snowflake's SHOW/LIST commands do not support parameterized identifiers,
+    so we validate strictly: only alphanumeric, underscores, and dots allowed.
+    Max length 255 to prevent abuse.
+    """
+    if not name or len(name) > 255 or not _SAFE_IDENTIFIER.match(name):
         raise ValueError(
-            f"Invalid Snowflake {label}: '{name}'. "
-            "Only alphanumeric characters, underscores, and dots are allowed."
+            f"Invalid Snowflake {label}: Only alphanumeric characters, "
+            "underscores, and dots are allowed (max 255 chars)."
         )
     return name
+
+
+# Pattern for LIKE clause: only allow safe characters (no single quotes or semicolons)
+_SAFE_PATTERN = re.compile(r'^[A-Za-z0-9_.*%/?]+$')
+
+
+def _validate_pattern(pattern: str) -> str:
+    """Validate a SQL LIKE pattern to prevent injection."""
+    if not pattern or len(pattern) > 255 or not _SAFE_PATTERN.match(pattern):
+        raise ValueError(
+            "Invalid pattern: Only alphanumeric characters, underscores, "
+            "dots, wildcards (*, %, ?) are allowed."
+        )
+    return pattern
 
 
 # File extensions that can be processed by Docling
@@ -227,9 +246,20 @@ class SnowflakeService:
             return await asyncio.to_thread(_test, credentials)
         except Exception as e:
             logger.exception("Snowflake connection test failed")
+            # Sanitize error message - don't expose raw exception details
+            # which may contain credentials, file paths, or account info
+            error_str = str(e).lower()
+            if "authentication" in error_str or "password" in error_str or "key" in error_str:
+                user_message = "Authentication failed. Please check your credentials."
+            elif "network" in error_str or "connect" in error_str or "timeout" in error_str:
+                user_message = "Connection failed. Please check the account identifier and network settings."
+            elif "does not exist" in error_str or "not found" in error_str:
+                user_message = "Resource not found. Please check your account identifier, warehouse, and role."
+            else:
+                user_message = "Connection failed. Please check your configuration."
             return {
                 "success": False,
-                "message": f"Connection failed: {str(e)}",
+                "message": user_message,
             }
 
     async def list_databases(self, organization_id: str) -> List[Dict[str, str]]:
@@ -352,6 +382,7 @@ class SnowflakeService:
 
                 query = f"LIST {stage_ref}"
                 if pattern:
+                    _validate_pattern(pattern)
                     query += f" PATTERN='{pattern}'"
 
                 cursor.execute(query)
@@ -500,7 +531,7 @@ class SnowflakeService:
 
         return await asyncio.to_thread(_download, credentials)
 
-    def convert_data_file_to_text(
+    async def convert_data_file_to_text(
         self,
         file_path: str,
         max_rows: int = 1000,
@@ -509,15 +540,16 @@ class SnowflakeService:
         Convert a data file (CSV, JSON, Parquet) to text for processing.
 
         Returns a dict with 'text' (markdown content) and 'metadata'.
+        Runs blocking I/O in a thread pool to avoid blocking the event loop.
         """
         ext = Path(file_path).suffix.lower()
 
         if ext == ".csv":
-            return self._convert_csv(file_path, max_rows)
+            return await asyncio.to_thread(self._convert_csv, file_path, max_rows)
         elif ext in (".json", ".jsonl"):
-            return self._convert_json(file_path, max_rows)
+            return await asyncio.to_thread(self._convert_json, file_path, max_rows)
         elif ext == ".parquet":
-            return self._convert_parquet(file_path, max_rows)
+            return await asyncio.to_thread(self._convert_parquet, file_path, max_rows)
         else:
             raise ValueError(f"Unsupported data file format: {ext}")
 

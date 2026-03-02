@@ -93,7 +93,9 @@ async function fetchDashboardStats(): Promise<DashboardStats> {
       .select('id, processing_status, created_at')
 
     if (documentsError) {
-      console.error('[useDashboardStats] Error fetching documents:', documentsError)
+      if (!documentsError.message?.includes('Failed to fetch')) {
+        console.error('[useDashboardStats] Error fetching documents:', documentsError)
+      }
       throw new Error(`Failed to fetch documents: ${documentsError.message}`)
     }
 
@@ -207,10 +209,12 @@ async function fetchMonthlyDocumentData(): Promise<MonthlyDocumentData[]> {
       .order('created_at', { ascending: true })
 
     if (error) {
-      console.error(
-        '[useDashboardStats] Error fetching monthly data:',
-        error
-      )
+      if (!error.message?.includes('Failed to fetch')) {
+        console.error(
+          '[useDashboardStats] Error fetching monthly data:',
+          error
+        )
+      }
       throw new Error(`Failed to fetch monthly document data: ${error.message}`)
     }
 

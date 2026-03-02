@@ -43,6 +43,10 @@ class AzureOpenAIService:
         # Track if using custom credentials (for logging)
         self._is_byok = api_key is not None
 
+        # Persistent HTTP client — reuses TCP/TLS connections across calls,
+        # saving ~100-300ms per request on TLS handshake overhead.
+        self._client: Optional[httpx.AsyncClient] = None
+
     @property
     def is_configured(self) -> bool:
         """Check if Azure OpenAI is properly configured"""
@@ -59,6 +63,12 @@ class AzureOpenAIService:
             "Content-Type": "application/json"
         }
     
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return a persistent httpx client, creating one if needed."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=60.0)
+        return self._client
+
     async def list_deployments(self) -> List[Dict[str, Any]]:
         """
         List available Azure OpenAI deployments
@@ -80,43 +90,51 @@ class AzureOpenAIService:
     
     async def complete(self, prompt: str, **kwargs) -> str:
         """
-        Send a completion request to Azure OpenAI
+        Send a completion request to Azure OpenAI.
+
+        Supported kwargs:
+            temperature, max_tokens, top_p, frequency_penalty, presence_penalty,
+            response_format (e.g. {"type": "json_object"} to force valid JSON output)
         """
         if not self.is_configured:
             raise ValueError("Azure OpenAI is not properly configured")
-        
+
         url = f"{self.endpoint.rstrip('/')}/openai/deployments/{self.deployment_name}/chat/completions?api-version={self.api_version}"
-        
+
         # Build the request payload
         max_tokens_value = kwargs.get("max_tokens", 2000)
-        logger.info(f"Azure OpenAI - max_tokens before conversion: {max_tokens_value}, type: {type(max_tokens_value)}")
-        
+
         payload = {
             "messages": [
                 {"role": "system", "content": "You are a helpful AI assistant."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": kwargs.get("temperature", 0.7),
-            "max_tokens": int(max_tokens_value),  # Ensure integer
+            "max_tokens": int(max_tokens_value),
             "top_p": kwargs.get("top_p", 0.95),
             "frequency_penalty": kwargs.get("frequency_penalty", 0),
             "presence_penalty": kwargs.get("presence_penalty", 0),
         }
-        
-        logger.info(f"Azure OpenAI - payload max_tokens: {payload['max_tokens']}, type: {type(payload['max_tokens'])}")
+
+        # Enable structured JSON output when requested.
+        # This constrains the model to emit valid JSON, which is faster
+        # (no wasted tokens on markdown/explanations) and eliminates
+        # the need for fuzzy JSON parsing.
+        response_format = kwargs.get("response_format")
+        if response_format:
+            payload["response_format"] = response_format
         
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url,
-                    headers=self._get_headers(),
-                    json=payload,
-                    timeout=60.0
-                )
-                response.raise_for_status()
-                
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
+            client = self._get_client()
+            response = await client.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
                 
         except httpx.HTTPStatusError as e:
             error_text = e.response.text

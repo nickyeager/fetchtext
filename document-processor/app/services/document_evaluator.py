@@ -656,11 +656,10 @@ class DocumentEvaluator:
         supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
         supabase_key = os.getenv('ANON_KEY', '')  # Use ANON_KEY, not SUPABASE_ANON_KEY
         
-        print(f"[TEMPLATE DEBUG] Template matching - URL: {supabase_url}, Key present: {bool(supabase_key)}")
-        logger.info(f"Template matching - URL: {supabase_url}, Key present: {bool(supabase_key)}")
-        
+        logger.debug(f"Template matching - URL: {supabase_url}, Key present: {bool(supabase_key)}")
+
         if not supabase_url or not supabase_key:
-            print(f"[TEMPLATE DEBUG] Missing credentials - returning empty list")
+            logger.debug("Missing Supabase credentials for template matching - returning empty list")
             logger.warning("Supabase credentials not configured for template matching")
             return []
         
@@ -686,7 +685,9 @@ class DocumentEvaluator:
                 url = f"{supabase_url}/rest/v1/smart_templates?select=id,name,category,description,smart_variables,usage_count&is_public=eq.true&category=eq.{document_type}"
             
             logger.info(f"Querying templates with URL: {url}")
-            response = requests.get(url, headers=headers, timeout=self.template_query_timeout)
+            response = await asyncio.to_thread(
+                lambda: requests.get(url, headers=headers, timeout=self.template_query_timeout)
+            )
             logger.info(f"Response status: {response.status_code}")
             response.raise_for_status()
             templates = response.json()

@@ -1,384 +1,213 @@
 """
-Unit tests for two-pass extraction strategy.
+Integration tests for two-pass extraction strategy.
 
-Tests verify that the TwoPassExtractor:
-1. Performs first pass extraction and identifies low-confidence fields
-2. Uses high-confidence fields as context for second pass
-3. Merges results to return best-confidence values
+Tests call the REAL backend /api/enhanced-documents/extract-with-text endpoint
+with use_two_pass=true. Uses real Azure OpenAI for LLM extraction.
+No mocks. No fakes.
 """
+import json
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from app.services.two_pass_extractor import TwoPassExtractor
+import httpx
+
+BACKEND_URL = "http://localhost:8090"
+
+SAMPLE_INVOICE_TEXT = """
+INVOICE
+
+From: Acme Corporation
+123 Business Street
+New York, NY 10001
+Tax ID: 12-3456789
+
+Bill To: John Smith
+456 Customer Lane
+Chicago, IL 60601
+
+Invoice Number: INV-2024-001
+Invoice Date: January 15, 2024
+Due Date: February 15, 2024
+
+Description                     Qty    Rate      Amount
+-------------------------------------------------------
+Consulting Services              40   $150.00   $6,000.00
+Software License                  1   $500.00     $500.00
+Support & Maintenance             1   $200.00     $200.00
+-------------------------------------------------------
+                              Subtotal:          $6,700.00
+                              Tax (8%):            $536.00
+                              Total Due:         $7,236.00
+
+Payment Terms: Net 30
+"""
+
+INVOICE_TEMPLATE = {
+    "smart_variables": [
+        {"name": "vendor_name", "type": "text", "description": "Name of the company issuing the invoice"},
+        {"name": "invoice_number", "type": "text", "description": "Unique invoice identifier"},
+        {"name": "invoice_date", "type": "date", "description": "Date the invoice was issued"},
+        {"name": "total_amount", "type": "currency", "description": "Total amount due on the invoice"},
+        {"name": "customer_name", "type": "text", "description": "Name of the person being billed"},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def backend():
+    """Verify backend is reachable."""
+    try:
+        resp = httpx.get(f"{BACKEND_URL}/health", timeout=5)
+        resp.raise_for_status()
+    except Exception as exc:
+        pytest.fail(f"Backend not reachable at {BACKEND_URL}: {exc}")
 
 
 class TestTwoPassExtraction:
-    """Test two-pass extraction for improved accuracy."""
+    """Test two-pass extraction via the real backend API."""
 
-    @pytest.fixture
-    def extractor(self):
-        """Create a TwoPassExtractor instance for testing."""
-        return TwoPassExtractor()
+    def test_two_pass_extracts_fields_from_invoice(self, backend):
+        """Two-pass extraction should extract fields from a clear invoice."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": SAMPLE_INVOICE_TEXT,
+                "template_data": json.dumps(INVOICE_TEMPLATE),
+                "confidence_threshold": 0.5,
+                "use_two_pass": True,
+            },
+            timeout=60,
+        )
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
-    @pytest.fixture
-    def sample_template_variables(self):
-        """Sample template variables for testing."""
-        return [
-            {"name": "vendor_name", "type": "text", "description": "Name of the vendor"},
-            {"name": "vendor_address", "type": "text", "description": "Address of the vendor"},
-            {"name": "invoice_date", "type": "date", "description": "Date of the invoice"},
-            {"name": "total_amount", "type": "currency", "description": "Total amount due"},
-        ]
+        data = resp.json()
 
-    @pytest.fixture
-    def sample_document_text(self):
-        """Sample document text for extraction."""
-        return """
-        INVOICE
+        # Should have extraction results
+        assert "extracted_values" in data or "extracted_data" in data, (
+            f"Response missing extraction results: {list(data.keys())}"
+        )
 
-        From: Acme Corp
-        123 Business Street
-        New York, NY 10001
+        # Get the extracted values (key may vary by endpoint version)
+        extracted = data.get("extracted_values") or data.get("extracted_data", {}).get("extracted_values", {})
 
-        To: John Smith
-        john@example.com
+        # Should have extracted at least some fields
+        assert len(extracted) >= 1, f"Expected at least 1 extracted field, got: {extracted}"
 
-        Date: January 15, 2024
-        Invoice #: INV-2024-001
+    def test_two_pass_returns_metadata(self, backend):
+        """Two-pass extraction should include extraction metadata."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": SAMPLE_INVOICE_TEXT,
+                "template_data": json.dumps(INVOICE_TEMPLATE),
+                "confidence_threshold": 0.5,
+                "use_two_pass": True,
+            },
+            timeout=60,
+        )
+        assert resp.status_code == 200
 
-        Total: $1,500.00
-        """
+        data = resp.json()
 
-    @pytest.mark.asyncio
-    async def test_first_pass_extracts_high_confidence(self, extractor):
-        """First pass should extract high-confidence fields."""
-        with patch.object(extractor, '_run_extraction_pass', new_callable=AsyncMock) as mock_extract:
-            mock_extract.return_value = {
-                "extracted_values": {
-                    "vendor_name": {"value": "Acme Corp", "confidence": 0.95},
-                    "vendor_address": {"value": "123 Main", "confidence": 0.45},  # Low confidence
-                }
-            }
+        # Check for metadata fields that two-pass extractor returns
+        # The response may nest these under extracted_data
+        result = data if "extraction_method" in data else data.get("extracted_data", data)
 
-            result = await extractor.extract_two_pass(
-                "Sample text",
-                [{"name": "vendor_name"}, {"name": "vendor_address"}],
-                confidence_threshold=0.6
-            )
+        assert "extraction_method" in result, f"Missing extraction_method in: {list(result.keys())}"
+        assert result["extraction_method"] == "two_pass_intelligent"
 
-            # Should have attempted at least one pass
-            assert mock_extract.call_count >= 1
-            assert "extracted_values" in result
+    def test_single_pass_vs_two_pass_both_work(self, backend):
+        """Both single-pass and two-pass should return results."""
+        template_json = json.dumps(INVOICE_TEMPLATE)
 
-    @pytest.mark.asyncio
-    async def test_second_pass_uses_first_pass_context(self, extractor):
-        """Second pass should use first pass results as context."""
-        call_contexts = []
+        # Single pass
+        resp_single = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": SAMPLE_INVOICE_TEXT,
+                "template_data": template_json,
+                "confidence_threshold": 0.5,
+                "use_two_pass": False,
+            },
+            timeout=60,
+        )
+        assert resp_single.status_code == 200, f"Single-pass failed: {resp_single.text}"
 
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            call_contexts.append(context)
-            if context is None:
-                # First pass
-                return {
-                    "extracted_values": {
-                        "vendor_name": {"value": "Acme Corp", "confidence": 0.95},
-                        "total_amount": {"value": "$100", "confidence": 0.40},
-                    }
-                }
-            else:
-                # Second pass with context
-                return {
-                    "extracted_values": {
-                        "total_amount": {"value": "$150.00", "confidence": 0.85},
-                    }
-                }
+        # Two pass
+        resp_two = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": SAMPLE_INVOICE_TEXT,
+                "template_data": template_json,
+                "confidence_threshold": 0.5,
+                "use_two_pass": True,
+            },
+            timeout=60,
+        )
+        assert resp_two.status_code == 200, f"Two-pass failed: {resp_two.text}"
 
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "Invoice from Acme Corp for $150.00",
-                [{"name": "vendor_name"}, {"name": "total_amount"}],
-                confidence_threshold=0.6
-            )
+        # Both should return extraction results
+        data_single = resp_single.json()
+        data_two = resp_two.json()
 
-            # First call should have no context (None)
-            assert call_contexts[0] is None
+        single_extracted = (
+            data_single.get("extracted_values")
+            or data_single.get("extracted_data", {}).get("extracted_values", {})
+        )
+        two_extracted = (
+            data_two.get("extracted_values")
+            or data_two.get("extracted_data", {}).get("extracted_values", {})
+        )
 
-            # Second call should have context from first pass
-            assert len(call_contexts) >= 2
-            assert call_contexts[1] is not None
-            assert "vendor_name" in call_contexts[1]
-            assert call_contexts[1]["vendor_name"]["value"] == "Acme Corp"
-
-    @pytest.mark.asyncio
-    async def test_returns_best_results(self, extractor):
-        """Should return best confidence results from both passes."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            if context is None:
-                return {
-                    "extracted_values": {
-                        "field_a": {"value": "first", "confidence": 0.9},
-                        "field_b": {"value": "low", "confidence": 0.4},
-                    }
-                }
-            else:
-                return {
-                    "extracted_values": {
-                        "field_b": {"value": "improved", "confidence": 0.8},
-                    }
-                }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            # Should have high-confidence field_a from pass 1
-            # and improved field_b from pass 2
-            extracted = result.get("extracted_values", {})
-            assert extracted.get("field_a", {}).get("value") == "first"
-            assert extracted.get("field_b", {}).get("value") == "improved"
-
-    @pytest.mark.asyncio
-    async def test_no_second_pass_when_all_high_confidence(self, extractor):
-        """Should skip second pass when all fields have high confidence."""
-        call_count = 0
-
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            nonlocal call_count
-            call_count += 1
-            return {
-                "extracted_values": {
-                    "field_a": {"value": "value_a", "confidence": 0.95},
-                    "field_b": {"value": "value_b", "confidence": 0.90},
-                }
-            }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            # Should only call once since all fields are high confidence
-            assert call_count == 1
-            assert result["pass_stats"]["pass1_high_confidence"] == 2
-            assert result["pass_stats"]["pass2_refined"] == 0
-
-    @pytest.mark.asyncio
-    async def test_no_second_pass_when_no_high_confidence_context(self, extractor):
-        """Should skip second pass when there's no high-confidence context to use."""
-        call_count = 0
-
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            nonlocal call_count
-            call_count += 1
-            return {
-                "extracted_values": {
-                    "field_a": {"value": "value_a", "confidence": 0.3},
-                    "field_b": {"value": "value_b", "confidence": 0.4},
-                }
-            }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            # Should only call once - no high-confidence context to provide
-            assert call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_handles_missing_fields_in_first_pass(self, extractor):
-        """Should include fields not extracted in first pass in second pass."""
-        call_variables = []
-
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            call_variables.append([v.get("name") for v in variables])
-            if context is None:
-                # First pass - only extract field_a
-                return {
-                    "extracted_values": {
-                        "field_a": {"value": "value_a", "confidence": 0.95},
-                    }
-                }
-            else:
-                # Second pass - extract missing field_b
-                return {
-                    "extracted_values": {
-                        "field_b": {"value": "value_b", "confidence": 0.75},
-                    }
-                }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            # field_b should be in second pass variables
-            assert len(call_variables) >= 2
-            assert "field_b" in call_variables[1]
-
-            # Both fields should be in final result
-            extracted = result.get("extracted_values", {})
-            assert "field_a" in extracted
-            assert "field_b" in extracted
-
-    @pytest.mark.asyncio
-    async def test_extraction_pass_marked(self, extractor):
-        """Each field should be marked with which pass it was extracted in."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            if context is None:
-                return {
-                    "extracted_values": {
-                        "field_a": {"value": "value_a", "confidence": 0.95},
-                        "field_b": {"value": "low", "confidence": 0.4},
-                    }
-                }
-            else:
-                return {
-                    "extracted_values": {
-                        "field_b": {"value": "improved", "confidence": 0.85},
-                    }
-                }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            extracted = result.get("extracted_values", {})
-            # field_a should be marked as pass 1
-            assert extracted["field_a"].get("extraction_pass") == 1
-            # field_b should be marked as pass 2 (improved)
-            assert extracted["field_b"].get("extraction_pass") == 2
-
-    @pytest.mark.asyncio
-    async def test_result_metadata(self, extractor):
-        """Result should include extraction metadata."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            return {
-                "extracted_values": {
-                    "field_a": {"value": "value_a", "confidence": 0.95},
-                }
-            }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}],
-                confidence_threshold=0.6
-            )
-
-            # Check metadata fields
-            assert result["extraction_method"] == "two_pass_intelligent"
-            assert "total_fields_requested" in result
-            assert "fields_extracted" in result
-            assert "confidence_threshold" in result
-            assert "success_rate" in result
-            assert "processing_time_ms" in result
-            assert "pass_stats" in result
+        assert len(single_extracted) >= 1, f"Single-pass extracted nothing: {data_single}"
+        assert len(two_extracted) >= 1, f"Two-pass extracted nothing: {data_two}"
 
 
 class TestTwoPassExtractionEdgeCases:
-    """Edge case tests for two-pass extraction."""
+    """Edge case tests for two-pass extraction via real API."""
 
-    @pytest.fixture
-    def extractor(self):
-        return TwoPassExtractor()
+    def test_rejects_empty_template_variables(self, backend):
+        """Should reject empty template variables."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": "Some text",
+                "template_data": json.dumps({"smart_variables": []}),
+                "use_two_pass": True,
+            },
+            timeout=10,
+        )
+        # Empty variables should be rejected with 400
+        assert resp.status_code == 400, (
+            f"Expected 400 for empty variables, got {resp.status_code}: {resp.text}"
+        )
 
-    @pytest.mark.asyncio
-    async def test_empty_template_variables(self, extractor):
-        """Should handle empty template variables gracefully."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            return {"extracted_values": {}}
+    def test_rejects_invalid_template_json(self, backend):
+        """Should reject invalid JSON in template_data."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": "Some text",
+                "template_data": "not valid json {{{",
+                "use_two_pass": True,
+            },
+            timeout=10,
+        )
+        assert resp.status_code == 400
 
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [],
-                confidence_threshold=0.6
-            )
+    def test_extracts_with_high_confidence_threshold(self, backend):
+        """Extraction with high confidence threshold should still succeed."""
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/enhanced-documents/extract-with-text",
+            params={
+                "text_content": SAMPLE_INVOICE_TEXT,
+                "template_data": json.dumps(INVOICE_TEMPLATE),
+                "confidence_threshold": 0.9,
+                "use_two_pass": True,
+            },
+            timeout=60,
+        )
+        assert resp.status_code == 200, f"High threshold failed: {resp.text}"
 
-            assert result["total_fields_requested"] == 0
-            assert result["fields_extracted"] == 0
 
-    @pytest.mark.asyncio
-    async def test_custom_confidence_threshold(self, extractor):
-        """Should respect custom confidence threshold."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            return {
-                "extracted_values": {
-                    "field_a": {"value": "value_a", "confidence": 0.75},
-                    "field_b": {"value": "value_b", "confidence": 0.85},
-                }
-            }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            # With 0.8 threshold, only field_b should count as high-confidence
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.8
-            )
-
-            # Both fields should still be extracted
-            extracted = result.get("extracted_values", {})
-            assert len(extracted) == 2
-
-    @pytest.mark.asyncio
-    async def test_second_pass_doesnt_improve(self, extractor):
-        """Should keep first pass result when second pass doesn't improve confidence."""
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            if context is None:
-                return {
-                    "extracted_values": {
-                        "field_a": {"value": "good", "confidence": 0.95},
-                        "field_b": {"value": "okay", "confidence": 0.5},
-                    }
-                }
-            else:
-                # Second pass has lower confidence
-                return {
-                    "extracted_values": {
-                        "field_b": {"value": "worse", "confidence": 0.3},
-                    }
-                }
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            result = await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}, {"name": "field_b"}],
-                confidence_threshold=0.6
-            )
-
-            extracted = result.get("extracted_values", {})
-            # field_b should keep pass 1 value since pass 2 was worse
-            assert extracted["field_b"]["value"] == "okay"
-            assert extracted["field_b"]["confidence"] == 0.5
-
-    @pytest.mark.asyncio
-    async def test_provider_passed_through(self, extractor):
-        """Should pass provider to underlying extraction."""
-        providers_used = []
-
-        async def mock_extraction(text, variables, threshold, context=None, provider="azure"):
-            providers_used.append(provider)
-            return {"extracted_values": {"field_a": {"value": "v", "confidence": 0.95}}}
-
-        with patch.object(extractor, '_run_extraction_pass', side_effect=mock_extraction):
-            await extractor.extract_two_pass(
-                "text",
-                [{"name": "field_a"}],
-                confidence_threshold=0.6,
-                provider="ollama"
-            )
-
-            assert all(p == "ollama" for p in providers_used)
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

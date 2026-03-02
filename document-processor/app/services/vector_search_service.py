@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import uuid
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
@@ -39,26 +40,40 @@ logger = logging.getLogger(__name__)
 class VectorSearchService:
     """Enhanced vector search service with hybrid capabilities using Qdrant"""
     
-    def __init__(self, 
-                 host: str = "qdrant", 
-                 port: int = 6333,
+    def __init__(self,
+                 host: str = None,
+                 port: int = None,
                  collection_name: str = "documents"):
-        
-        self.host = host
-        self.port = port
+
+        self.host = host or os.getenv("QDRANT_HOST", "qdrant")
+        self.port = port or int(os.getenv("QDRANT_PORT", "6333"))
         self.collection_name = collection_name
         self.embedding_service = EmbeddingService()
-        
-        # Initialize Qdrant client
+
+        # Initialize Qdrant client with retry for sidecar startup race
         if QDRANT_AVAILABLE:
-            try:
-                self.client = QdrantClient(host=host, port=port)
-                self.available = True
-                logger.info(f"Qdrant client initialized successfully at {host}:{port}")
-            except Exception as e:
-                logger.error(f"Failed to initialize Qdrant client: {e}")
-                self.client = None
-                self.available = False
+            import time
+            api_key = os.getenv("QDRANT_API_KEY")
+            max_retries = 5
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if self.host.startswith("http") or "." in self.host:
+                        url = self.host if self.host.startswith("http") else f"https://{self.host}"
+                        self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
+                    else:
+                        self.client = QdrantClient(host=self.host, port=self.port, api_key=api_key, https=False, timeout=10)
+                    self.client.get_collections()
+                    self.available = True
+                    logger.info(f"Qdrant client connected at {self.host}:{self.port}")
+                    break
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.info(f"Qdrant not ready (attempt {attempt}/{max_retries}), retrying in 3s...")
+                        time.sleep(3)
+                    else:
+                        logger.error(f"Failed to connect to Qdrant after {max_retries} attempts: {e}")
+                        self.client = None
+                        self.available = False
         else:
             logger.warning("Qdrant client not available - install qdrant-client")
             self.client = None
