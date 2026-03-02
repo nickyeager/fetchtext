@@ -12,6 +12,7 @@ from app.routers import api_v1, api_keys_admin
 from app.routers import integrations, billing, snowflake
 from app.routers import stream
 from app.routers import webhooks
+from app.routers import sharepoint, sso
 
 # Import OpenAPI configuration
 from app.openapi_config import get_openapi_config, get_custom_openapi_schema, API_TAGS
@@ -62,6 +63,8 @@ app.include_router(billing.router)
 app.include_router(snowflake.router)
 app.include_router(stream.router)
 app.include_router(webhooks.router)
+app.include_router(sharepoint.router)
+app.include_router(sso.router)
 
 # Third-party API routers
 app.include_router(api_v1.router)
@@ -79,6 +82,17 @@ async def startup_sync_template_embeddings():
             logger.info("Template vector service not available — skipping startup sync")
     except Exception as e:
         logger.warning(f"Template embedding sync failed on startup (non-fatal): {e}")
+
+
+@app.on_event("startup")
+async def startup_sharepoint_watcher():
+    from app.services.sharepoint_watcher import start_poller
+    start_poller()
+
+@app.on_event("shutdown")
+async def shutdown_sharepoint_watcher():
+    from app.services.sharepoint_watcher import stop_poller
+    stop_poller()
 
 
 @app.get("/")

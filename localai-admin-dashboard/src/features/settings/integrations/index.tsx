@@ -1,6 +1,7 @@
 import ContentSection from '../components/content-section'
 import { GoogleDriveSettings } from './google-drive-settings'
 import { SnowflakeSettings } from './snowflake-settings'
+import { SharePointSettings } from './sharepoint-settings'
 
 export default function Integrations() {
   return (
@@ -10,6 +11,7 @@ export default function Integrations() {
     >
       <div className="space-y-6">
         <GoogleDriveSettings />
+        <SharePointSettings />
         <SnowflakeSettings />
       </div>
     </ContentSection>
