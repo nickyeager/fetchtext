@@ -64,6 +64,8 @@ jobs:
           SENDGRID_KEY_SECRET: ${{ secrets.SENDGRID_API_KEY }}
           QDRANT_KEY_SECRET: ${{ secrets.QDRANT_API_KEY }}
           JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
+          MICROSOFT_CLIENT_ID_SECRET: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_CLIENT_SECRET_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
         run: |
           # Build secrets list (jwt-secret is optional — auth falls back to Supabase API)
           SECRETS_ARGS=(
@@ -81,6 +83,13 @@ jobs:
           else
             echo "::warning::JWT_SECRET not set — auth will use Supabase API fallback"
           fi
+          if [ -n "$MICROSOFT_CLIENT_ID_SECRET" ]; then
+            SECRETS_ARGS+=(microsoft-client-id="$MICROSOFT_CLIENT_ID_SECRET")
+            SECRETS_ARGS+=(microsoft-client-secret="$MICROSOFT_CLIENT_SECRET_SECRET")
+            echo "Including Microsoft OAuth secrets"
+          else
+            echo "::warning::MICROSOFT_CLIENT_ID not set — SharePoint integration disabled"
+          fi
           az containerapp secret set \
             --name "$AZURE_CONTAINERAPP_NAME" \
             --resource-group "$AZURE_CONTAINERAPPS_RESOURCE_GROUP" \
@@ -89,6 +98,7 @@ jobs:
       - name: Update Container App
         env:
           JWT_SECRET_VALUE: ${{ secrets.JWT_SECRET }}
+          MICROSOFT_CLIENT_ID_SECRET: ${{ secrets.MICROSOFT_CLIENT_ID }}
         run: |
           # Build env vars list (JWT_SECRET is optional)
           ENV_VARS=(
@@ -110,6 +120,10 @@ jobs:
           )
           if [ -n "$JWT_SECRET_VALUE" ]; then
             ENV_VARS+=(JWT_SECRET=secretref:jwt-secret)
+          fi
+          if [ -n "$MICROSOFT_CLIENT_ID_SECRET" ]; then
+            ENV_VARS+=(MICROSOFT_CLIENT_ID=secretref:microsoft-client-id)
+            ENV_VARS+=(MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret)
           fi
           az containerapp update \
             --name "$AZURE_CONTAINERAPP_NAME" \

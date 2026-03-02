@@ -1,33 +1,49 @@
 /**
- * E2E Test: SharePoint/OneDrive OAuth Integration
+ * E2E Test: SharePoint/OneDrive OAuth Integration + SSO Settings
  *
  * Tests the Microsoft 365 SharePoint & OneDrive OAuth integration flow:
  * 1. Verify SharePoint integration card displays correctly
  * 2. Verify Connect button initiates OAuth flow (redirects to Microsoft)
  * 3. Verify OAuth callback handling (success and error cases)
  * 4. Verify connection status updates after successful OAuth
+ * 5. Verify SSO settings page and configuration form
  *
  * NO MOCKS - Tests real API endpoints and UI interactions
  *
+ * Supports both local and production:
+ *   Local:      npx playwright test tests/e2e/settings/sharepoint.pw.spec.ts
+ *   Production: TARGET=production npx playwright test tests/e2e/settings/sharepoint.pw.spec.ts
+ *
  * Prerequisites:
  * - Backend document-processor running with MICROSOFT_CLIENT_ID configured
- * - Frontend running on localhost:5173
- * - TEST_USER_EMAIL and TEST_USER_PASSWORD set
+ * - Frontend accessible (localhost:5173 or fetchtext.io)
+ * - TEST_USER_EMAIL and TEST_USER_PASSWORD set (or PROD_ variants for production)
  * - User must have an organization
  */
 
 import { test, expect, Page } from '@playwright/test'
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8090'
+const IS_PRODUCTION = process.env.TARGET === 'production'
+
+const FRONTEND_URL = IS_PRODUCTION
+  ? (process.env.FRONTEND_URL || 'https://fetchtext.io')
+  : (process.env.FRONTEND_URL || 'http://localhost:5173')
+
+const BACKEND_URL = IS_PRODUCTION
+  ? (process.env.BACKEND_URL || process.env.PROD_BACKEND_URL || 'https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io')
+  : (process.env.BACKEND_URL || 'http://localhost:8090')
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
 async function loginWithCredentials(page: Page): Promise<boolean> {
-  const email = process.env.TEST_USER_EMAIL
-  const password = process.env.TEST_USER_PASSWORD
+  const email = IS_PRODUCTION
+    ? (process.env.PROD_TEST_USER_EMAIL || process.env.TEST_USER_EMAIL)
+    : process.env.TEST_USER_EMAIL
+  const password = IS_PRODUCTION
+    ? (process.env.PROD_TEST_USER_PASSWORD || process.env.TEST_USER_PASSWORD)
+    : process.env.TEST_USER_PASSWORD
 
   if (!email || !password) {
     console.log('[Auth] TEST_USER_EMAIL or TEST_USER_PASSWORD not set')
