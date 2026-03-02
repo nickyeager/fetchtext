@@ -7,12 +7,11 @@ import re
 import logging
 import sys
 import os
-import aiohttp
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Form, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -29,6 +28,9 @@ except Exception:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     logger = logging.getLogger(__name__)
 
+from ..middleware.file_validation import validate_and_save_uploaded_file
+from ..middleware.admin_auth import admin_auth
+from ..middleware.demo_rate_limit import check_demo_rate_limit
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.ai_template_generator import ai_template_generator
 from ..services.document_evaluator import document_evaluator
@@ -39,28 +41,18 @@ from ..services.template_generation_service import template_generation_service
 from ..services.embedding_service import embedding_service
 from ..config.database import db_config
 
-router = APIRouter(prefix="/api/enhanced-documents", tags=["enhanced-documents"])
+router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["enhanced-documents"],
+    dependencies=[Depends(admin_auth.get_current_user)]
+)
 
-async def save_uploaded_file(upload_file: UploadFile) -> Path:
-    """Save uploaded file to temporary location"""
-    try:
-        # Create temporary file
-        temp_dir = Path(tempfile.gettempdir()) / "docling_uploads"
-        temp_dir.mkdir(exist_ok=True)
-        
-        file_extension = Path(upload_file.filename or "unknown").suffix
-        temp_filename = f"{uuid.uuid4()}{file_extension}"
-        temp_path = temp_dir / temp_filename
-        
-        # Save file content
-        async with aiofiles.open(temp_path, 'wb') as f:
-            content = await upload_file.read()
-            await f.write(content)
-        
-        return temp_path
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+# Public sub-router for endpoints that don't require authentication
+public_router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["enhanced-documents"],
+)
+
 
 async def cleanup_temp_file(file_path: Path):
     """Clean up temporary file"""
@@ -102,7 +94,7 @@ async def batch_process_with_ai_enhancement(
     
     try:
         # Save all uploaded files
-        save_tasks = [save_uploaded_file(file) for file in files]
+        save_tasks = [validate_and_save_uploaded_file(file) for file in files]
         temp_files = await asyncio.gather(*save_tasks)
         
         # Process files with limited concurrency
@@ -251,7 +243,7 @@ async def extract_with_text(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
 
-@router.get("/supported-categories")
+@public_router.get("/supported-categories")
 async def get_supported_document_categories():
     """Get list of supported document categories for classification"""
     
@@ -340,7 +332,7 @@ async def extract_with_template(
                 raise HTTPException(status_code=400, detail="Invalid JSON in template_data")
         
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # For template-guided extraction, create minimal processing result to bypass all AI
         if template_variables:
@@ -448,7 +440,7 @@ async def decide_template_strategy(
     temp_file_path: Optional[Path] = None
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # 1) Evaluate document (type + suggestions)
         evaluation = await document_evaluator.evaluate_document(
@@ -717,7 +709,7 @@ async def evaluate_document_type(
     
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # For PDFs and binary files, extract clean text using Docling first
         clean_text = None
@@ -869,7 +861,7 @@ async def extract_with_smart_template(
             raise HTTPException(status_code=400, detail="No smart template variables provided")
         
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # Extract text content from document
         try:
@@ -1037,7 +1029,7 @@ async def smart_field_extraction(request: SmartExtractRequest):
         logger.error(f"Smart extraction failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Smart extraction failed: {str(e)}")
 
-@router.post("/analyze-document")
+@public_router.post("/analyze-document", dependencies=[Depends(check_demo_rate_limit)])
 async def analyze_document_for_template_generation(
     file: UploadFile = File(...),
     confidence_threshold: float = Query(0.7, description="Minimum confidence for field detection"),
@@ -1067,7 +1059,7 @@ async def analyze_document_for_template_generation(
     
     try:
         # Save uploaded file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
         
         # Perform document analysis
         analysis = await ai_template_generator.analyze_document_structure(temp_file_path)
@@ -1132,14 +1124,70 @@ async def save_generated_template(
         logger.error(f"Failed to save generated template: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
 
-async def _index_template_embedding(template: Dict[str, Any]) -> None:
+async def _index_template_embedding(
+    template: Dict[str, Any],
+    document_text: Optional[str] = None,
+) -> None:
     """Fire-and-forget: index a saved template's embedding in Qdrant."""
     try:
         from app.services.template_vector_service import template_vector_service
         if template_vector_service.available:
-            await template_vector_service.index_template(template)
+            await template_vector_service.index_template(template, document_text=document_text)
     except Exception as e:
         logger.warning(f"Failed to index template embedding (non-fatal): {e}")
+
+
+class IndexTemplateRequest(BaseModel):
+    template_id: int
+    name: str = ""
+    description: str = ""
+    category: str = ""
+    smart_variables: list = []
+    is_public: bool = False
+    document_text: Optional[str] = None  # Source doc text for exemplar embedding
+
+
+@router.post("/index-template-embedding")
+async def index_template_embedding(request: IndexTemplateRequest):
+    """Index an already-saved template's embedding in Qdrant for vector search.
+
+    Called by the frontend after saving a generated template directly to
+    Supabase, so the template becomes discoverable via vector search
+    immediately (without waiting for a container restart).
+    """
+    template_dict = {
+        "id": request.template_id,
+        "name": request.name,
+        "description": request.description,
+        "category": request.category,
+        "smart_variables": request.smart_variables,
+        "is_public": request.is_public,
+    }
+
+    # If minimal data was sent, try to fetch full template from Supabase
+    if not request.name and db_config.is_configured and db_config.client:
+        try:
+            def _fetch(tid: int):
+                return (
+                    db_config.client.table("smart_templates")
+                    .select("id, name, description, category, smart_variables, is_public")
+                    .eq("id", tid)
+                    .single()
+                    .execute()
+                )
+            result = await asyncio.to_thread(_fetch, request.template_id)
+            if result.data:
+                template_dict = result.data
+        except Exception as e:
+            logger.warning(f"Could not fetch template {request.template_id} from DB: {e}")
+
+    await _index_template_embedding(template_dict, document_text=request.document_text)
+
+    return JSONResponse(content={
+        "success": True,
+        "template_id": request.template_id,
+        "message": f"Template {request.template_id} indexed in Qdrant",
+    })
 
 
 async def _test_template_extraction(document_path: Path, template: Dict[str, Any]) -> Dict[str, Any]:
@@ -1246,26 +1294,21 @@ def _validate_extraction_results(
     return validation_results
 
 async def _save_template_to_database(
-    template: Dict[str, Any], 
-    template_name: str, 
+    template: Dict[str, Any],
+    template_name: str,
     category: str
 ) -> Dict[str, Any]:
-    """Save generated template to the Supabase database"""
-    
-    # Get Supabase connection details from environment
-    supabase_url = os.getenv('SUPABASE_URL', 'http://supabase-kong:8000')
-    supabase_key = os.getenv('ANON_KEY', '')
-    
-    if not supabase_url or not supabase_key:
-        raise ValueError("Supabase credentials not configured")
-    
-    headers = {
-        'apikey': supabase_key,
-        'Authorization': f'Bearer {supabase_key}',
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-    }
-    
+    """Save generated template to the Supabase database.
+
+    Uses ``db_config.client`` (service_role key) so that the save works
+    consistently across local Docker and production Azure environments.
+    Auto-generated templates are saved as ``is_public=True`` so they are
+    discoverable by the matching service without user context.
+    """
+
+    if not db_config.is_configured or not db_config.client:
+        raise ValueError("Supabase database not configured — cannot save template")
+
     # Prepare template data for database
     template_data = {
         'name': template_name,
@@ -1275,7 +1318,7 @@ async def _save_template_to_database(
         'template_type': 'smart',
         'smart_variables': template.get('variables', []),
         'tags': ['ai-generated', category],
-        'is_public': False,
+        'is_public': True,  # Auto-generated templates must be public for matching
         'extraction_rules': [
             {
                 'variable_id': var.get('id', var.get('name')),
@@ -1293,24 +1336,21 @@ async def _save_template_to_database(
             'generation_method': 'automatic'
         }
     }
-    
+
     try:
-        # Insert template into smart_templates table
-        url = f"{supabase_url}/rest/v1/smart_templates"
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=template_data, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status >= 400:
-                    text = await resp.text()
-                    raise aiohttp.ClientResponseError(request_info=resp.request_info, history=resp.history, status=resp.status, message=text)
-                saved_templates = await resp.json()
-        
-        if not saved_templates or len(saved_templates) == 0:
-            raise LookupError("No template returned from database")
-        
-        saved_template = saved_templates[0]
+        result = db_config.client.table('smart_templates').insert(template_data).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise LookupError("No template returned from database after insert")
+
+        saved_template = result.data[0]
         logger.info(f"Successfully saved template with ID: {saved_template['id']}")
+
+        # Invalidate template cache so the matching service picks up the new template
+        await template_matching_service.clear_cache()
+
         return saved_template
-        
+
     except Exception as e:
         logger.error(f"Database save failed: {str(e)}")
         raise RuntimeError(f"Failed to save template to database: {str(e)}")
@@ -1358,7 +1398,7 @@ async def get_field_positions(
             })
 
         # Save file temporarily
-        temp_file_path = await save_uploaded_file(file)
+        temp_file_path = await validate_and_save_uploaded_file(file)
 
         # Find positions using docling service
         from app.services.docling_service import docling_service

@@ -5,7 +5,7 @@ Generic OAuth2 router for all integrations.
 One router handles all providers using the integration registry.
 """
 
-from fastapi import APIRouter, Query, Request, HTTPException
+from fastapi import APIRouter, Query, Request, HTTPException, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -26,6 +26,7 @@ from ..services.integrations.registry import (
 from ..services.integrations.oauth_manager import OAuthManager
 from ..services.vault_service import vault_service
 from ..config.database import db_config
+from ..middleware.admin_auth import admin_auth
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ async def initiate_oauth(
     redirect_uri: str = Query(..., description="OAuth callback URL"),
     scope_preset: Optional[str] = Query(None, description="Scope preset to request"),
     user_id: Optional[str] = Query(None, description="User initiating the connection"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Initiate OAuth flow for an integration.
@@ -185,6 +187,8 @@ async def initiate_oauth(
         config = get_integration(integration)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
 
     if not config.is_configured:
         raise HTTPException(
@@ -278,6 +282,7 @@ async def oauth_callback(
 async def initiate_oauth_with_account(
     integration: str,
     request: PerAccountOAuthInitiateRequest,
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Initiate OAuth flow for a per-account provider like Snowflake.
@@ -296,6 +301,8 @@ async def initiate_oauth_with_account(
         config = get_integration(integration)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    await admin_auth.verify_org_membership(current_user["user_id"], request.organization_id)
 
     if config.auth_mode not in ("oauth", "dual"):
         raise HTTPException(
@@ -373,6 +380,7 @@ async def initiate_oauth_with_account(
 async def connect_with_credentials(
     integration: str,
     request: CredentialConnectRequest,
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Connect an integration using direct credentials (non-OAuth).
@@ -384,6 +392,8 @@ async def connect_with_credentials(
         config = get_integration(integration)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    await admin_auth.verify_org_membership(current_user["user_id"], request.organization_id)
 
     if config.auth_mode not in ("credential", "dual"):
         raise HTTPException(
@@ -474,12 +484,15 @@ async def connect_with_credentials(
 async def get_integration_status(
     integration: str,
     organization_id: str = Query(..., description="Organization ID"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Get the status of an integration for an organization.
 
     Returns connection status, granted scopes, metadata, and any errors.
     """
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
+
     try:
         get_integration(integration)  # Validate integration exists
     except ValueError as e:
@@ -509,6 +522,7 @@ async def get_integration_status(
 @router.get("/status/all")
 async def get_all_integration_statuses(
     organization_id: str = Query(..., description="Organization ID"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Get status of all integrations for an organization.
@@ -516,6 +530,7 @@ async def get_all_integration_statuses(
     Returns a dict mapping integration type to status.
     Useful for displaying integration cards in settings UI.
     """
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
     # Get all connected integrations for org
     connected = await OAuthManager.list_organization_integrations(organization_id)
     connected_map = {i["integration_type"]: i for i in connected}
@@ -549,6 +564,7 @@ async def get_all_integration_statuses(
 async def refresh_token(
     integration: str,
     organization_id: str = Query(..., description="Organization ID"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Manually refresh an integration's access token.
@@ -556,6 +572,8 @@ async def refresh_token(
     Normally tokens are refreshed automatically, but this endpoint
     allows manual refresh for debugging or recovery.
     """
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
+
     try:
         config = get_integration(integration)
     except ValueError as e:
@@ -581,6 +599,7 @@ async def refresh_token(
 async def disconnect_integration(
     integration: str,
     organization_id: str = Query(..., description="Organization ID"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Disconnect an integration and revoke tokens.
@@ -590,6 +609,8 @@ async def disconnect_integration(
     2. Delete tokens from Vault
     3. Update integration status to 'revoked'
     """
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
+
     try:
         config = get_integration(integration)
     except ValueError as e:
@@ -611,12 +632,15 @@ async def disconnect_integration(
 async def test_connection(
     integration: str,
     organization_id: str = Query(..., description="Organization ID"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Test an integration connection by making a simple API call.
 
     Returns success status and user/account info if available.
     """
+    await admin_auth.verify_org_membership(current_user["user_id"], organization_id)
+
     try:
         config = get_integration(integration)
     except ValueError as e:
@@ -713,6 +737,7 @@ async def test_connection(
 @router.get("/expiring-tokens")
 async def get_expiring_tokens(
     minutes: int = Query(30, description="Minutes until expiry threshold"),
+    current_user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Get all tokens expiring within the specified time.

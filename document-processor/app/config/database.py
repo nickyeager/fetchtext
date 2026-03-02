@@ -22,7 +22,8 @@ class DatabaseConfig:
         self.supabase_url = os.getenv('SUPABASE_URL', '')
         # Prefer service_role key for backend operations (no statement_timeout,
         # bypasses RLS). Fall back to anon key for backwards compatibility.
-        self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
+        # Check both SUPABASE_SERVICE_ROLE_KEY and SERVICE_ROLE_KEY (production deploy name).
+        self.supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '') or os.getenv('SERVICE_ROLE_KEY', '')
         if not self.supabase_key:
             self.supabase_key = os.getenv('SUPABASE_ANON_KEY', '')
 

@@ -284,10 +284,32 @@ docker compose -f monitoring/docker-compose.optimized.yml up -d
 docker exec supabase-db pg_dump -U postgres > backup.sql
 ```
 
+## Current Production Architecture (Hybrid)
+
+FetchText production uses a hybrid deployment:
+
+| Component | Hosting | Details |
+|-----------|---------|---------|
+| Frontend | Azure Static Web Apps | `fetchtext.io` - deployed via `deploy-dashboard.yml` |
+| Document Processor | Azure Container App | FastAPI backend - deployed via `deploy-container-app.yml` |
+| Database / Auth | Managed Supabase | `rawhmcrtzfdhryyfovee.supabase.co` |
+| N8N, Qdrant, Ollama, Neo4j, etc. | Azure VM | Full docker-compose stack at `/srv/supabase` - deployed via `deploy-vm.yml` |
+
+### Qdrant in Production
+Qdrant runs on the Azure VM as part of the Docker Compose stack. However, the Document Processor (Azure Container App) currently **cannot reach Qdrant** because:
+- No `QDRANT_HOST`/`QDRANT_PORT` env vars are set in the Container App deployment
+- Qdrant is not exposed through Caddy (internal Docker network only)
+- The code gracefully degrades (vector search disabled) but Template-RAG is non-functional
+
+To enable Template-RAG in production, Qdrant needs to be reachable from the Container App. Options:
+1. Expose Qdrant via Caddy with a subdomain (e.g., `qdrant.fetchtext.io`) and API key auth
+2. Use Qdrant Cloud (managed, free tier available)
+3. Deploy Qdrant as a separate Azure Container App
+
 ## Cost Optimization Tips
 
 1. **Use Ollama CPU models** instead of GPU for development
-2. **Disable unused services** (Neo4j, Qdrant if not needed)
+2. **Disable unused services** (Neo4j if not needed for graph queries)
 3. **Use external PostgreSQL** shared instance
 4. **Implement aggressive caching**
 5. **Use CDN for static assets**

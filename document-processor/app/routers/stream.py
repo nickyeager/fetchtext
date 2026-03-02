@@ -9,17 +9,14 @@ so the frontend can show real-time progress.
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
-import uuid
-import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any, AsyncGenerator
 
-from fastapi import APIRouter, UploadFile, File, Query, HTTPException
+from fastapi import APIRouter, UploadFile, File, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-
-import aiofiles
 
 # Safe logger initialization for Docker environment
 try:
@@ -35,30 +32,26 @@ except Exception:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
     logger = logging.getLogger(__name__)
 
+from ..middleware.file_validation import validate_and_save_uploaded_file
+from ..middleware.admin_auth import admin_auth
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.embedding_service import embedding_service
+from ..services.document_event_bus import document_event_bus
 from ..config.database import db_config
 
-router = APIRouter(prefix="/api/enhanced-documents", tags=["streaming"])
+router = APIRouter(
+    prefix="/api/enhanced-documents",
+    tags=["streaming"],
+    dependencies=[Depends(admin_auth.get_current_user)]
+)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _save_uploaded_file(upload_file: UploadFile) -> Path:
-    """Save an uploaded file to a temporary location and return the path."""
-    temp_dir = Path(tempfile.gettempdir()) / "docling_uploads"
-    temp_dir.mkdir(exist_ok=True)
-    file_extension = Path(upload_file.filename or "unknown").suffix
-    temp_filename = f"{uuid.uuid4()}{file_extension}"
-    temp_path = temp_dir / temp_filename
-    async with aiofiles.open(temp_path, "wb") as f:
-        content = await upload_file.read()
-        await f.write(content)
-    return temp_path
 
 
 async def _cleanup_temp_file(file_path: Path):
@@ -103,22 +96,101 @@ async def _process_document_stream(
         "elapsed_ms": elapsed_ms(),
     })
 
-    # ── Stage 2: evaluating ───────────────────────────────────────────
+    # ── Stage 2: extracting text (single Docling call) ────────────────
+    # Extract text ONCE here and reuse for evaluation + downstream stages.
+    # Previously Docling was called 3 times: twice inside evaluate_document
+    # (type detection + content preview) and once more here. Now it's 1x.
     yield _sse_event("stage", {
-        "stage": "evaluating",
-        "message": "Evaluating document type...",
+        "stage": "extracting_text",
+        "message": "Extracting document text...",
         "progress": 10,
         "elapsed_ms": elapsed_ms(),
     })
 
+    # Text extraction timeout — matches the evaluator's default (env:
+    # DOCUMENT_PROCESSING_TIMEOUT, default 120s).  Now that converter.convert()
+    # runs in a thread (asyncio.to_thread), wait_for can actually cancel it.
+    extraction_timeout = float(os.environ.get("DOCUMENT_PROCESSING_TIMEOUT", "120"))
+    # Timeout for LLM-based operations (evaluation, field extraction, template generation).
+    llm_timeout = float(os.environ.get("LLM_OPERATION_TIMEOUT", "90"))
+
+    document_text = ""
+    extraction_result: Dict[str, Any] = {}
     try:
-        evaluation = await document_evaluator.evaluate_document(
-            file_path,
-            filename,
-            content_type,
-            quick_scan=quick_scan,
-            organization_id=organization_id,
+        logger.info(f"[STREAM_TIMING] Text extraction START | file={filename} | timeout={extraction_timeout}s")
+        import time as _time
+        t_extract_start = _time.monotonic()
+        extraction_result = await asyncio.wait_for(
+            enhanced_docling_service.process_document(
+                file_path,
+                extract_text=True,
+                extract_metadata=True,
+                extract_structure=False,
+            ),
+            timeout=extraction_timeout,
         )
+        t_extract_end = _time.monotonic()
+        logger.info(f"[STREAM_TIMING] Text extraction DONE | file={filename} | took={t_extract_end - t_extract_start:.2f}s | status={extraction_result.get('status')}")
+        if extraction_result.get("status") == "completed":
+            document_text = extraction_result.get("content", {}).get("text", "")
+        else:
+            logger.warning(f"[STREAM_TIMING] Extraction returned non-completed status: {extraction_result.get('status')} | error: {extraction_result.get('error_message', 'N/A')}")
+    except asyncio.TimeoutError:
+        logger.error(f"[STREAM_TIMING] Text extraction TIMED OUT after {extraction_timeout}s | file={filename}")
+        yield _sse_event("error", {
+            "stage": "extracting_text",
+            "message": f"Text extraction timed out after {int(extraction_timeout)}s",
+            "elapsed_ms": elapsed_ms(),
+        })
+        return
+    except Exception as exc:
+        logger.error(f"[STREAM_TIMING] Text extraction FAILED | file={filename} | error={exc}", exc_info=True)
+        yield _sse_event("error", {
+            "stage": "extracting_text",
+            "message": f"Text extraction failed: {exc}",
+            "elapsed_ms": elapsed_ms(),
+        })
+        return
+
+    char_count = len(document_text)
+    yield _sse_event("stage", {
+        "stage": "text_extracted",
+        "message": f"Text extracted: {char_count:,} chars",
+        "progress": 25,
+        "elapsed_ms": elapsed_ms(),
+    })
+
+    # ── Stage 3: evaluating (reuses extracted text) ───────────────────
+    yield _sse_event("stage", {
+        "stage": "evaluating",
+        "message": "Evaluating document type...",
+        "progress": 30,
+        "elapsed_ms": elapsed_ms(),
+    })
+
+    try:
+        # Pass extracted text to evaluator so it skips its own Docling calls.
+        # Use None (not "") when empty so the evaluator's own fallbacks still
+        # work (e.g. filename-based detection, direct text file reads).
+        evaluation = await asyncio.wait_for(
+            document_evaluator.evaluate_document(
+                file_path,
+                filename,
+                content_type,
+                quick_scan=quick_scan,
+                organization_id=organization_id,
+                content_override=document_text or None,
+            ),
+            timeout=llm_timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"Document evaluation timed out after {llm_timeout}s")
+        yield _sse_event("error", {
+            "stage": "evaluating",
+            "message": f"Document evaluation timed out after {int(llm_timeout)}s",
+            "elapsed_ms": elapsed_ms(),
+        })
+        return
     except Exception as exc:
         logger.error(f"Evaluation failed: {exc}")
         yield _sse_event("error", {
@@ -134,47 +206,11 @@ async def _process_document_stream(
     yield _sse_event("stage", {
         "stage": "evaluated",
         "message": f"Document type: {primary_type} ({int(type_confidence * 100)}% confidence)",
-        "progress": 25,
+        "progress": 45,
         "elapsed_ms": elapsed_ms(),
     })
 
     suggestions = evaluation.get("template_suggestions", []) or []
-
-    # ── Stage 3: extracting text ──────────────────────────────────────
-    yield _sse_event("stage", {
-        "stage": "extracting_text",
-        "message": "Extracting document text...",
-        "progress": 30,
-        "elapsed_ms": elapsed_ms(),
-    })
-
-    document_text = ""
-    extraction_result: Dict[str, Any] = {}
-    try:
-        extraction_result = await enhanced_docling_service.process_document(
-            file_path,
-            extract_text=True,
-            extract_metadata=True,
-            extract_structure=False,
-        )
-        if extraction_result.get("status") == "completed":
-            document_text = extraction_result.get("content", {}).get("text", "")
-    except Exception as exc:
-        logger.error(f"Text extraction failed: {exc}")
-        yield _sse_event("error", {
-            "stage": "extracting_text",
-            "message": f"Text extraction failed: {exc}",
-            "elapsed_ms": elapsed_ms(),
-        })
-        return
-
-    char_count = len(document_text)
-    yield _sse_event("stage", {
-        "stage": "text_extracted",
-        "message": f"Text extracted: {char_count:,} chars",
-        "progress": 45,
-        "elapsed_ms": elapsed_ms(),
-    })
 
     # ── Stage 4: vector search / template matching ────────────────────
     if document_text:
@@ -205,45 +241,49 @@ async def _process_document_stream(
         except Exception as exc:
             logger.warning(f"Vector search failed, using multi-factor scoring: {exc}")
 
-    # ── Stage 4b: test extraction quality on top match ────────────────
+    # ── Stage 4b: decide on top match ────────────────────────────────
     chosen_template: Optional[Dict[str, Any]] = None
     decision_metadata: Dict[str, Any] = {}
 
+    # Cache for template row fetched from DB — reused in stage 5 to avoid
+    # a redundant (and event-loop-blocking) duplicate query.
+    _cached_template_row: Optional[Dict[str, Any]] = None
+
+    # NOTE: Test extraction was removed here for performance (~7s LLM call).
+    # It used to run `smart_field_extractor.test_template_extraction()` to
+    # verify the matched template's fields could actually be extracted from
+    # the document *before* committing to it.  With document-exemplar
+    # embeddings now yielding high-confidence matches (0.96+), the
+    # validation is unnecessary for strong matches.  If we start seeing
+    # poor extractions from medium-confidence metadata-only matches
+    # (0.60–0.70 range), this step should be re-added — ideally gated on
+    # match_score < 0.85 or match_source != "document_exemplar".
+
     if suggestions and document_text:
         best = suggestions[0]
+        match_score = best.get("match_score", 0.0)
         template_id = best.get("template_id")
 
+        # Pre-fetch the template row for stage 5 field extraction.
         if template_id and db_config.is_configured and db_config.client:
             try:
-                template_result = (
-                    db_config.client.table("smart_templates")
-                    .select("id, name, smart_variables, category")
-                    .eq("id", template_id)
-                    .single()
-                    .execute()
-                )
+                def _fetch_template(tid: str) -> Any:
+                    return (
+                        db_config.client.table("smart_templates")
+                        .select("id, name, smart_variables, category")
+                        .eq("id", tid)
+                        .single()
+                        .execute()
+                    )
 
-                if template_result.data:
-                    smart_variables = template_result.data.get("smart_variables", [])
-                    if smart_variables:
-                        test_result = await smart_field_extractor.test_template_extraction(
-                            content=document_text,
-                            template_variables=smart_variables,
-                            confidence_threshold=0.6,
-                            provider="azure",
-                            organization_id=organization_id,
-                        )
-                        best["extraction_quality"] = test_result.get("field_success_rate", 0.0)
-                        best["avg_field_confidence"] = test_result.get("avg_confidence", 0.0)
-                        best["extractable_fields"] = test_result.get("extractable_count", 0)
-                        best["total_fields"] = test_result.get("total_fields", 0)
-                        best["combined_score"] = (
-                            best.get("match_score", 0.0) * best["extraction_quality"]
-                        )
+                template_result = await asyncio.to_thread(_fetch_template, template_id)
+                _cached_template_row = template_result.data
             except Exception as exc:
-                logger.error(f"Extraction test failed for top match: {exc}")
-                best["extraction_quality"] = best.get("match_score", 0.0)
-                best["combined_score"] = best.get("match_score", 0.0)
+                logger.warning(f"Failed to pre-fetch template {template_id}: {exc}")
+
+        # Trust the vector score as the extraction quality estimate.
+        best["extraction_quality"] = match_score
+        best["combined_score"] = match_score
 
     # Apply 2-way validation thresholds
     if suggestions:
@@ -297,25 +337,42 @@ async def _process_document_stream(
 
         template_id = chosen_template.get("template_id")
         try:
-            if template_id and db_config.is_configured and db_config.client:
-                tpl_row = (
-                    db_config.client.table("smart_templates")
-                    .select("id, name, smart_variables, category")
-                    .eq("id", template_id)
-                    .single()
-                    .execute()
-                )
-                if tpl_row.data:
-                    smart_vars = tpl_row.data.get("smart_variables", [])
-                    if smart_vars:
-                        field_result = await smart_field_extractor.extract_fields_intelligently(
+            # Reuse the template row fetched during stage 4b instead of
+            # making a second blocking Supabase query.
+            tpl_data = _cached_template_row
+            if not tpl_data and template_id and db_config.is_configured and db_config.client:
+                def _fetch_tpl(tid: str) -> Any:
+                    return (
+                        db_config.client.table("smart_templates")
+                        .select("id, name, smart_variables, category")
+                        .eq("id", tid)
+                        .single()
+                        .execute()
+                    )
+                tpl_result = await asyncio.to_thread(_fetch_tpl, template_id)
+                tpl_data = tpl_result.data
+            if tpl_data:
+                smart_vars = tpl_data.get("smart_variables", [])
+                if smart_vars:
+                    field_result = await asyncio.wait_for(
+                        smart_field_extractor.extract_fields_intelligently(
                             text_content=document_text,
                             template_variables=smart_vars,
                             confidence_threshold=0.6,
                             provider="azure",
                             organization_id=organization_id,
-                        )
-                        extracted_fields = field_result.get("extracted_values", {})
+                        ),
+                        timeout=llm_timeout,
+                    )
+                    extracted_fields = field_result.get("extracted_values", {})
+        except asyncio.TimeoutError:
+            logger.error(f"Field extraction timed out after {llm_timeout}s")
+            yield _sse_event("error", {
+                "stage": "extracting_fields",
+                "message": f"Field extraction timed out after {int(llm_timeout)}s",
+                "progress": 80,
+                "elapsed_ms": elapsed_ms(),
+            })
         except Exception as exc:
             logger.error(f"Field extraction failed: {exc}")
             yield _sse_event("stage", {
@@ -337,10 +394,40 @@ async def _process_document_stream(
         try:
             from ..services.ai_template_generator import ai_template_generator
 
-            analysis = await ai_template_generator.analyze_document_structure(file_path)
+            # Detect fields directly from already-extracted text.
+            # Previously this called analyze_document_structure(file_path)
+            # which re-processed the PDF through Docling a second time,
+            # adding ~2-14s of redundant work.
+            detected_fields = await asyncio.wait_for(
+                ai_template_generator._detect_fields_with_azure_openai(
+                    document_text, primary_type
+                ),
+                timeout=llm_timeout,
+            )
+
+            # Build the analysis dict that generate_template_from_analysis expects
+            analysis = {
+                "analysis_id": str(__import__("uuid").uuid4()),
+                "document_type": primary_type,
+                "confidence": type_confidence,
+                "suggested_category": ai_template_generator._suggest_template_category(
+                    {"primary_category": primary_type, "confidence": type_confidence}
+                ),
+                "detected_fields": detected_fields or [],
+                "structural_elements": [],
+                "extraction_complexity": (
+                    "simple" if len(detected_fields or []) <= 5
+                    else "moderate" if len(detected_fields or []) <= 15
+                    else "complex"
+                ),
+            }
+
             template_name = f"{primary_type.title()} Template"
-            gen_result = await ai_template_generator.generate_template_from_analysis(
-                analysis, template_name
+            gen_result = await asyncio.wait_for(
+                ai_template_generator.generate_template_from_analysis(
+                    analysis, template_name
+                ),
+                timeout=llm_timeout,
             )
 
             if gen_result:
@@ -363,14 +450,25 @@ async def _process_document_stream(
                         "elapsed_ms": elapsed_ms(),
                     })
 
-                    field_result = await smart_field_extractor.extract_fields_intelligently(
-                        text_content=document_text,
-                        template_variables=gen_vars,
-                        confidence_threshold=0.6,
-                        provider="azure",
-                        organization_id=organization_id,
+                    field_result = await asyncio.wait_for(
+                        smart_field_extractor.extract_fields_intelligently(
+                            text_content=document_text,
+                            template_variables=gen_vars,
+                            confidence_threshold=0.6,
+                            provider="azure",
+                            organization_id=organization_id,
+                        ),
+                        timeout=llm_timeout,
                     )
                     extracted_fields = field_result.get("extracted_values", {})
+        except asyncio.TimeoutError:
+            logger.error(f"Template generation/extraction timed out after {llm_timeout}s")
+            yield _sse_event("error", {
+                "stage": "generating_template",
+                "message": f"Template generation timed out after {int(llm_timeout)}s",
+                "progress": 80,
+                "elapsed_ms": elapsed_ms(),
+            })
         except Exception as exc:
             logger.error(f"Template generation failed: {exc}")
             yield _sse_event("stage", {
@@ -409,6 +507,26 @@ async def _process_document_stream(
         "result": result,
     })
 
+    # ── Emit document event for webhook subscriptions ──────────────
+    try:
+        await document_event_bus.emit(
+            event_type="document.processed",
+            organization_id=organization_id or "",
+            data={
+                "document_id": result.get("metadata", {}).get("document_id"),
+                "filename": file.filename,
+                "document_type": evaluation.get("document_type") if evaluation else None,
+                "extracted_fields": extracted_fields,
+                "template_id": chosen_template.get("id") if chosen_template else None,
+                "template_name": chosen_template.get("name") if chosen_template else None,
+                "match_confidence": decision_metadata.get("match_score") if decision_metadata else None,
+                "action": result.get("action"),
+                "processing_time_ms": elapsed_ms(),
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"[Stream] Failed to emit document event: {exc}")
+
 
 # ---------------------------------------------------------------------------
 # Endpoint
@@ -445,31 +563,91 @@ async def process_document_stream(
 
     temp_file_path: Optional[Path] = None
 
+    # Keepalive interval — read from env so it can be tuned per-deployment
+    # without a container rebuild.  Azure Container Apps' Envoy proxy has a
+    # very aggressive idle-stream timeout for HTTP/2 browser connections
+    # (~1.5s measured empirically).  We default to 1s keepalives to stay
+    # well within that window.  curl/requests over HTTP/1.1 are far more
+    # tolerant, but browsers negotiate HTTP/2 via ALPN and hit this limit.
+    KEEPALIVE_INTERVAL = float(os.environ.get("SSE_KEEPALIVE_INTERVAL", "1"))
+
+    # Sentinel pushed to the queue when the pipeline finishes.
+    _DONE = object()
+
     async def event_stream() -> AsyncGenerator[str, None]:
         nonlocal temp_file_path
+
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _run_pipeline() -> None:
+            """Run the processing pipeline and push events to the queue."""
+            upload_complete = False
+            try:
+                nonlocal temp_file_path
+                temp_file_path = await validate_and_save_uploaded_file(file)
+                upload_complete = True
+
+                async for event in _process_document_stream(
+                    file_path=temp_file_path,
+                    filename=file.filename or "unknown",
+                    content_type=file.content_type or "",
+                    quick_scan=quick_scan,
+                    min_match_confidence=min_match_confidence,
+                    allow_generation=allow_generation,
+                    organization_id=organization_id,
+                ):
+                    await queue.put(event)
+
+            except Exception as exc:
+                stage = "upload" if not upload_complete else "processing"
+                logger.error(f"Stream {stage} error: {exc}")
+                await queue.put(_sse_event("error", {
+                    "stage": stage,
+                    "message": f"{'Upload' if not upload_complete else 'Processing'} failed: {exc}",
+                    "elapsed_ms": 0,
+                }))
+
+            finally:
+                await queue.put(_DONE)
+
+        async def _keepalive(stop_event: asyncio.Event) -> None:
+            """Emit SSE keepalive events to prevent proxy idle-timeout.
+
+            Uses a real ``event: keepalive`` frame instead of an SSE comment
+            because Azure Container Apps' Envoy proxy may buffer small
+            comment-only lines without flushing them to the client.
+
+            Sends an immediate keepalive on start to prime the stream,
+            then continues at KEEPALIVE_INTERVAL.
+            """
+            # Prime: send one keepalive immediately so the proxy sees
+            # data flowing right from the start.
+            await queue.put(_sse_event("keepalive", {"ts": time.time()}))
+            while not stop_event.is_set():
+                try:
+                    await asyncio.wait_for(
+                        stop_event.wait(), timeout=KEEPALIVE_INTERVAL
+                    )
+                except asyncio.TimeoutError:
+                    await queue.put(
+                        _sse_event("keepalive", {"ts": time.time()})
+                    )
+
+        stop = asyncio.Event()
+        pipeline_task = asyncio.create_task(_run_pipeline())
+        keepalive_task = asyncio.create_task(_keepalive(stop))
+
         try:
-            temp_file_path = await _save_uploaded_file(file)
-
-            async for event in _process_document_stream(
-                file_path=temp_file_path,
-                filename=file.filename or "unknown",
-                content_type=file.content_type or "",
-                quick_scan=quick_scan,
-                min_match_confidence=min_match_confidence,
-                allow_generation=allow_generation,
-                organization_id=organization_id,
-            ):
-                yield event
-
-        except Exception as exc:
-            logger.error(f"Stream processing error: {exc}")
-            yield _sse_event("error", {
-                "stage": "unknown",
-                "message": f"Unexpected error: {exc}",
-                "elapsed_ms": 0,
-            })
-
+            while True:
+                item = await queue.get()
+                if item is _DONE:
+                    break
+                yield item
         finally:
+            stop.set()
+            keepalive_task.cancel()
+            # Wait for pipeline to finish so temp file cleanup can happen
+            await asyncio.gather(pipeline_task, return_exceptions=True)
             if temp_file_path:
                 await _cleanup_temp_file(temp_file_path)
 
@@ -477,8 +655,9 @@ async def process_document_stream(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
         },
     )

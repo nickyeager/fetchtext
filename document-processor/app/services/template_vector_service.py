@@ -48,19 +48,33 @@ class TemplateVectorService:
 
         host = os.getenv("QDRANT_HOST", "qdrant")
         port = int(os.getenv("QDRANT_PORT", "6333"))
+        api_key = os.getenv("QDRANT_API_KEY")
 
         if not QDRANT_AVAILABLE:
             logger.warning("qdrant-client not installed — template vector search disabled")
             return
 
-        try:
-            self.client = QdrantClient(host=host, port=port, timeout=10)
-            # Quick connectivity check
-            self.client.get_collections()
-            self.available = True
-            logger.info(f"TemplateVectorService connected to Qdrant at {host}:{port}")
-        except Exception as e:
-            logger.warning(f"Qdrant not reachable at {host}:{port} — template vector search disabled: {e}")
+        import time
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                if host.startswith("http") or "." in host:
+                    url = host if host.startswith("http") else f"https://{host}"
+                    self.client = QdrantClient(url=url, api_key=api_key, prefer_grpc=False, timeout=30)
+                    conn_label = url
+                else:
+                    self.client = QdrantClient(host=host, port=port, api_key=api_key, https=False, timeout=10)
+                    conn_label = f"{host}:{port}"
+                self.client.get_collections()
+                self.available = True
+                logger.info(f"TemplateVectorService connected to Qdrant at {conn_label}")
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.info(f"Qdrant not ready at {host} (attempt {attempt}/{max_retries}), retrying in 3s...")
+                    time.sleep(3)
+                else:
+                    logger.warning(f"Qdrant not reachable at {host} after {max_retries} attempts — template vector search disabled: {e}")
 
     # ------------------------------------------------------------------
     # Collection management
@@ -82,6 +96,7 @@ class TemplateVectorService:
                     vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
                 )
                 # Payload indexes for filtered search
+                index_failures = []
                 for field, schema in [
                     ("template_id", qdrant_models.PayloadSchemaType.INTEGER),
                     ("category", qdrant_models.PayloadSchemaType.KEYWORD),
@@ -93,8 +108,14 @@ class TemplateVectorService:
                             field_name=field,
                             field_schema=schema,
                         )
-                    except Exception:
-                        pass  # index may already exist
+                    except Exception as idx_err:
+                        # "already exists" errors are expected and safe to ignore
+                        if "already exists" in str(idx_err).lower():
+                            pass
+                        else:
+                            index_failures.append(f"{field}: {idx_err}")
+                if index_failures:
+                    logger.warning(f"Some Qdrant indexes failed (non-fatal): {index_failures}")
                 logger.info(f"Created Qdrant collection '{self.collection_name}'")
             else:
                 logger.info(f"Qdrant collection '{self.collection_name}' already exists")
@@ -150,11 +171,26 @@ class TemplateVectorService:
     # Index / remove
     # ------------------------------------------------------------------
 
-    async def index_template(self, template: Dict[str, Any]) -> bool:
+    # Offset added to template_id to create a separate point ID for
+    # document exemplar embeddings, avoiding collisions with the
+    # template metadata point (which uses the raw template_id).
+    EXEMPLAR_ID_OFFSET = 1_000_000
+
+    async def index_template(
+        self,
+        template: Dict[str, Any],
+        document_text: Optional[str] = None,
+    ) -> bool:
         """Generate an embedding for *template* and upsert it into Qdrant.
 
         Uses ``int(template_id)`` as the Qdrant point ID so that subsequent
         calls for the same template overwrite the previous embedding.
+
+        If *document_text* is provided, a **document exemplar** embedding is
+        also stored (point ID = template_id + EXEMPLAR_ID_OFFSET).  This
+        allows future uploads to be compared document-to-document rather
+        than document-to-template-metadata, yielding much higher cosine
+        similarity scores for genuine matches.
         """
         if not self.available:
             return False
@@ -171,6 +207,9 @@ class TemplateVectorService:
         try:
             await self.ensure_collection_exists()
 
+            t0 = time.time()
+
+            # ── 1. Template metadata embedding (existing behaviour) ───
             text = self.build_template_text(template)
             if not text:
                 logger.warning(f"Empty text representation for template {template_id}")
@@ -181,25 +220,48 @@ class TemplateVectorService:
                 logger.warning(f"Failed to generate embedding for template {template_id}")
                 return False
 
-            point = PointStruct(
+            base_payload = {
+                "template_id": int(template_id),
+                "name": template.get("name", ""),
+                "category": (template.get("category", "") or "").lower(),
+                "description": template.get("description", ""),
+                "field_count": len(template.get("smart_variables", [])),
+                "is_public": template.get("is_public", False),
+            }
+
+            metadata_point = PointStruct(
                 id=int(template_id),
                 vector=embedding,
-                payload={
-                    "template_id": int(template_id),
-                    "name": template.get("name", ""),
-                    "category": (template.get("category", "") or "").lower(),
-                    "description": template.get("description", ""),
-                    "field_count": len(template.get("smart_variables", [])),
-                    "is_public": template.get("is_public", False),
-                },
+                payload={**base_payload, "point_type": "template_metadata"},
             )
+
+            points_to_upsert = [metadata_point]
+
+            # ── 2. Document exemplar embedding (new) ──────────────────
+            if document_text:
+                doc_embedding = await self.embedding_service.generate_single_embedding(
+                    document_text[:2000]
+                )
+                if doc_embedding:
+                    exemplar_point = PointStruct(
+                        id=int(template_id) + self.EXEMPLAR_ID_OFFSET,
+                        vector=doc_embedding,
+                        payload={**base_payload, "point_type": "document_exemplar"},
+                    )
+                    points_to_upsert.append(exemplar_point)
 
             self.client.upsert(
                 collection_name=self.collection_name,
-                points=[point],
+                points=points_to_upsert,
                 wait=True,
             )
-            logger.info(f"Indexed template {template_id} ('{template.get('name')}') in Qdrant")
+
+            elapsed_ms = (time.time() - t0) * 1000
+            exemplar_note = " + exemplar" if len(points_to_upsert) > 1 else ""
+            logger.info(
+                f"Indexed template {template_id} ('{template.get('name')}'){exemplar_note}"
+                f" in Qdrant ({elapsed_ms:.0f}ms)"
+            )
             return True
 
         except Exception as e:
@@ -236,6 +298,9 @@ class TemplateVectorService:
         Returns results in the same dict format as
         ``TemplateMatchingService.find_matching_templates()`` so they can be
         used as a drop-in replacement.
+
+        Uses ``query_points()`` (qdrant-client >=1.12) instead of the
+        deprecated ``search()`` method which was removed in v1.16.
         """
         if not self.available or not self.client:
             return []
@@ -245,7 +310,20 @@ class TemplateVectorService:
 
             start = time.time()
 
-            query_filter = None
+            # Always run an unfiltered search to catch templates whose
+            # stored category may not match the evaluator's primary_type
+            # (e.g., AI generator stored "other" but doc type is "contract").
+            unfiltered_response = self.client.query_points(
+                collection_name=self.collection_name,
+                query=document_embedding,
+                limit=limit,
+                with_payload=True,
+            )
+            unfiltered_results = unfiltered_response.points if unfiltered_response else []
+
+            # If a category filter is given, also run a filtered search
+            # so exact-category matches get a slight boost.
+            filtered_results = []
             if category_filter:
                 query_filter = Filter(
                     must=[
@@ -255,45 +333,59 @@ class TemplateVectorService:
                         )
                     ]
                 )
-
-            results = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=document_embedding,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
+                filtered_response = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=document_embedding,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
+                )
+                filtered_results = filtered_response.points if filtered_response else []
 
             elapsed_ms = (time.time() - start) * 1000
 
-            if not results:
-                # Retry without category filter for broader matching
-                if category_filter:
-                    results = self.client.search(
-                        collection_name=self.collection_name,
-                        query_vector=document_embedding,
-                        limit=limit,
-                        with_payload=True,
-                    )
-                    elapsed_ms = (time.time() - start) * 1000
-
-            suggestions: List[Dict[str, Any]] = []
-            for hit in results:
+            # Merge results: deduplicate by template_id, keeping the
+            # highest score for each template.  Category-filtered hits
+            # are checked first so their scores take precedence when equal.
+            seen_ids: dict[int, dict] = {}
+            for hit in list(filtered_results) + list(unfiltered_results):
                 payload = hit.payload or {}
-                suggestions.append({
-                    "template_id": payload.get("template_id"),
-                    "template_name": payload.get("name", ""),
-                    "match_score": round(float(hit.score), 3),
-                    "category": payload.get("category", ""),
-                    "field_count": payload.get("field_count", 0),
-                    "description": payload.get("description", ""),
-                    "usage_count": 0,  # not stored in Qdrant
-                    "match_source": "vector_search",
-                })
+                tid = payload.get("template_id")
+                if tid is None:
+                    continue
+                score = round(float(hit.score), 3)
+                point_type = payload.get("point_type", "template_metadata")
+                if tid not in seen_ids or score > seen_ids[tid]["match_score"]:
+                    seen_ids[tid] = {
+                        "template_id": tid,
+                        "template_name": payload.get("name", ""),
+                        "match_score": score,
+                        "category": payload.get("category", ""),
+                        "field_count": payload.get("field_count", 0),
+                        "description": payload.get("description", ""),
+                        "usage_count": 0,  # not stored in Qdrant
+                        "match_source": f"vector_search:{point_type}",
+                    }
+
+            suggestions = sorted(
+                seen_ids.values(), key=lambda s: s["match_score"], reverse=True
+            )[:limit]
+
+            top_info = ""
+            if suggestions:
+                top = suggestions[0]
+                top_info = (
+                    f" top_score={top['match_score']}"
+                    f" via={top['match_source']}"
+                    f" name=\"{top['template_name']}\""
+                )
 
             logger.info(
                 f"Template vector search returned {len(suggestions)} matches in {elapsed_ms:.0f}ms"
                 + (f" (category={category_filter})" if category_filter else "")
+                + (f" (filtered={len(filtered_results)}, unfiltered={len(unfiltered_results)})"
+                   if category_filter else "")
+                + top_info
             )
             return suggestions
 

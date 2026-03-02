@@ -67,11 +67,11 @@ export function ProcessingLog({
     <Card className={cn('overflow-hidden', className)}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base" data-testid="processing-log-header">
             <FileText className="h-5 w-5" />
             {headerText}
           </CardTitle>
-          <span className="text-sm font-medium text-muted-foreground">{progress}%</span>
+          <span className="text-sm font-medium text-muted-foreground" data-testid="processing-progress">{progress}%</span>
         </div>
         <Progress value={progress} className="mt-2" />
       </CardHeader>
@@ -82,6 +82,9 @@ export function ProcessingLog({
             {logs.map((entry, idx) => (
               <div
                 key={`${entry.stage}-${idx}`}
+                data-testid="processing-stage-entry"
+                data-stage={entry.stage}
+                data-stage-status={entry.status}
                 className={cn(
                   'flex items-start gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
                   entry.status === 'active' && 'bg-blue-50 dark:bg-blue-950/40',
@@ -89,7 +92,7 @@ export function ProcessingLog({
                 )}
               >
                 <StageIcon entryStatus={entry.status} />
-                <span className="flex-1 leading-tight">{entry.message}</span>
+                <span className="flex-1 leading-tight" data-testid="processing-stage-message">{entry.message}</span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                   {formatElapsed(entry.elapsed_ms)}
                 </span>
@@ -108,7 +111,7 @@ export function ProcessingLog({
 
         {/* Error banner */}
         {error && status === 'error' && (
-          <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          <div className="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300" data-testid="processing-error-banner">
             {error}
           </div>
         )}

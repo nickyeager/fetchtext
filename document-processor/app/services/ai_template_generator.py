@@ -249,24 +249,52 @@ class FieldDetectionAI:
         return {
             'document_title': {
                 'type': 'text',
-                'keywords': ['title'],
-                'hints': ['title', 'heading'],
+                'keywords': ['title', 'heading', 'name', 'subject'],
+                'hints': ['title', 'heading', 'name'],
                 'importance': 'high',
                 'description': 'Document title'
             },
+            'author': {
+                'type': 'text',
+                'keywords': ['author', 'by', 'written', 'prepared', 'created', 'from'],
+                'hints': ['author', 'prepared by', 'written by'],
+                'importance': 'high',
+                'description': 'Document author or creator'
+            },
+            'organization': {
+                'type': 'text',
+                'keywords': ['company', 'organization', 'org', 'team', 'department', 'inc', 'llc', 'corp'],
+                'hints': ['company', 'organization'],
+                'importance': 'medium',
+                'description': 'Organization or company'
+            },
             'document_date': {
                 'type': 'date',
-                'keywords': ['date'],
-                'hints': ['date'],
+                'keywords': ['date', 'published', 'updated', 'created'],
+                'hints': ['date', 'published'],
                 'importance': 'medium',
                 'description': 'Document date'
             },
+            'summary': {
+                'type': 'text',
+                'keywords': ['summary', 'abstract', 'overview', 'introduction', 'about'],
+                'hints': ['summary', 'overview', 'introduction'],
+                'importance': 'high',
+                'description': 'Document summary or overview'
+            },
+            'main_topic': {
+                'type': 'text',
+                'keywords': ['topic', 'subject', 'about', 'regarding', 'purpose'],
+                'hints': ['topic', 'subject', 'purpose'],
+                'importance': 'high',
+                'description': 'Main topic or subject'
+            },
             'reference_number': {
                 'type': 'text',
-                'keywords': ['reference', 'ref', 'number'],
-                'hints': ['reference', 'ref #', 'number'],
+                'keywords': ['reference', 'ref', 'number', 'id', 'version'],
+                'hints': ['reference', 'ref #', 'number', 'version'],
                 'importance': 'low',
-                'description': 'Reference number'
+                'description': 'Reference number or version'
             }
         }
 
@@ -290,27 +318,35 @@ class AITemplateGenerator:
         self.logger.info(f"📄 Content length: {len(content)} chars, Document type: {document_type}")
 
         # Prepare prompt for Azure OpenAI
-        system_prompt = """You are a document field extraction expert. Analyze documents and identify ALL extractable fields with values.
+        system_prompt = """You are a document field extraction expert. Analyze ANY type of document and identify ALL meaningful extractable fields with their actual values from the text.
+
+You must ALWAYS return fields, regardless of document type. For business documents extract structured data. For articles, guides, presentations, or other content extract metadata and key information.
 
 Return ONLY valid JSON in this exact format:
 {
   "fields": [
-    {"name": "field_name", "type": "text|currency|date|email|phone|number", "description": "what it is", "sample_value": "actual value from doc", "extraction_hints": ["keyword1", "keyword2"]}
+    {"name": "field_name", "type": "text|currency|date|email|phone|number|list", "description": "what it is", "sample_value": "actual value from doc", "extraction_hints": ["keyword1", "keyword2"]}
   ]
 }"""
 
+        # Send more content for better analysis
+        content_window = content[:5000]
+
         user_prompt = f"""Document type: {document_type}
 
-Find ALL fields with these patterns:
-1. Label: Value (e.g., "Name: John", "Total: $500")
-2. Form fields with colons or dashes
-3. Dates, prices, amounts, names, emails, phones
-4. Any structured data
+Analyze this document and extract ALL meaningful fields. Look for:
+1. Label: Value pairs (e.g., "Name: John", "Total: $500")
+2. Document metadata: title, author, organization, date, version
+3. Key topics, sections, headings, and their content
+4. Structured data: dates, prices, amounts, names, emails, phones
+5. Summary or abstract content
+6. Key concepts, terms, or definitions mentioned
+7. Any notable entities: people, companies, products, technologies
 
-Extract AT LEAST 10-15 fields if they exist in the document.
+You MUST extract at least 5 fields from ANY document. Even for articles or guides, extract: document_title, author/organization, main_topic, key_points, summary, etc.
 
 Document:
-{content[:3000]}
+{content_window}
 
 Return JSON only:"""
 
@@ -323,7 +359,8 @@ Return JSON only:"""
                 prompt=full_prompt,
                 provider="azure_openai",
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=2000,
+                response_format={"type": "json_object"},
             )
 
             self.logger.info(f"Azure OpenAI response received: {len(response) if response else 0} chars")

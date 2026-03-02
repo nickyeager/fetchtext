@@ -401,7 +401,7 @@ export function SnowflakeSettings() {
   ENABLED = TRUE
   OAUTH_CLIENT = CUSTOM
   OAUTH_CLIENT_TYPE = 'CONFIDENTIAL'
-  OAUTH_REDIRECT_URI = '${window.location.origin.replace('5173', '8090')}/api/integrations/snowflake/oauth/callback'
+  OAUTH_REDIRECT_URI = '${import.meta.env.VITE_DOCUMENT_PROCESSOR_URL || 'http://localhost:8090'}/api/integrations/snowflake/oauth/callback'
   OAUTH_ISSUE_REFRESH_TOKENS = TRUE
   OAUTH_REFRESH_TOKEN_VALIDITY = 86400;`}
                     </pre>

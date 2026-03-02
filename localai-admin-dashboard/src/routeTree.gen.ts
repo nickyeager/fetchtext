@@ -46,8 +46,10 @@ import { Route as ClerkAuthenticatedUserManagementImport } from './routes/clerk/
 import { Route as ClerkauthSignUpImport } from './routes/clerk/(auth)/sign-up'
 import { Route as ClerkauthSignInImport } from './routes/clerk/(auth)/sign-in'
 import { Route as AuthenticatedTemplatesTemplateIdImport } from './routes/_authenticated/templates/$templateId'
+import { Route as AuthenticatedSettingsWebhooksImport } from './routes/_authenticated/settings/webhooks'
 import { Route as AuthenticatedSettingsNotificationsImport } from './routes/_authenticated/settings/notifications'
 import { Route as AuthenticatedSettingsIntegrationsImport } from './routes/_authenticated/settings/integrations'
+import { Route as AuthenticatedSettingsDeveloperImport } from './routes/_authenticated/settings/developer'
 import { Route as AuthenticatedSettingsBillingImport } from './routes/_authenticated/settings/billing'
 import { Route as AuthenticatedSettingsAppearanceImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedSettingsAiModelsImport } from './routes/_authenticated/settings/ai-models'
@@ -285,6 +287,13 @@ const AuthenticatedTemplatesTemplateIdRoute =
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
+const AuthenticatedSettingsWebhooksRoute =
+  AuthenticatedSettingsWebhooksImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+
 const AuthenticatedSettingsNotificationsRoute =
   AuthenticatedSettingsNotificationsImport.update({
     id: '/notifications',
@@ -296,6 +305,13 @@ const AuthenticatedSettingsIntegrationsRoute =
   AuthenticatedSettingsIntegrationsImport.update({
     id: '/integrations',
     path: '/integrations',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
+
+const AuthenticatedSettingsDeveloperRoute =
+  AuthenticatedSettingsDeveloperImport.update({
+    id: '/developer',
+    path: '/developer',
     getParentRoute: () => AuthenticatedSettingsRouteRoute,
   } as any)
 
@@ -653,6 +669,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsBillingImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
+    '/_authenticated/settings/developer': {
+      id: '/_authenticated/settings/developer'
+      path: '/developer'
+      fullPath: '/settings/developer'
+      preLoaderRoute: typeof AuthenticatedSettingsDeveloperImport
+      parentRoute: typeof AuthenticatedSettingsRouteImport
+    }
     '/_authenticated/settings/integrations': {
       id: '/_authenticated/settings/integrations'
       path: '/integrations'
@@ -665,6 +688,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/settings/notifications'
       preLoaderRoute: typeof AuthenticatedSettingsNotificationsImport
+      parentRoute: typeof AuthenticatedSettingsRouteImport
+    }
+    '/_authenticated/settings/webhooks': {
+      id: '/_authenticated/settings/webhooks'
+      path: '/webhooks'
+      fullPath: '/settings/webhooks'
+      preLoaderRoute: typeof AuthenticatedSettingsWebhooksImport
       parentRoute: typeof AuthenticatedSettingsRouteImport
     }
     '/_authenticated/templates/$templateId': {
@@ -824,8 +854,10 @@ interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAiModelsRoute: typeof AuthenticatedSettingsAiModelsRoute
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsDeveloperRoute: typeof AuthenticatedSettingsDeveloperRoute
   AuthenticatedSettingsIntegrationsRoute: typeof AuthenticatedSettingsIntegrationsRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
+  AuthenticatedSettingsWebhooksRoute: typeof AuthenticatedSettingsWebhooksRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
@@ -835,10 +867,12 @@ const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteCh
     AuthenticatedSettingsAiModelsRoute: AuthenticatedSettingsAiModelsRoute,
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
     AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+    AuthenticatedSettingsDeveloperRoute: AuthenticatedSettingsDeveloperRoute,
     AuthenticatedSettingsIntegrationsRoute:
       AuthenticatedSettingsIntegrationsRoute,
     AuthenticatedSettingsNotificationsRoute:
       AuthenticatedSettingsNotificationsRoute,
+    AuthenticatedSettingsWebhooksRoute: AuthenticatedSettingsWebhooksRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   }
 
@@ -1030,8 +1064,10 @@ export interface FileRoutesByFullPath {
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/sign-in': typeof ClerkauthSignInRoute
   '/clerk/sign-up': typeof ClerkauthSignUpRoute
@@ -1084,8 +1120,10 @@ export interface FileRoutesByTo {
   '/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/sign-in': typeof ClerkauthSignInRoute
   '/clerk/sign-up': typeof ClerkauthSignUpRoute
@@ -1143,8 +1181,10 @@ export interface FileRoutesById {
   '/_authenticated/settings/ai-models': typeof AuthenticatedSettingsAiModelsRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/developer': typeof AuthenticatedSettingsDeveloperRoute
   '/_authenticated/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/_authenticated/templates/$templateId': typeof AuthenticatedTemplatesTemplateIdRouteWithChildren
   '/clerk/(auth)/sign-in': typeof ClerkauthSignInRoute
   '/clerk/(auth)/sign-up': typeof ClerkauthSignUpRoute
@@ -1202,8 +1242,10 @@ export interface FileRouteTypes {
     | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/billing'
+    | '/settings/developer'
     | '/settings/integrations'
     | '/settings/notifications'
+    | '/settings/webhooks'
     | '/templates/$templateId'
     | '/clerk/sign-in'
     | '/clerk/sign-up'
@@ -1255,8 +1297,10 @@ export interface FileRouteTypes {
     | '/settings/ai-models'
     | '/settings/appearance'
     | '/settings/billing'
+    | '/settings/developer'
     | '/settings/integrations'
     | '/settings/notifications'
+    | '/settings/webhooks'
     | '/templates/$templateId'
     | '/clerk/sign-in'
     | '/clerk/sign-up'
@@ -1312,8 +1356,10 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/ai-models'
     | '/_authenticated/settings/appearance'
     | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/developer'
     | '/_authenticated/settings/integrations'
     | '/_authenticated/settings/notifications'
+    | '/_authenticated/settings/webhooks'
     | '/_authenticated/templates/$templateId'
     | '/clerk/(auth)/sign-in'
     | '/clerk/(auth)/sign-up'
@@ -1451,8 +1497,10 @@ export const routeTree = rootRoute
         "/_authenticated/settings/ai-models",
         "/_authenticated/settings/appearance",
         "/_authenticated/settings/billing",
+        "/_authenticated/settings/developer",
         "/_authenticated/settings/integrations",
         "/_authenticated/settings/notifications",
+        "/_authenticated/settings/webhooks",
         "/_authenticated/settings/"
       ]
     },
@@ -1563,12 +1611,20 @@ export const routeTree = rootRoute
       "filePath": "_authenticated/settings/billing.tsx",
       "parent": "/_authenticated/settings"
     },
+    "/_authenticated/settings/developer": {
+      "filePath": "_authenticated/settings/developer.tsx",
+      "parent": "/_authenticated/settings"
+    },
     "/_authenticated/settings/integrations": {
       "filePath": "_authenticated/settings/integrations.tsx",
       "parent": "/_authenticated/settings"
     },
     "/_authenticated/settings/notifications": {
       "filePath": "_authenticated/settings/notifications.tsx",
+      "parent": "/_authenticated/settings"
+    },
+    "/_authenticated/settings/webhooks": {
+      "filePath": "_authenticated/settings/webhooks.tsx",
       "parent": "/_authenticated/settings"
     },
     "/_authenticated/templates/$templateId": {

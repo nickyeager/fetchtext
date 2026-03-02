@@ -16,31 +16,31 @@ export interface AuthenticatedUser {
 /**
  * Verify user is authenticated and return user info
  * Throws an error if user is not authenticated
+ *
+ * Uses getSession() (localStorage read) instead of getUser() (network call).
+ * This is the Supabase-recommended approach for client-side code:
+ * - getSession().session.user is decoded from the JWT, no network needed
+ * - PostgREST validates the JWT server-side on every database query
+ * - getUser() caused ERR_ABORTED during navigation transitions because its
+ *   network request was cancelled by the browser mid-flight
  */
 export async function requireAuthentication(): Promise<AuthenticatedUser> {
-  // Check if we have an active session
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  
+
   if (sessionError) {
     console.error('Session error:', sessionError);
     throw new Error(`Authentication error: ${sessionError.message}`);
   }
-  
+
   if (!sessionData?.session) {
     throw new Error('User not authenticated - please sign in to continue');
   }
-  
-  // Verify the user is still valid
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  
-  if (userError || !userData?.user) {
-    console.error('User verification failed:', userError);
-    throw new Error('User authentication expired - please sign in again');
-  }
-  
+
+  const user = sessionData.session.user;
+
   return {
-    id: userData.user.id,
-    email: userData.user.email,
+    id: user.id,
+    email: user.email,
     access_token: sessionData.session.access_token,
   };
 }
@@ -63,7 +63,15 @@ export async function withAuthentication<T>(
     return await operation(user);
   } catch (error) {
     if (context) {
-      console.error(`🚫 ${context} - Authentication failed:`, error);
+      // Don't log network aborts as auth failures - they're navigation artifacts
+      const msg = error instanceof Error ? error.message :
+        (typeof error === 'object' && error !== null && 'message' in error)
+          ? String((error as Record<string, unknown>).message) : '';
+      if (msg.includes('Failed to fetch') || msg.includes('AbortError')) {
+        console.warn(`⚠️ ${context} - Request aborted (navigation in progress)`);
+      } else {
+        console.error(`🚫 ${context} - Authentication failed:`, error);
+      }
     }
     throw error;
   }

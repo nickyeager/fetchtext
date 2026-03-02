@@ -5,6 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { IconBrandGithub } from '@tabler/icons-react'
 import { toast } from 'sonner'
+import { getUserFriendlyAuthError } from '@/lib/auth-error-messages'
+import { OrganizationService } from '@/lib/organization-service'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,12 +20,11 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
-import { supabase } from '@/lib/supabase'
-import { OrganizationService } from '@/lib/organization-service'
 
 interface SignUpFormProps extends HTMLAttributes<HTMLFormElement> {
   defaultEmail?: string
   isInviteFlow?: boolean
+  onSuccess?: (user: any, session: any) => void
 }
 
 const formSchema = z
@@ -46,10 +48,25 @@ const formSchema = z
     path: ['confirmPassword'],
   })
 
-export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: SignUpFormProps) {
+export function SignUpForm({
+  className,
+  defaultEmail,
+  isInviteFlow,
+  onSuccess,
+  ...props
+}: SignUpFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
-  const { redirect } = useSearch({ from: '/(auth)/sign-up' })
+
+  // useSearch only works when rendered inside the sign-up route.
+  // When rendered in a dialog (onSuccess mode), there's no route context.
+  let redirect = ''
+  try {
+    const search = useSearch({ from: '/(auth)/sign-up' })
+    redirect = search.redirect || ''
+  } catch {
+    // Not in sign-up route context (e.g., inline dialog)
+  }
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -69,11 +86,18 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
       })
 
       if (error) {
-        toast.error('Sign up failed: ' + error.message)
+        const userMessage = getUserFriendlyAuthError(error.message)
+        toast.error('Sign up failed: ' + userMessage)
         form.setError('email', {
-          message: error.message,
+          message: userMessage,
         })
       } else if (authData.user && authData.session) {
+        // If onSuccess callback provided (inline dialog mode), call it instead of navigating
+        if (onSuccess) {
+          onSuccess(authData.user, authData.session)
+          return
+        }
+
         // User is authenticated immediately (email verification disabled or auto-confirmed)
         const isInviteFlow = redirect?.includes('/invite/accept')
 
@@ -85,12 +109,14 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
           if (inviteToken) {
             try {
               await OrganizationService.acceptInvitationByToken(inviteToken)
-              toast.success('Welcome! You\'ve joined the team successfully.')
+              toast.success("Welcome! You've joined the team successfully.")
               navigate({ to: '/dashboard' })
               return
             } catch (inviteError) {
               console.error('Error accepting invitation:', inviteError)
-              toast.error('Account created, but failed to accept invitation. Please try again from the invite link.')
+              toast.error(
+                'Account created, but failed to accept invitation. Please try again from the invite link.'
+              )
             }
           }
         }
@@ -99,9 +125,16 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
         navigate({ to: '/dashboard' })
       } else if (authData.user) {
         // User created but needs email verification
-        toast.success('Account created! Please check your email for verification.')
+        toast.success(
+          'Account created! Please check your email for verification.'
+        )
         navigate({ to: '/sign-in', search: { redirect: redirect || '' } })
       }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const userMessage = getUserFriendlyAuthError(message)
+      form.setError('email', { message: userMessage })
+      toast.error('Sign up failed: ' + userMessage)
     } finally {
       setIsLoading(false)
     }
@@ -129,7 +162,7 @@ export function SignUpForm({ className, defaultEmail, isInviteFlow, ...props }: 
                 />
               </FormControl>
               {isInviteFlow && defaultEmail && (
-                <p className="text-xs text-muted-foreground">
+                <p className='text-muted-foreground text-xs'>
                   This email is linked to your invitation and cannot be changed.
                 </p>
               )}

@@ -4,8 +4,8 @@ Snowflake Router
 REST endpoints for browsing Snowflake stages and downloading files.
 """
 
-from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, Depends
+from pydantic import BaseModel, field_validator
 from typing import Optional, List, Dict, Any
 import logging
 import uuid
@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 
 from ..services.snowflake_service import snowflake_service
+from ..middleware.admin_auth import admin_auth
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/snowflake", tags=["snowflake"])
@@ -35,6 +36,13 @@ class DownloadRequest(BaseModel):
     process_immediately: bool = True
     save_to_database: bool = True
 
+    @field_validator("file_path")
+    @classmethod
+    def validate_file_path(cls, v: str) -> str:
+        if ".." in v or v.startswith("/"):
+            raise ValueError("Invalid file path: must be relative without '..' segments")
+        return v
+
 
 class BatchDownloadRequest(BaseModel):
     """Request to download and process multiple files from a stage."""
@@ -50,8 +58,10 @@ class BatchDownloadRequest(BaseModel):
 @router.get("/test")
 async def test_connection(
     organization_id: str = Query(..., description="Organization ID"),
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """Test Snowflake connection for an organization."""
+    await admin_auth.verify_org_membership(user["user_id"], organization_id)
     result = await snowflake_service.test_connection(organization_id)
     return result
 
@@ -63,8 +73,10 @@ async def test_connection(
 @router.get("/databases")
 async def list_databases(
     organization_id: str = Query(..., description="Organization ID"),
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """List available Snowflake databases."""
+    await admin_auth.verify_org_membership(user["user_id"], organization_id)
     try:
         databases = await snowflake_service.list_databases(organization_id)
         return {"databases": databases}
@@ -77,8 +89,10 @@ async def list_databases(
 async def list_schemas(
     organization_id: str = Query(..., description="Organization ID"),
     database: str = Query(..., description="Database name"),
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """List schemas in a Snowflake database."""
+    await admin_auth.verify_org_membership(user["user_id"], organization_id)
     try:
         schemas = await snowflake_service.list_schemas(organization_id, database)
         return {"schemas": schemas}
@@ -92,8 +106,10 @@ async def list_stages(
     organization_id: str = Query(..., description="Organization ID"),
     database: Optional[str] = Query(None, description="Database name"),
     schema: Optional[str] = Query(None, alias="schema_name", description="Schema name"),
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """List stages in a Snowflake schema."""
+    await admin_auth.verify_org_membership(user["user_id"], organization_id)
     try:
         stages = await snowflake_service.list_stages(organization_id, database, schema)
         return {"stages": stages}
@@ -109,8 +125,10 @@ async def list_stage_files(
     path_prefix: Optional[str] = Query(None, description="Path prefix filter"),
     pattern: Optional[str] = Query(None, description="SQL LIKE pattern"),
     file_type_filter: Optional[str] = Query(None, description="Filter: documents, data, or all"),
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """List files in a Snowflake stage."""
+    await admin_auth.verify_org_membership(user["user_id"], organization_id)
     try:
         files = await snowflake_service.list_stage_files(
             organization_id=organization_id,
@@ -133,6 +151,7 @@ async def list_stage_files(
 async def download_and_process_file(
     stage_name: str,
     request: DownloadRequest,
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Download a single file from a Snowflake stage and optionally process it.
@@ -144,6 +163,7 @@ async def download_and_process_file(
     4. Save to documents table if requested
     5. Clean up temp file
     """
+    await admin_auth.verify_org_membership(user["user_id"], request.organization_id)
     job_id = str(uuid.uuid4())
     _download_jobs[job_id] = {
         "status": "downloading",
@@ -199,7 +219,7 @@ async def download_and_process_file(
 
             if ext in DATA_EXTENSIONS:
                 # Convert data file to text
-                result = snowflake_service.convert_data_file_to_text(temp_path)
+                result = await snowflake_service.convert_data_file_to_text(temp_path)
                 document_data = {
                     "text": result["text"],
                     "metadata": result["metadata"],
@@ -281,12 +301,14 @@ async def batch_download_files(
     stage_name: str,
     request: BatchDownloadRequest,
     background_tasks: BackgroundTasks,
+    user: dict = Depends(admin_auth.get_current_user),
 ):
     """
     Download and process multiple files from a Snowflake stage.
 
     Returns immediately with a batch job ID. Files are processed in background.
     """
+    await admin_auth.verify_org_membership(user["user_id"], request.organization_id)
     batch_id = str(uuid.uuid4())
 
     # Initialize job tracking
@@ -318,7 +340,7 @@ async def batch_download_files(
                     from ..services.snowflake_service import DOCLING_EXTENSIONS, DATA_EXTENSIONS
 
                     if ext in DATA_EXTENSIONS:
-                        result = snowflake_service.convert_data_file_to_text(temp_path)
+                        result = await snowflake_service.convert_data_file_to_text(temp_path)
                         document_data = {"text": result["text"], "metadata": result["metadata"]}
                     elif ext in DOCLING_EXTENSIONS:
                         try:
@@ -385,7 +407,10 @@ async def batch_download_files(
 
 
 @router.get("/download-status/{job_id}")
-async def get_download_status(job_id: str):
+async def get_download_status(
+    job_id: str,
+    user: dict = Depends(admin_auth.get_current_user),
+):
     """Get the status of a download job (single or batch)."""
     job = _download_jobs.get(job_id)
     if not job:

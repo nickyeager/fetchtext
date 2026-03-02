@@ -3,6 +3,15 @@ Admin Dashboard Authentication Middleware
 
 Provides JWT validation for admin dashboard users accessing the API.
 This is separate from third-party API key authentication.
+
+Supports two verification modes, selected by inspecting the token's alg header:
+- Shared secret (symmetric HS256): Used by local Docker Supabase.
+  Configured via JWT_SECRET or SUPABASE_JWT_SECRET env var.
+- JWKS (asymmetric ES256/RS256): Used by managed Supabase in production.
+  Fetches public keys from {SUPABASE_URL}/auth/v1/.well-known/jwks.json
+  using PyJWT's native PyJWKClient (no python-jose dependency).
+- Supabase Auth API fallback: When HS256 token arrives but no JWT_SECRET
+  is available, verifies via {SUPABASE_URL}/auth/v1/user endpoint.
 """
 
 import logging
@@ -12,6 +21,8 @@ from typing import Dict, Any, Optional
 
 from fastapi import HTTPException, Depends, Header
 import jwt
+from jwt import PyJWKClient
+import httpx
 
 from ..config.database import db_config
 
@@ -36,10 +47,80 @@ class AdminAuth:
     Also verifies organization membership for organization-scoped operations.
     """
 
+    # Cache JWKS keys for 1 hour
+    JWKS_CACHE_TTL = 3600
+
     def __init__(self):
-        # Get JWT secret from environment (same as Supabase config)
         self.jwt_secret = os.getenv('JWT_SECRET', os.getenv('SUPABASE_JWT_SECRET', ''))
-        self.jwt_algorithms = ['HS256']
+        self.supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
+        self.jwks_uri = f"{self.supabase_url}/auth/v1/.well-known/jwks.json" if self.supabase_url else ''
+        self._jwks_client: Optional[PyJWKClient] = None
+
+        if self.jwks_uri:
+            self._jwks_client = PyJWKClient(
+                self.jwks_uri,
+                cache_jwk_set=True,
+                lifespan=self.JWKS_CACHE_TTL,
+            )
+
+        modes = []
+        if self.jwt_secret:
+            modes.append("HS256")
+        if self._jwks_client:
+            modes.append(f"JWKS({self.jwks_uri})")
+        if self.supabase_url and not self.jwt_secret:
+            modes.append("Supabase-API-fallback")
+        if modes:
+            logger.info(f"Auth configured: {' + '.join(modes)}")
+        else:
+            logger.warning("Auth NOT configured — no SUPABASE_URL or JWT_SECRET set")
+
+    def _verify_via_supabase_api(self, token: str) -> Dict[str, Any]:
+        """Verify a token by calling the Supabase Auth API.
+
+        Used as a fallback when the JWT secret is not available locally
+        (e.g. managed Supabase signs with HS256 but we don't have the secret).
+        """
+        url = f"{self.supabase_url}/auth/v1/user"
+        try:
+            resp = httpx.get(
+                url,
+                headers={"Authorization": f"Bearer {token}", "apikey": os.getenv('SUPABASE_ANON_KEY', '')},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Supabase auth API returned {resp.status_code}")
+                raise jwt.InvalidTokenError(f"Supabase auth API returned {resp.status_code}")
+
+            user_data = resp.json()
+            user_id = user_data.get('id')
+            if not user_id:
+                raise jwt.InvalidTokenError("Supabase auth API returned no user ID")
+
+            logger.info(f"Token verified via Supabase auth API for user {user_id}")
+            return {
+                'sub': user_id,
+                'email': user_data.get('email'),
+                'role': user_data.get('role', 'authenticated'),
+            }
+        except httpx.RequestError as e:
+            logger.error(f"Failed to reach Supabase auth API: {e}")
+            raise jwt.InvalidTokenError(f"Supabase auth API unreachable: {e}")
+
+    def _decode_with_jwks(self, token: str) -> Dict[str, Any]:
+        """Decode a JWT using JWKS public keys via PyJWT's native PyJWKClient."""
+        if not self._jwks_client:
+            raise jwt.InvalidTokenError("JWKS client not initialized")
+
+        signing_key = self._jwks_client.get_signing_key_from_jwt(token)
+        logger.info(f"JWKS: matched key kid={signing_key.key_id}")
+
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
+            audience="authenticated",
+        )
 
     async def get_current_user(
         self,
@@ -74,17 +155,43 @@ class AdminAuth:
         token = parts[1]
 
         try:
-            # Decode JWT token
-            if not self.jwt_secret:
-                logger.warning("JWT_SECRET not configured - using permissive mode for development")
-                # In development without JWT secret, decode without verification
-                payload = jwt.decode(token, options={"verify_signature": False})
-            else:
+            # Inspect the token header to choose the right verification method.
+            token_header = jwt.get_unverified_header(token)
+            token_alg = token_header.get('alg', '')
+            token_kid = token_header.get('kid', 'none')
+            logger.info(f"Token alg={token_alg} kid={token_kid}")
+
+            if token_alg == 'HS256' and self.jwt_secret:
+                # Symmetric verification — local Docker or managed Supabase with JWT_SECRET
                 payload = jwt.decode(
                     token,
                     self.jwt_secret,
-                    algorithms=self.jwt_algorithms,
+                    algorithms=['HS256'],
                     audience="authenticated"
+                )
+            elif token_alg == 'HS256' and self.supabase_url:
+                # HS256 token but no local secret — verify via Supabase Auth API
+                logger.info("No JWT_SECRET set, verifying HS256 token via Supabase auth API")
+                payload = self._verify_via_supabase_api(token)
+            elif self._jwks_client and token_alg in ('ES256', 'RS256'):
+                # Asymmetric verification via JWKS
+                payload = self._decode_with_jwks(token)
+            elif self.jwt_secret:
+                # Unknown alg, try HS256 with secret
+                payload = jwt.decode(
+                    token,
+                    self.jwt_secret,
+                    algorithms=['HS256'],
+                    audience="authenticated"
+                )
+            elif self.supabase_url:
+                # Last resort — verify via Supabase Auth API
+                logger.info(f"No local verification available for alg={token_alg}, using Supabase auth API")
+                payload = self._verify_via_supabase_api(token)
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Authentication service misconfigured — no SUPABASE_URL or JWT_SECRET set"
                 )
 
             user_id = payload.get('sub')

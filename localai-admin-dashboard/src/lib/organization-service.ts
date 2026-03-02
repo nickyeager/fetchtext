@@ -3,10 +3,6 @@
  *
  * Service for managing organizations, members, and invitations
  */
-
-import { supabase } from '@/lib/supabase';
-import { withAuthentication } from '@/lib/supabase-auth-utils';
-import { sendInvitationEmail } from '@/lib/email-service';
 import type {
   Organization,
   OrganizationMember,
@@ -16,7 +12,10 @@ import type {
   UpdateOrganizationInput,
   InviteMemberInput,
   OrganizationRole,
-} from '@/types/organization';
+} from '@/types/organization'
+import { API_ENDPOINTS } from '@/lib/api-config'
+import { supabase } from '@/lib/supabase'
+import { withAuthentication } from '@/lib/supabase-auth-utils'
 
 export class OrganizationService {
   /**
@@ -26,25 +25,34 @@ export class OrganizationService {
     return withAuthentication(async (user) => {
       const { data, error } = await supabase
         .from('organization_members')
-        .select(`
+        .select(
+          `
           role,
           organization:organizations(*)
-        `)
-        .eq('user_id', user.id);
+        `
+        )
+        .eq('user_id', user.id)
 
       if (error) {
-        console.error('Error fetching user organizations:', error);
-        throw error;
+        // Don't log network aborts as errors - they're navigation artifacts
+        const isAbort =
+          typeof error.message === 'string' &&
+          (error.message.includes('Failed to fetch') ||
+            error.message.includes('AbortError'))
+        if (!isAbort) {
+          console.error('Error fetching user organizations:', error)
+        }
+        throw error
       }
 
-      if (!data) return [];
+      if (!data) return []
 
       // Transform the data to include role with organization
       return data.map((item) => ({
         ...(item.organization as Organization),
         role: item.role as OrganizationRole,
-      }));
-    }, 'getUserOrganizations');
+      }))
+    }, 'getUserOrganizations')
   }
 
   /**
@@ -56,16 +64,16 @@ export class OrganizationService {
         .from('organizations')
         .select('*')
         .eq('id', id)
-        .single();
+        .single()
 
       if (error) {
-        if (error.code === 'PGRST116') return null; // Not found
-        console.error('Error fetching organization:', error);
-        throw error;
+        if (error.code === 'PGRST116') return null // Not found
+        console.error('Error fetching organization:', error)
+        throw error
       }
 
-      return data;
-    }, 'getOrganization');
+      return data
+    }, 'getOrganization')
   }
 
   /**
@@ -79,7 +87,7 @@ export class OrganizationService {
       const slug = input.name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
+        .replace(/^-|-$/g, '')
 
       const { data, error } = await supabase
         .from('organizations')
@@ -93,11 +101,11 @@ export class OrganizationService {
           settings: {},
         })
         .select()
-        .single();
+        .single()
 
       if (error) {
-        console.error('Error creating organization:', error);
-        throw error;
+        console.error('Error creating organization:', error)
+        throw error
       }
 
       // The database trigger should automatically create the owner membership,
@@ -107,7 +115,7 @@ export class OrganizationService {
         .select('id')
         .eq('organization_id', data.id)
         .eq('user_id', user.id)
-        .single();
+        .single()
 
       if (!membership) {
         // Create ownership membership if trigger didn't
@@ -115,11 +123,11 @@ export class OrganizationService {
           organization_id: data.id,
           user_id: user.id,
           role: 'owner',
-        });
+        })
       }
 
-      return data;
-    }, 'createOrganization');
+      return data
+    }, 'createOrganization')
   }
 
   /**
@@ -130,32 +138,33 @@ export class OrganizationService {
     input: UpdateOrganizationInput
   ): Promise<Organization> {
     return withAuthentication(async () => {
-      const updates: Record<string, unknown> = {};
+      const updates: Record<string, unknown> = {}
       if (input.name !== undefined) {
-        updates.name = input.name;
+        updates.name = input.name
         updates.slug = input.name
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '');
+          .replace(/^-|-$/g, '')
       }
-      if (input.description !== undefined) updates.description = input.description;
-      if (input.logo_url !== undefined) updates.logo_url = input.logo_url;
-      if (input.settings !== undefined) updates.settings = input.settings;
+      if (input.description !== undefined)
+        updates.description = input.description
+      if (input.logo_url !== undefined) updates.logo_url = input.logo_url
+      if (input.settings !== undefined) updates.settings = input.settings
 
       const { data, error } = await supabase
         .from('organizations')
         .update(updates)
         .eq('id', id)
         .select()
-        .single();
+        .single()
 
       if (error) {
-        console.error('Error updating organization:', error);
-        throw error;
+        console.error('Error updating organization:', error)
+        throw error
       }
 
-      return data;
-    }, 'updateOrganization');
+      return data
+    }, 'updateOrganization')
   }
 
   /**
@@ -166,13 +175,13 @@ export class OrganizationService {
       const { error } = await supabase
         .from('organizations')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
 
       if (error) {
-        console.error('Error deleting organization:', error);
-        throw error;
+        console.error('Error deleting organization:', error)
+        throw error
       }
-    }, 'deleteOrganization');
+    }, 'deleteOrganization')
   }
 
   // ============================================================================
@@ -190,15 +199,15 @@ export class OrganizationService {
         .from('organization_members')
         .select('*')
         .eq('organization_id', organizationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
 
       if (error) {
-        console.error('Error fetching organization members:', error);
-        throw error;
+        console.error('Error fetching organization members:', error)
+        throw error
       }
 
-      return data || [];
-    }, 'getOrganizationMembers');
+      return data || []
+    }, 'getOrganizationMembers')
   }
 
   /**
@@ -212,7 +221,7 @@ export class OrganizationService {
     return withAuthentication(async () => {
       // Prevent changing owner role through this method
       if (newRole === 'owner') {
-        throw new Error('Cannot assign owner role through this method');
+        throw new Error('Cannot assign owner role through this method')
       }
 
       const { error } = await supabase
@@ -220,13 +229,13 @@ export class OrganizationService {
         .update({ role: newRole })
         .eq('organization_id', organizationId)
         .eq('user_id', userId)
-        .neq('role', 'owner'); // Prevent changing owner's role
+        .neq('role', 'owner') // Prevent changing owner's role
 
       if (error) {
-        console.error('Error updating member role:', error);
-        throw error;
+        console.error('Error updating member role:', error)
+        throw error
       }
-    }, 'updateMemberRole');
+    }, 'updateMemberRole')
   }
 
   /**
@@ -244,10 +253,12 @@ export class OrganizationService {
           .select('role')
           .eq('organization_id', organizationId)
           .eq('user_id', userId)
-          .single();
+          .single()
 
         if (membership?.role === 'owner') {
-          throw new Error('Owner cannot remove themselves from the organization');
+          throw new Error(
+            'Owner cannot remove themselves from the organization'
+          )
         }
       }
 
@@ -256,13 +267,13 @@ export class OrganizationService {
         .delete()
         .eq('organization_id', organizationId)
         .eq('user_id', userId)
-        .neq('role', 'owner'); // Prevent removing owner
+        .neq('role', 'owner') // Prevent removing owner
 
       if (error) {
-        console.error('Error removing member:', error);
-        throw error;
+        console.error('Error removing member:', error)
+        throw error
       }
-    }, 'removeMember');
+    }, 'removeMember')
   }
 
   // ============================================================================
@@ -283,10 +294,10 @@ export class OrganizationService {
         .select('id')
         .eq('organization_id', organizationId)
         .eq('user_id', user.id) // This checks if the inviter is a member
-        .single();
+        .single()
 
       if (!existingMember) {
-        throw new Error('You are not a member of this organization');
+        throw new Error('You are not a member of this organization')
       }
 
       // Check for existing pending invitation
@@ -296,15 +307,15 @@ export class OrganizationService {
         .eq('organization_id', organizationId)
         .eq('email', input.email.toLowerCase())
         .eq('status', 'pending')
-        .single();
+        .single()
 
       if (existingInvite) {
-        throw new Error('An invitation is already pending for this email');
+        throw new Error('An invitation is already pending for this email')
       }
 
       // Calculate expiration (7 days from now)
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
+      const expiresAt = new Date()
+      expiresAt.setDate(expiresAt.getDate() + 7)
 
       const { data, error } = await supabase
         .from('organization_invitations')
@@ -317,11 +328,11 @@ export class OrganizationService {
           expires_at: expiresAt.toISOString(),
         })
         .select()
-        .single();
+        .single()
 
       if (error) {
-        console.error('Error creating invitation:', error);
-        throw error;
+        console.error('Error creating invitation:', error)
+        throw error
       }
 
       // Send invitation email (non-blocking - don't fail if email fails)
@@ -331,30 +342,40 @@ export class OrganizationService {
           .from('organizations')
           .select('name')
           .eq('id', organizationId)
-          .single();
+          .single()
 
-        const organizationName = org?.name || 'an organization';
+        const organizationName = org?.name || 'an organization'
 
-        const emailResult = await sendInvitationEmail(
-          input.email.toLowerCase(),
-          organizationName,
-          user.email || 'A team member',
-          data.token,
-          input.role
-        );
+        const emailResponse = await fetch(API_ENDPOINTS.emailSendInvitation, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to_email: input.email.toLowerCase(),
+            organization_name: organizationName,
+            inviter_email: user.email || 'A team member',
+            invite_token: data.token,
+            role: input.role,
+          }),
+        })
 
-        if (!emailResult.success) {
-          console.warn('Failed to send invitation email:', emailResult.error);
+        if (!emailResponse.ok) {
+          const errorText = await emailResponse.text()
+          console.warn('Failed to send invitation email:', errorText)
         } else {
-          console.log('Invitation email sent:', emailResult.messageId);
+          const emailResult = await emailResponse.json()
+          if (emailResult.success) {
+            console.log('Invitation email sent:', emailResult.message_id)
+          } else {
+            console.warn('Failed to send invitation email:', emailResult.error)
+          }
         }
       } catch (emailError) {
         // Log but don't fail the invitation
-        console.warn('Error sending invitation email:', emailError);
+        console.warn('Error sending invitation email:', emailError)
       }
 
-      return data;
-    }, 'inviteMember');
+      return data
+    }, 'inviteMember')
   }
 
   /**
@@ -369,15 +390,15 @@ export class OrganizationService {
         .select('*')
         .eq('organization_id', organizationId)
         .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Error fetching invitations:', error);
-        throw error;
+        console.error('Error fetching invitations:', error)
+        throw error
       }
 
-      return data || [];
-    }, 'getOrganizationInvitations');
+      return data || []
+    }, 'getOrganizationInvitations')
   }
 
   /**
@@ -386,26 +407,28 @@ export class OrganizationService {
   static async getMyInvitations(): Promise<OrganizationInvitation[]> {
     return withAuthentication(async (user) => {
       if (!user.email) {
-        throw new Error('User email not available');
+        throw new Error('User email not available')
       }
 
       const { data, error } = await supabase
         .from('organization_invitations')
-        .select(`
+        .select(
+          `
           *,
           organization:organizations(id, name, slug, logo_url)
-        `)
+        `
+        )
         .eq('email', user.email.toLowerCase())
         .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString());
+        .gt('expires_at', new Date().toISOString())
 
       if (error) {
-        console.error('Error fetching my invitations:', error);
-        throw error;
+        console.error('Error fetching my invitations:', error)
+        throw error
       }
 
-      return data || [];
-    }, 'getMyInvitations');
+      return data || []
+    }, 'getMyInvitations')
   }
 
   /**
@@ -420,10 +443,10 @@ export class OrganizationService {
         .eq('id', invitationId)
         .eq('email', user.email?.toLowerCase())
         .eq('status', 'pending')
-        .single();
+        .single()
 
       if (inviteError || !invitation) {
-        throw new Error('Invitation not found or already processed');
+        throw new Error('Invitation not found or already processed')
       }
 
       // Check if expired
@@ -431,8 +454,8 @@ export class OrganizationService {
         await supabase
           .from('organization_invitations')
           .update({ status: 'expired' })
-          .eq('id', invitationId);
-        throw new Error('Invitation has expired');
+          .eq('id', invitationId)
+        throw new Error('Invitation has expired')
       }
 
       // Create membership
@@ -443,19 +466,19 @@ export class OrganizationService {
           user_id: user.id,
           role: invitation.role,
           invited_by: invitation.invited_by,
-        });
+        })
 
       if (memberError) {
-        console.error('Error creating membership:', memberError);
-        throw memberError;
+        console.error('Error creating membership:', memberError)
+        throw memberError
       }
 
       // Update invitation status
       await supabase
         .from('organization_invitations')
         .update({ status: 'accepted' })
-        .eq('id', invitationId);
-    }, 'acceptInvitation');
+        .eq('id', invitationId)
+    }, 'acceptInvitation')
   }
 
   /**
@@ -467,13 +490,13 @@ export class OrganizationService {
         .from('organization_invitations')
         .update({ status: 'rejected' })
         .eq('id', invitationId)
-        .eq('email', user.email?.toLowerCase());
+        .eq('email', user.email?.toLowerCase())
 
       if (error) {
-        console.error('Error rejecting invitation:', error);
-        throw error;
+        console.error('Error rejecting invitation:', error)
+        throw error
       }
-    }, 'rejectInvitation');
+    }, 'rejectInvitation')
   }
 
   /**
@@ -485,13 +508,13 @@ export class OrganizationService {
         .from('organization_invitations')
         .delete()
         .eq('id', invitationId)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
 
       if (error) {
-        console.error('Error canceling invitation:', error);
-        throw error;
+        console.error('Error canceling invitation:', error)
+        throw error
       }
-    }, 'cancelInvitation');
+    }, 'cancelInvitation')
   }
 
   /**
@@ -506,33 +529,35 @@ export class OrganizationService {
     // But for anonymous access, we need to use a more permissive query
     const { data, error } = await supabase
       .from('organization_invitations')
-      .select(`
+      .select(
+        `
         *,
         organization:organizations(id, name, slug, logo_url),
         inviter:auth_user_view(id, email)
-      `)
+      `
+      )
       .eq('token', token)
-      .single();
+      .single()
 
     if (error) {
-      if (error.code === 'PGRST116') return null; // Not found
-      console.error('Error fetching invitation by token:', error);
+      if (error.code === 'PGRST116') return null // Not found
+      console.error('Error fetching invitation by token:', error)
       // If we get permission denied, try without joins
       const { data: basicData, error: basicError } = await supabase
         .from('organization_invitations')
         .select('*')
         .eq('token', token)
-        .single();
+        .single()
 
       if (basicError) {
-        if (basicError.code === 'PGRST116') return null;
-        throw basicError;
+        if (basicError.code === 'PGRST116') return null
+        throw basicError
       }
 
-      return basicData;
+      return basicData
     }
 
-    return data;
+    return data
   }
 
   /**
@@ -546,17 +571,17 @@ export class OrganizationService {
         .select('*')
         .eq('token', token)
         .eq('status', 'pending')
-        .single();
+        .single()
 
       if (inviteError || !invitation) {
-        throw new Error('Invitation not found or already processed');
+        throw new Error('Invitation not found or already processed')
       }
 
       // Verify email matches
       if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
         throw new Error(
           `This invitation was sent to ${invitation.email}. You are signed in as ${user.email}.`
-        );
+        )
       }
 
       // Check if expired
@@ -564,8 +589,8 @@ export class OrganizationService {
         await supabase
           .from('organization_invitations')
           .update({ status: 'expired' })
-          .eq('id', invitation.id);
-        throw new Error('Invitation has expired');
+          .eq('id', invitation.id)
+        throw new Error('Invitation has expired')
       }
 
       // Check if already a member
@@ -574,15 +599,15 @@ export class OrganizationService {
         .select('id')
         .eq('organization_id', invitation.organization_id)
         .eq('user_id', user.id)
-        .single();
+        .single()
 
       if (existingMember) {
         // Already a member, just mark invitation as accepted
         await supabase
           .from('organization_invitations')
           .update({ status: 'accepted' })
-          .eq('id', invitation.id);
-        return;
+          .eq('id', invitation.id)
+        return
       }
 
       // Create membership
@@ -593,19 +618,19 @@ export class OrganizationService {
           user_id: user.id,
           role: invitation.role,
           invited_by: invitation.invited_by,
-        });
+        })
 
       if (memberError) {
-        console.error('Error creating membership:', memberError);
-        throw memberError;
+        console.error('Error creating membership:', memberError)
+        throw memberError
       }
 
       // Update invitation status
       await supabase
         .from('organization_invitations')
         .update({ status: 'accepted' })
-        .eq('id', invitation.id);
-    }, 'acceptInvitationByToken');
+        .eq('id', invitation.id)
+    }, 'acceptInvitationByToken')
   }
 
   // ============================================================================
@@ -624,24 +649,24 @@ export class OrganizationService {
         .select('role')
         .eq('organization_id', organizationId)
         .eq('user_id', user.id)
-        .single();
+        .single()
 
       if (error) {
-        if (error.code === 'PGRST116') return null; // Not a member
-        console.error('Error getting user role:', error);
-        throw error;
+        if (error.code === 'PGRST116') return null // Not a member
+        console.error('Error getting user role:', error)
+        throw error
       }
 
-      return data?.role as OrganizationRole;
-    }, 'getUserRole');
+      return data?.role as OrganizationRole
+    }, 'getUserRole')
   }
 
   /**
    * Check if user can manage organization (owner or admin)
    */
   static async canManageOrganization(organizationId: string): Promise<boolean> {
-    const role = await this.getUserRole(organizationId);
-    return role === 'owner' || role === 'admin';
+    const role = await this.getUserRole(organizationId)
+    return role === 'owner' || role === 'admin'
   }
 
   /**
@@ -654,16 +679,16 @@ export class OrganizationService {
         .select('*')
         .eq('owner_id', user.id)
         .eq('organization_type', 'personal')
-        .single();
+        .single()
 
       if (error) {
-        if (error.code === 'PGRST116') return null; // Not found
-        console.error('Error fetching personal organization:', error);
-        throw error;
+        if (error.code === 'PGRST116') return null // Not found
+        console.error('Error fetching personal organization:', error)
+        throw error
       }
 
-      return data;
-    }, 'getPersonalOrganization');
+      return data
+    }, 'getPersonalOrganization')
   }
 
   /**
@@ -674,14 +699,68 @@ export class OrganizationService {
       const { count, error } = await supabase
         .from('organization_members')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', organizationId);
+        .eq('organization_id', organizationId)
 
       if (error) {
-        console.error('Error getting member count:', error);
-        throw error;
+        console.error('Error getting member count:', error)
+        throw error
       }
 
-      return count || 0;
-    }, 'getMemberCount');
+      return count || 0
+    }, 'getMemberCount')
+  }
+}
+
+/**
+ * Send organization invitation email via backend API.
+ * The backend handles SendGrid to keep API keys server-side.
+ */
+export async function sendInvitationEmail(
+  email: string,
+  organizationName: string,
+  inviterEmail: string,
+  inviteToken: string,
+  role: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const response = await fetch(API_ENDPOINTS.emailSendInvitation, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to_email: email,
+        organization_name: organizationName,
+        inviter_email: inviterEmail,
+        invite_token: inviteToken,
+        role: role,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      return {
+        success: false,
+        error: `Backend email API error: ${response.status} - ${errorText}`,
+      }
+    }
+
+    const result = await response.json()
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Backend failed to send email',
+      }
+    }
+
+    return {
+      success: true,
+      messageId: result.message_id,
+    }
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    return {
+      success: false,
+      error: errorMsg || 'Failed to send invitation email',
+    }
   }
 }

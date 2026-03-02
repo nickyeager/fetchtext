@@ -11,19 +11,19 @@
 }
 
 # Open WebUI
-{$WEBUI_HOSTNAME} {
-    reverse_proxy open-webui:8080
-}
+# {$WEBUI_HOSTNAME} {
+#     reverse_proxy open-webui:8080
+# }
 
 # Flowise
-{$FLOWISE_HOSTNAME} {
-    reverse_proxy flowise:3001
-}
+# {$FLOWISE_HOSTNAME} {
+#     reverse_proxy flowise:3001
+# }
 
 # Langfuse
-{$LANGFUSE_HOSTNAME} {
-    reverse_proxy langfuse-web:3000
-}
+# {$LANGFUSE_HOSTNAME} {
+#     reverse_proxy langfuse-web:3000
+# }
 
 # # Ollama API
 # {$OLLAMA_HOSTNAME} {
@@ -31,19 +31,24 @@
 # }
 
 # Supabase
-{$SUPABASE_HOSTNAME} {
-    reverse_proxy supabase-kong:8000
-}
+# {$SUPABASE_HOSTNAME} {
+#     reverse_proxy supabase-kong:8000
+# }
 
 # Neo4j
-{$NEO4J_HOSTNAME} {
-    reverse_proxy neo4j:7474
-}
+# {$NEO4J_HOSTNAME} {
+#     reverse_proxy neo4j:7474
+# }
 
 # Document Processor
-{$DOCUMENT_PROCESSOR_HOSTNAME} {
-    reverse_proxy document-processor:8090
-}
+# {$DOCUMENT_PROCESSOR_HOSTNAME} {
+#     reverse_proxy document-processor:8090
+# }
+
+# Qdrant Vector Database
+# {$QDRANT_HOSTNAME} {
+#     reverse_proxy qdrant:6333
+# }
 
 # # SearXNG
 # {$SEARXNG_HOSTNAME} {

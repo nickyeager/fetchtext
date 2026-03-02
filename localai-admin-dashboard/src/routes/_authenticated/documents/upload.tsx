@@ -1,4 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { Header } from '@/components/layout/header';
+import { Main } from '@/components/layout/main';
+import { ProfileDropdown } from '@/components/profile-dropdown';
+import { Search } from '@/components/search';
+import { ThemeSwitch } from '@/components/theme-switch';
 import { DocumentUploadPage } from '@/features/documents/components/DocumentUploadPage';
 
 interface DocumentUploadSearch {
@@ -14,7 +19,7 @@ export const Route = createFileRoute('/_authenticated/documents/upload')({
     if (cleanTemplateId && typeof cleanTemplateId === 'string') {
       cleanTemplateId = cleanTemplateId.replace(/^["']|["']$/g, '');
     }
-    
+
     return {
       templateId: cleanTemplateId,
       templateType: search.templateType as 'smart' | 'standard' | 'workflow',
@@ -26,18 +31,27 @@ export const Route = createFileRoute('/_authenticated/documents/upload')({
 
 function DocumentUpload() {
   const { templateId, templateType, templateName } = Route.useSearch();
-  
+
   console.log('DocumentUpload: Search params:', { templateId, templateType, templateName });
-  
+
   return (
-    <div className="container mx-auto py-6">
-      <DocumentUploadPage 
-        preSelectedTemplate={templateId ? {
-          id: templateId,
-          type: templateType,
-          name: templateName
-        } : undefined}
-      />
-    </div>
+    <>
+      <Header>
+        <Search />
+        <div className='ml-auto flex items-center space-x-4'>
+          <ThemeSwitch />
+          <ProfileDropdown />
+        </div>
+      </Header>
+      <Main>
+        <DocumentUploadPage
+          preSelectedTemplate={templateId ? {
+            id: templateId,
+            type: templateType,
+            name: templateName
+          } : undefined}
+        />
+      </Main>
+    </>
   );
 }

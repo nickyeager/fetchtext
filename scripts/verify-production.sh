@@ -230,12 +230,49 @@ check_azure_services() {
                 if [ -n "$APP_URL" ]; then
                     check_info "Backend URL: https://${APP_URL}"
 
-                    # Check health endpoint
+                    # Check basic health endpoint
                     HEALTH=$(curl -s --connect-timeout 10 "https://${APP_URL}/health" 2>&1)
                     if echo "$HEALTH" | grep -qi "healthy\|ok\|status"; then
                         check_pass "Backend health endpoint responding"
                     else
                         check_warn "Backend health check: ${HEALTH:0:50}"
+                    fi
+
+                    # Check readiness endpoint for service dependencies
+                    READY=$(curl -s --connect-timeout 15 "https://${APP_URL}/health/ready" 2>&1)
+                    if echo "$READY" | grep -q '"status"'; then
+                        READY_STATUS=$(echo "$READY" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+                        if [ "$READY_STATUS" = "ready" ]; then
+                            check_pass "All backend services ready"
+                        elif [ "$READY_STATUS" = "degraded" ]; then
+                            check_warn "Backend degraded: some services unavailable"
+                        else
+                            check_fail "Backend not ready: $READY_STATUS"
+                        fi
+
+                        # Check Azure OpenAI specifically
+                        if echo "$READY" | grep -q '"azure_openai":true'; then
+                            check_pass "Azure OpenAI: configured"
+                        else
+                            MISSING=$(echo "$READY" | grep -o '"azure_openai_missing":\[[^]]*\]' || echo "")
+                            check_fail "Azure OpenAI: NOT configured ${MISSING}"
+                        fi
+
+                        # Check database
+                        if echo "$READY" | grep -q '"database":true'; then
+                            check_pass "Database (Supabase): connected"
+                        else
+                            check_fail "Database (Supabase): NOT connected"
+                        fi
+
+                        # Check Qdrant (optional)
+                        if echo "$READY" | grep -q '"qdrant":true'; then
+                            check_pass "Qdrant vector search: available"
+                        else
+                            check_info "Qdrant vector search: unavailable (optional)"
+                        fi
+                    else
+                        check_warn "Readiness endpoint not responding: ${READY:0:80}"
                     fi
                 fi
             else

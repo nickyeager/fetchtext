@@ -1,304 +1,408 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-// import { useNavigate } from '@tanstack/react-router'; // currently unused
-import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced';
-import { WorkflowClient } from '@/lib/workflow-client';
-import { templateService } from '@/services/template-service';
-import { UnifiedTemplate, isSmartTemplate } from '@/types/unified-template';
-import { API_ENDPOINTS } from '@/lib/api-config';
-
-// Define TemplateSource type
-type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery';
-// ProcessedDocumentsService functionality moved to UnifiedDocumentService
-// import { useDocumentManager } from '@/hooks/use-document-manager';
-// import { UploadSource } from '@/services/unified-document-service';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Loader2, CheckCircle, XCircle, FileText, Users, Settings, ChevronDown, ChevronRight } from 'lucide-react';
-import { ProgressiveExtractionDisplay } from './ProgressiveExtractionDisplay';
-import { WorkflowFileUpload } from './WorkflowFileUpload';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { templateService } from '@/services/template-service'
 import {
   ProcessedDocument,
   TemplateExtractionResult,
   ProgressiveExtractionResult,
   ExtractedField,
-} from '@/types/extraction';
-import { useQuery } from '@tanstack/react-query';
+} from '@/types/extraction'
+import { UnifiedTemplate, isSmartTemplate } from '@/types/unified-template'
+import {
+  Loader2,
+  CheckCircle,
+  XCircle,
+  FileText,
+  Users,
+  Settings,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react'
+import { API_ENDPOINTS } from '@/lib/api-config'
+// import { useNavigate } from '@tanstack/react-router'; // currently unused
+import { DocumentProcessorEnhanced } from '@/lib/document-processor-enhanced'
+import { WorkflowClient } from '@/lib/workflow-client'
+import { useAuth } from '@/context/auth-context'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+// ProcessedDocumentsService functionality moved to UnifiedDocumentService
+// import { useDocumentManager } from '@/hooks/use-document-manager';
+// import { UploadSource } from '@/services/unified-document-service';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
+import { Separator } from '@/components/ui/separator'
+import { ProgressiveExtractionDisplay } from './ProgressiveExtractionDisplay'
+import { WorkflowFileUpload } from './WorkflowFileUpload'
 
+// Define TemplateSource type
+type TemplateSource = 'smart' | 'standard' | 'workflow' | 'gallery'
 
 interface WorkflowExecutionState {
-  isExecuting: boolean;
-  progress: number;
-  status: string;
-  result?: unknown;
-  error?: string;
+  isExecuting: boolean
+  progress: number
+  status: string
+  result?: unknown
+  error?: string
 }
 
 interface DocumentWorkflowProps {
-  selectedTemplateId?: string | number;
-  templateSource?: TemplateSource;
+  selectedTemplateId?: string | number
+  templateSource?: TemplateSource
 }
 
-export function DocumentWorkflow({ selectedTemplateId, templateSource }: DocumentWorkflowProps = {}) {
+export function DocumentWorkflow({
+  selectedTemplateId,
+  templateSource,
+}: DocumentWorkflowProps = {}) {
   // const navigate = useNavigate(); // reserved for future navigation actions
-  const [file, setFile] = useState<File | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processedDocument, setProcessedDocument] = useState<ProcessedDocument | null>(null);
-  const [templateExtractionResult, setTemplateExtractionResult] = useState<TemplateExtractionResult | null>(null);
-  const [progressiveResult, setProgressiveResult] = useState<ProgressiveExtractionResult | null>(null);
-  const [useProgressiveExtraction, setUseProgressiveExtraction] = useState(true);
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [workflowExecution, setWorkflowExecution] = useState<WorkflowExecutionState>({
-    isExecuting: false,
-    progress: 0,
-    status: '',
-  });
-  const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth()
+  const [file, setFile] = useState<File | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processedDocument, setProcessedDocument] =
+    useState<ProcessedDocument | null>(null)
+  const [templateExtractionResult, setTemplateExtractionResult] =
+    useState<TemplateExtractionResult | null>(null)
+  const [progressiveResult, setProgressiveResult] =
+    useState<ProgressiveExtractionResult | null>(null)
+  const [useProgressiveExtraction, setUseProgressiveExtraction] = useState(true)
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [workflowExecution, setWorkflowExecution] =
+    useState<WorkflowExecutionState>({
+      isExecuting: false,
+      progress: 0,
+      status: '',
+    })
+  const [error, setError] = useState<string | null>(null)
   const [showStructure, setShowStructure] = useState({
     headings: true,
     tables: false,
     images: false,
-  });
-  const [showRawJSON, setShowRawJSON] = useState(false);
+  })
+  const [showRawJSON, setShowRawJSON] = useState(false)
   // Simple in-memory log lines accumulated during progressive extraction
-  const [progressLogs, setProgressLogs] = useState<string[]>([]);
+  const [progressLogs, setProgressLogs] = useState<string[]>([])
   // Instrumentation for E2E visibility
-  const [processingStarted, setProcessingStarted] = useState(false);
-  const [progressUpdateCount, setProgressUpdateCount] = useState(0);
-  const [genericProcessingStarted, setGenericProcessingStarted] = useState(false);
-  const [heartbeatTicks, setHeartbeatTicks] = useState(0);
-  const [backendHealthy, setBackendHealthy] = useState(true);
+  const [processingStarted, setProcessingStarted] = useState(false)
+  const [progressUpdateCount, setProgressUpdateCount] = useState(0)
+  const [genericProcessingStarted, setGenericProcessingStarted] =
+    useState(false)
+  const [heartbeatTicks, setHeartbeatTicks] = useState(0)
+  const [backendHealthy, setBackendHealthy] = useState(true)
   // Added instrumentation states (A & B requirements)
-  const [extractionMode, setExtractionMode] = useState<string | null>(null); // 'template-progressive' | 'template-standard' | 'generic'
-  const [fileChecksum, setFileChecksum] = useState<string | null>(null);
-  const [correlationId, setCorrelationId] = useState<string | null>(null);
-  const heartbeatRef = useRef<number | null>(null);
+  const [extractionMode, setExtractionMode] = useState<string | null>(null) // 'template-progressive' | 'template-standard' | 'generic'
+  const [fileChecksum, setFileChecksum] = useState<string | null>(null)
+  const [correlationId, setCorrelationId] = useState<string | null>(null)
+  const heartbeatRef = useRef<number | null>(null)
 
   // Constants
-  const MAX_LOG_LINES = 200;
+  const MAX_LOG_LINES = 200
 
   useEffect(() => {
     return () => {
-      if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
-    };
-  }, []);
+      if (heartbeatRef.current) window.clearInterval(heartbeatRef.current)
+    }
+  }, [])
 
-  const documentProcessor = useMemo(() => new DocumentProcessorEnhanced(), []);
+  const documentProcessor = useMemo(() => {
+    const dp = new DocumentProcessorEnhanced()
+    dp.setAccessToken(session?.access_token)
+    return dp
+  }, [session?.access_token])
 
   // Load template data if templateId is provided
-  const { 
-    data: template, 
-    isLoading: isTemplateLoading, 
-    error: templateError 
+  const {
+    data: template,
+    isLoading: isTemplateLoading,
+    error: templateError,
   } = useQuery<UnifiedTemplate | null>({
     queryKey: ['unified-template', selectedTemplateId, templateSource],
     queryFn: async (): Promise<UnifiedTemplate | null> => {
-      if (!selectedTemplateId) return null;
-      return await templateService.getTemplate(Number(selectedTemplateId)) as unknown as UnifiedTemplate;
+      if (!selectedTemplateId) return null
+      return (await templateService.getTemplate(
+        Number(selectedTemplateId)
+      )) as unknown as UnifiedTemplate
     },
     enabled: !!selectedTemplateId,
-  });
+  })
 
   // Helper function to save processed document to database
-  const saveProcessedDocument = useCallback(async (
-    _file: File,
-    _result: unknown,
-    _method: 'template_guided' | 'generic' | 'progressive'
-  ): Promise<{ id: string }> => {
-    // Placeholder: return stub id so navigation guard passes
-    return { id: 'stub-id' };
-  }, []);
+  const saveProcessedDocument = useCallback(
+    async (
+      _file: File,
+      _result: unknown,
+      _method: 'template_guided' | 'generic' | 'progressive'
+    ): Promise<{ id: string }> => {
+      // Placeholder: return stub id so navigation guard passes
+      return { id: 'stub-id' }
+    },
+    []
+  )
 
   // --- Logging helper (gated) ---
   const debugLog = useCallback((...args: unknown[]) => {
-    const viteEnv = (import.meta as unknown as { env?: Record<string, string> }).env;
+    const viteEnv = (import.meta as unknown as { env?: Record<string, string> })
+      .env
     // Only use Vite env vars (process.env doesn't exist in browser)
     if (viteEnv?.VITE_E2E_DEBUG) {
       // eslint-disable-next-line no-console
-      console.log('[DocumentWorkflow]', ...args);
+      console.log('[DocumentWorkflow]', ...args)
     }
-  }, []);
+  }, [])
 
   const resetStateForNewFile = (f: File) => {
-    setFile(f);
-    setError(null);
-    setProcessedDocument(null);
-    setTemplateExtractionResult(null);
-    setProgressiveResult(null);
-    setSelectedTemplate(null);
-    setIsProcessing(true);
+    setFile(f)
+    setError(null)
+    setProcessedDocument(null)
+    setTemplateExtractionResult(null)
+    setProgressiveResult(null)
+    setSelectedTemplate(null)
+    setIsProcessing(true)
 
-    console.log('templateExtractionResult', templateExtractionResult);
-    setProgressLogs([]);
-    setProcessingStarted(true);
-    setProgressUpdateCount(0);
-    setGenericProcessingStarted(false);
-    setExtractionMode(null);
-    setCorrelationId(null);
-    if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
-    heartbeatRef.current = window.setInterval(() => setHeartbeatTicks(t => t + 1), 5000);
-  };
+    console.log('templateExtractionResult', templateExtractionResult)
+    setProgressLogs([])
+    setProcessingStarted(true)
+    setProgressUpdateCount(0)
+    setGenericProcessingStarted(false)
+    setExtractionMode(null)
+    setCorrelationId(null)
+    if (heartbeatRef.current) window.clearInterval(heartbeatRef.current)
+    heartbeatRef.current = window.setInterval(
+      () => setHeartbeatTicks((t) => t + 1),
+      5000
+    )
+  }
 
   const finalizeProcessing = () => {
-    setIsProcessing(false);
+    setIsProcessing(false)
     if (heartbeatRef.current) {
-      window.clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
+      window.clearInterval(heartbeatRef.current)
+      heartbeatRef.current = null
     }
-  };
+  }
 
   const consumeProgressiveGenerator = async (
-    gen: AsyncGenerator<ProgressiveExtractionResult, TemplateExtractionResult, unknown>
+    gen: AsyncGenerator<
+      ProgressiveExtractionResult,
+      TemplateExtractionResult,
+      unknown
+    >
   ) => {
-    let updateCount = 0;
-    let lastSnapshot: ProgressiveExtractionResult | null = null;
+    let updateCount = 0
+    let lastSnapshot: ProgressiveExtractionResult | null = null
     for await (const snapshot of gen) {
-      updateCount++;
-      lastSnapshot = snapshot;
-      setProgressiveResult(snapshot);
-      setProgressLogs(prev => [
-        ...prev,
-        `UPDATE ${updateCount} fields:${Object.keys(snapshot.fieldProgress).length} complete:${snapshot.isComplete ? 'yes' : 'no'}`
-      ].slice(-MAX_LOG_LINES));
-      setProgressUpdateCount(updateCount);
-      await new Promise(r => setTimeout(r, 40)); // small delay guard
+      updateCount++
+      lastSnapshot = snapshot
+      setProgressiveResult(snapshot)
+      setProgressLogs((prev) =>
+        [
+          ...prev,
+          `UPDATE ${updateCount} fields:${Object.keys(snapshot.fieldProgress).length} complete:${snapshot.isComplete ? 'yes' : 'no'}`,
+        ].slice(-MAX_LOG_LINES)
+      )
+      setProgressUpdateCount(updateCount)
+      await new Promise((r) => setTimeout(r, 40)) // small delay guard
     }
-  setProgressLogs(prev => [...prev, 'COMPLETED'].slice(-MAX_LOG_LINES));
+    setProgressLogs((prev) => [...prev, 'COMPLETED'].slice(-MAX_LOG_LINES))
     if (lastSnapshot?.isComplete) {
-      const extractedFields: Record<string, ExtractedField> = {};
+      const extractedFields: Record<string, ExtractedField> = {}
       Object.entries(lastSnapshot.fieldProgress).forEach(([k, v]) => {
-        if (v.result) extractedFields[k] = v.result;
-      });
+        if (v.result) extractedFields[k] = v.result
+      })
       if (Object.keys(extractedFields).length > 0) {
         const progressiveResult = {
           content: lastSnapshot.content,
           metadata: lastSnapshot.metadata,
           structure: lastSnapshot.structure,
           template: lastSnapshot.template,
-          extractedFields
-        };
+          extractedFields,
+        }
         // eslint-disable-next-line no-console
-        console.log('📦 [Progressive] Setting templateExtractionResult with', Object.keys(extractedFields).length, 'fields:', extractedFields);
-        setTemplateExtractionResult(progressiveResult);
+        console.log(
+          '📦 [Progressive] Setting templateExtractionResult with',
+          Object.keys(extractedFields).length,
+          'fields:',
+          extractedFields
+        )
+        setTemplateExtractionResult(progressiveResult)
         // If backend embedded correlation id in metadata during progressive path
-        const cid = (lastSnapshot.metadata as Record<string, unknown>)?.correlationId as string | undefined;
-        if (cid) setCorrelationId(cid);
+        const cid = (lastSnapshot.metadata as Record<string, unknown>)
+          ?.correlationId as string | undefined
+        if (cid) setCorrelationId(cid)
       }
     }
-  };
+  }
 
-  const processWithTemplate = useCallback(async (f: File, tmpl: UnifiedTemplate) => {
-      const isSmart = isSmartTemplate(tmpl);
-      debugLog('Template detected. smart?', isSmart, 'progressive?', useProgressiveExtraction);
+  const processWithTemplate = useCallback(
+    async (f: File, tmpl: UnifiedTemplate) => {
+      const isSmart = isSmartTemplate(tmpl)
+      debugLog(
+        'Template detected. smart?',
+        isSmart,
+        'progressive?',
+        useProgressiveExtraction
+      )
       if (useProgressiveExtraction && isSmart) {
-        debugLog('Starting progressive extraction');
-        setExtractionMode('template-progressive');
+        debugLog('Starting progressive extraction')
+        setExtractionMode('template-progressive')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SmartTemplate type not exported from processor module
-  const gen = documentProcessor.processDocumentWithTemplateProgressive(f, tmpl as any) as AsyncGenerator<ProgressiveExtractionResult, TemplateExtractionResult, unknown>;
-  await consumeProgressiveGenerator(gen);
+        const gen = documentProcessor.processDocumentWithTemplateProgressive(
+          f,
+          tmpl as any
+        ) as AsyncGenerator<
+          ProgressiveExtractionResult,
+          TemplateExtractionResult,
+          unknown
+        >
+        await consumeProgressiveGenerator(gen)
       } else {
-        debugLog('Starting standard template extraction');
-        setExtractionMode('template-standard');
+        debugLog('Starting standard template extraction')
+        setExtractionMode('template-standard')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await documentProcessor.processDocumentWithTemplate(f, tmpl as any);
-  // eslint-disable-next-line no-console
-  console.log('📦 [Standard] Setting templateExtractionResult with', Object.keys(result.extractedFields || {}).length, 'fields:', result.extractedFields);
-  setTemplateExtractionResult(result as TemplateExtractionResult);
-        const cid = (result.metadata as Record<string, unknown>)?.correlationId as string | undefined;
-        if (cid) setCorrelationId(cid);
-        await saveProcessedDocument(f, result, 'template_guided');
+        const result = await documentProcessor.processDocumentWithTemplate(
+          f,
+          tmpl as any
+        )
+        // eslint-disable-next-line no-console
+        console.log(
+          '📦 [Standard] Setting templateExtractionResult with',
+          Object.keys(result.extractedFields || {}).length,
+          'fields:',
+          result.extractedFields
+        )
+        setTemplateExtractionResult(result as TemplateExtractionResult)
+        const cid = (result.metadata as Record<string, unknown>)
+          ?.correlationId as string | undefined
+        if (cid) setCorrelationId(cid)
+        await saveProcessedDocument(f, result, 'template_guided')
       }
-    }, [useProgressiveExtraction, documentProcessor, saveProcessedDocument, debugLog]);
+    },
+    [
+      useProgressiveExtraction,
+      documentProcessor,
+      saveProcessedDocument,
+      debugLog,
+    ]
+  )
 
-  const processGeneric = useCallback(async (f: File) => {
-      setGenericProcessingStarted(true);
-      debugLog('Starting generic docling processing');
-      setExtractionMode('generic');
-      const result = await documentProcessor.processDocumentWithDocling(f);
-      setProcessedDocument(result);
-      const cid = (result.metadata as Record<string, unknown>)?.correlationId as string | undefined;
-      if (cid) setCorrelationId(cid);
-      await saveProcessedDocument(f, result, 'generic');
-    }, [documentProcessor, saveProcessedDocument, debugLog]);
+  const processGeneric = useCallback(
+    async (f: File) => {
+      setGenericProcessingStarted(true)
+      debugLog('Starting generic docling processing')
+      setExtractionMode('generic')
+      const result = await documentProcessor.processDocumentWithDocling(f)
+      setProcessedDocument(result)
+      const cid = (result.metadata as Record<string, unknown>)
+        ?.correlationId as string | undefined
+      if (cid) setCorrelationId(cid)
+      await saveProcessedDocument(f, result, 'generic')
+    },
+    [documentProcessor, saveProcessedDocument, debugLog]
+  )
 
   // Backend health probe
   const checkBackendHealth = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch(API_ENDPOINTS.health, { method: 'GET', signal: AbortSignal.timeout(3000) });
-      return res.ok;
+      const res = await fetch(API_ENDPOINTS.health, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      })
+      return res.ok
     } catch {
-      return false;
+      return false
     }
-  }, []);
+  }, [])
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
-    if (!selectedFile) return;
-    resetStateForNewFile(selectedFile);
-    // Compute checksum early (B requirement) – ignore errors silently
-    (async () => {
+  const handleFileUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = event.target.files?.[0]
+      if (!selectedFile) return
+      resetStateForNewFile(selectedFile)
+      // Compute checksum early (B requirement) – ignore errors silently
+      ;(async () => {
+        try {
+          const buf = await selectedFile.arrayBuffer()
+          const hash = await crypto.subtle.digest('SHA-256', buf)
+          const hex = Array.from(new Uint8Array(hash))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+          setFileChecksum(hex)
+        } catch {
+          /* no-op */
+        }
+      })()
       try {
-        const buf = await selectedFile.arrayBuffer();
-        const hash = await crypto.subtle.digest('SHA-256', buf);
-        const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-        setFileChecksum(hex);
-      } catch { /* no-op */ }
-    })();
-    try {
-      // Early backend health gate
-      const healthy = await checkBackendHealth();
-      setBackendHealthy(healthy);
-      if (!healthy) {
-        debugLog('Backend health check failed - aborting processing');
-        setError('Backend service unavailable. Please try again shortly.');
-        finalizeProcessing();
-        return;
+        // Early backend health gate
+        const healthy = await checkBackendHealth()
+        setBackendHealthy(healthy)
+        if (!healthy) {
+          debugLog('Backend health check failed - aborting processing')
+          setError('Backend service unavailable. Please try again shortly.')
+          finalizeProcessing()
+          return
+        }
+        debugLog('File selected for processing', {
+          name: selectedFile.name,
+          size: selectedFile.size,
+          hasTemplate: !!template,
+        })
+        if (template) {
+          await processWithTemplate(selectedFile, template)
+        } else {
+          await processGeneric(selectedFile)
+        }
+      } catch (err) {
+        debugLog('Processing error', err)
+        setError(err instanceof Error ? err.message : 'Processing failed')
+      } finally {
+        finalizeProcessing()
       }
-      debugLog('File selected for processing', { name: selectedFile.name, size: selectedFile.size, hasTemplate: !!template });
-      if (template) {
-        await processWithTemplate(selectedFile, template);
-      } else {
-        await processGeneric(selectedFile);
-      }
-    } catch (err) {
-      debugLog('Processing error', err);
-      setError(err instanceof Error ? err.message : 'Processing failed');
-    } finally {
-      finalizeProcessing();
-    }
-  // Dependencies intentionally limited: template & handlers capture other stable refs
-  }, [template, processWithTemplate, processGeneric, debugLog, checkBackendHealth]);
+      // Dependencies intentionally limited: template & handlers capture other stable refs
+    },
+    [
+      template,
+      processWithTemplate,
+      processGeneric,
+      debugLog,
+      checkBackendHealth,
+    ]
+  )
 
   const handleTemplateSelection = useCallback((templateId: string) => {
-    setSelectedTemplate(templateId);
-  }, []);
+    setSelectedTemplate(templateId)
+  }, [])
 
   const handleWorkflowExecution = useCallback(async () => {
-    if (!processedDocument || !selectedTemplate) return;
+    if (!processedDocument || !selectedTemplate) return
 
     setWorkflowExecution({
       isExecuting: true,
       progress: 0,
       status: 'Executing workflow...',
-    });
+    })
 
     try {
       // Simulate progress updates
-      setWorkflowExecution(prev => ({ ...prev, progress: 25, status: 'Initializing workflow...' }));
-      
+      setWorkflowExecution((prev) => ({
+        ...prev,
+        progress: 25,
+        status: 'Initializing workflow...',
+      }))
+
       const result = await WorkflowClient.executeWorkflow({
         templateId: selectedTemplate,
         documentData: processedDocument,
         parameters: {},
-      });
+      })
 
-      setWorkflowExecution(prev => ({ ...prev, progress: 75, status: 'Processing results...' }));
+      setWorkflowExecution((prev) => ({
+        ...prev,
+        progress: 75,
+        status: 'Processing results...',
+      }))
 
       // Final completion
       setWorkflowExecution({
@@ -306,77 +410,103 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
         progress: 100,
         status: 'Workflow completed',
         result,
-      });
+      })
     } catch (err) {
       setWorkflowExecution({
         isExecuting: false,
         progress: 0,
         status: '',
         error: err instanceof Error ? err.message : 'Workflow execution failed',
-      });
+      })
     }
-  }, [processedDocument, selectedTemplate]);
+  }, [processedDocument, selectedTemplate])
 
-  const toggleStructureSection = useCallback((section: keyof typeof showStructure) => {
-    setShowStructure(prev => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  }, []);
+  const toggleStructureSection = useCallback(
+    (section: keyof typeof showStructure) => {
+      setShowStructure((prev) => ({
+        ...prev,
+        [section]: !prev[section],
+      }))
+    },
+    []
+  )
 
   const getSelectedTemplateName = useCallback(() => {
-    if (!selectedTemplate || !processedDocument) return '';
-    const t = processedDocument.templateSuggestions.find(ts => ts.templateId === selectedTemplate);
-    return t?.templateName || '';
-  }, [selectedTemplate, processedDocument]);
+    if (!selectedTemplate || !processedDocument) return ''
+    const t = processedDocument.templateSuggestions.find(
+      (ts) => ts.templateId === selectedTemplate
+    )
+    return t?.templateName || ''
+  }, [selectedTemplate, processedDocument])
 
   // Safe indentation utility (Tailwind can't generate dynamic classes reliably)
   const headingIndentClass = (level: number) => {
-    const map: Record<number, string> = { 1: 'pl-2', 2: 'pl-4', 3: 'pl-6', 4: 'pl-8', 5: 'pl-10', 6: 'pl-12' };
-    return map[Math.min(6, Math.max(1, level))];
-  };
+    const map: Record<number, string> = {
+      1: 'pl-2',
+      2: 'pl-4',
+      3: 'pl-6',
+      4: 'pl-8',
+      5: 'pl-10',
+      6: 'pl-12',
+    }
+    return map[Math.min(6, Math.max(1, level))]
+  }
 
   return (
-    <div data-testid="document-workflow-root">
+    <div data-testid='document-workflow-root'>
       {processingStarted && (
-        <div data-testid="processing-init" className="hidden" />
+        <div data-testid='processing-init' className='hidden' />
       )}
       {progressUpdateCount > 0 && (
-        <div data-testid="processing-heartbeat" data-updates={progressUpdateCount} data-ticks={heartbeatTicks} className="hidden" />
+        <div
+          data-testid='processing-heartbeat'
+          data-updates={progressUpdateCount}
+          data-ticks={heartbeatTicks}
+          className='hidden'
+        />
       )}
       {genericProcessingStarted && (
-        <div data-testid="processing-generic-started" className="hidden" />
+        <div data-testid='processing-generic-started' className='hidden' />
       )}
       {processingStarted && !backendHealthy && (
-        <div data-testid="processing-backend-unhealthy" className="hidden" />
+        <div data-testid='processing-backend-unhealthy' className='hidden' />
       )}
       {extractionMode && (
-        <div data-testid="extraction-mode" data-mode={extractionMode} className="hidden" />
+        <div
+          data-testid='extraction-mode'
+          data-mode={extractionMode}
+          className='hidden'
+        />
       )}
       {fileChecksum && (
-        <div data-testid="file-checksum" data-value={fileChecksum} className="hidden" />
+        <div
+          data-testid='file-checksum'
+          data-value={fileChecksum}
+          className='hidden'
+        />
       )}
       {correlationId && (
-        <div data-testid="correlation-id" data-value={correlationId} className="hidden" />
+        <div
+          data-testid='correlation-id'
+          data-value={correlationId}
+          className='hidden'
+        />
       )}
       {progressiveResult?.isComplete && (
-        <div data-testid="progressive-complete" className="hidden" />
+        <div data-testid='progressive-complete' className='hidden' />
       )}
-        <div className="flex items-center gap-2">
-          
-          
-        </div>
-        
-        <Separator className="shadow-sm" />
+      <div className='flex items-center gap-2'></div>
+
+      <Separator className='shadow-sm' />
 
       {/* Template Information */}
       {selectedTemplateId && (
-        <div className="space-y-4">
+        <div className='space-y-4'>
           {isTemplateLoading && (
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
+              <CardContent className='pt-6'>
+                <div className='flex items-center gap-2'>
+                  <Loader2 className='h-5 w-5 animate-spin' />
                   <span>Loading template...</span>
                 </div>
               </CardContent>
@@ -385,9 +515,9 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
           {templateError && (
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2">
-                  <XCircle className="w-5 h-5 text-red-500" />
+              <CardContent className='pt-6'>
+                <div className='flex items-center gap-2'>
+                  <XCircle className='h-5 w-5 text-red-500' />
                   <span>Error loading template: {templateError.message}</span>
                 </div>
               </CardContent>
@@ -397,39 +527,45 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
           {template && (
             <Card>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-xl flex items-center gap-2">
-                      <FileText className="w-6 h-6 text-blue-600" />
+                <div className='flex items-start justify-between'>
+                  <div className='flex-1'>
+                    <CardTitle className='flex items-center gap-2 text-xl'>
+                      <FileText className='h-6 w-6 text-blue-600' />
                       {template.name}
                     </CardTitle>
-                    <p className="text-muted-foreground mt-1">{template.description}</p>
+                    <p className='text-muted-foreground mt-1'>
+                      {template.description}
+                    </p>
                   </div>
-                  <div className="flex gap-2 ml-4">
-                    <Badge variant="secondary">
-                      {template.category}
-                    </Badge>
-                    <Badge variant={isSmartTemplate(template) ? "default" : "outline"}>
-                      {isSmartTemplate(template) ? "Smart Template" : "Standard"}
+                  <div className='ml-4 flex gap-2'>
+                    <Badge variant='secondary'>{template.category}</Badge>
+                    <Badge
+                      variant={
+                        isSmartTemplate(template) ? 'default' : 'outline'
+                      }
+                    >
+                      {isSmartTemplate(template)
+                        ? 'Smart Template'
+                        : 'Standard'}
                     </Badge>
                   </div>
                 </div>
               </CardHeader>
-              
-              <CardContent className="space-y-6">
+
+              <CardContent className='space-y-6'>
                 {/* Template Stats */}
-                <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
+                <div className='text-muted-foreground flex items-center gap-6 text-sm'>
+                  <div className='flex items-center gap-1'>
+                    <Users className='h-4 w-4' />
                     <span>{template.usage_count} uses</span>
                   </div>
                 </div>
 
                 {/* Tags */}
                 {template.tags && template.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className='flex flex-wrap gap-2'>
                     {template.tags.map((tag, index) => (
-                      <Badge key={index} variant="outline" className="text-xs">
+                      <Badge key={index} variant='outline' className='text-xs'>
                         {tag}
                       </Badge>
                     ))}
@@ -437,38 +573,48 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 )}
 
                 {/* Smart Variables */}
-                {isSmartTemplate(template) && template.smart_variables.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-sm text-foreground mb-3">
-                      Template Fields ({template.smart_variables.length} fields):
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {template.smart_variables.map((variable) => (
-                        <div key={variable.id} className="bg-muted p-3 rounded-lg">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-sm text-foreground">
-                              {variable.name}
-                            </span>
-                            <Badge variant="outline" className="text-xs">
-                              {variable.type}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mb-2">{variable.description}</p>
-                          {variable.extraction_hints && variable.extraction_hints.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              Hints: {variable.extraction_hints.join(', ')}
+                {isSmartTemplate(template) &&
+                  template.smart_variables.length > 0 && (
+                    <div>
+                      <h4 className='text-foreground mb-3 text-sm font-medium'>
+                        Template Fields ({template.smart_variables.length}{' '}
+                        fields):
+                      </h4>
+                      <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                        {template.smart_variables.map((variable) => (
+                          <div
+                            key={variable.id}
+                            className='bg-muted rounded-lg p-3'
+                          >
+                            <div className='mb-1 flex items-center gap-2'>
+                              <span className='text-foreground text-sm font-medium'>
+                                {variable.name}
+                              </span>
+                              <Badge variant='outline' className='text-xs'>
+                                {variable.type}
+                              </Badge>
+                            </div>
+                            <p className='text-muted-foreground mb-2 text-xs'>
+                              {variable.description}
                             </p>
-                          )}
-                        </div>
-                      ))}
+                            {variable.extraction_hints &&
+                              variable.extraction_hints.length > 0 && (
+                                <p className='text-muted-foreground text-xs'>
+                                  Hints: {variable.extraction_hints.join(', ')}
+                                </p>
+                              )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Template Preview */}
-                <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
-                  <h4 className="font-medium text-sm text-blue-900 dark:text-blue-100 mb-2">Template Preview:</h4>
-                  <div className="bg-background p-3 rounded text-sm font-mono max-h-32 overflow-y-auto border">
+                <div className='rounded-lg bg-blue-50 p-4 dark:bg-blue-950'>
+                  <h4 className='mb-2 text-sm font-medium text-blue-900 dark:text-blue-100'>
+                    Template Preview:
+                  </h4>
+                  <div className='bg-background max-h-32 overflow-y-auto rounded border p-3 font-mono text-sm'>
                     {isSmartTemplate(template) ? template.template_content : ''}
                   </div>
                 </div>
@@ -482,35 +628,37 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
       {selectedTemplateId && template && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
+            <CardTitle className='flex items-center gap-2'>
+              <Settings className='h-5 w-5' />
               Extraction Settings
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
+          <CardContent className='space-y-4'>
+            <div className='flex items-center space-x-2'>
               <Checkbox
-                id="progressive"
+                id='progressive'
                 checked={useProgressiveExtraction}
-                onCheckedChange={(checked) => setUseProgressiveExtraction(checked === true)}
+                onCheckedChange={(checked) =>
+                  setUseProgressiveExtraction(checked === true)
+                }
                 disabled={!isSmartTemplate(template)}
               />
-              <label htmlFor="progressive" className="text-sm font-medium">
+              <label htmlFor='progressive' className='text-sm font-medium'>
                 Enable progressive field extraction
               </label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {isSmartTemplate(template) 
-                ? "See extraction progress in real-time as each field is processed"
-                : "Progressive extraction is only available for Smart Templates"
-              }
+            <p className='text-muted-foreground text-xs'>
+              {isSmartTemplate(template)
+                ? 'See extraction progress in real-time as each field is processed'
+                : 'Progressive extraction is only available for Smart Templates'}
             </p>
-            
+
             {isSmartTemplate(template) && (
-              <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  <strong>Smart Template Features:</strong> AI-powered extraction with confidence scores, 
-                  source attribution, and advanced validation.
+              <div className='rounded-lg bg-blue-50 p-3 dark:bg-blue-950'>
+                <p className='text-sm text-blue-800 dark:text-blue-200'>
+                  <strong>Smart Template Features:</strong> AI-powered
+                  extraction with confidence scores, source attribution, and
+                  advanced validation.
                 </p>
               </div>
             )}
@@ -519,7 +667,7 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
       )}
 
       {/* File Upload */}
-      <WorkflowFileUpload 
+      <WorkflowFileUpload
         file={file}
         isProcessing={isProcessing}
         onFileUpload={handleFileUpload}
@@ -527,11 +675,13 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
       {/* Processing Status */}
       {isProcessing && (
-        <Card data-testid="document-processing-status">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span data-testid="document-processing-status-text">Processing document...</span>
+        <Card data-testid='document-processing-status'>
+          <CardContent className='pt-6'>
+            <div className='flex items-center gap-2'>
+              <Loader2 className='h-4 w-4 animate-spin' />
+              <span data-testid='document-processing-status-text'>
+                Processing document...
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -539,17 +689,19 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
       {/* Progressive Extraction Log Lines */}
       {progressLogs.length > 0 && (
-        <Card data-testid="processing-logs">
+        <Card data-testid='processing-logs'>
           <CardHeader>
-            <CardTitle className="text-sm">Processing Logs ({progressLogs.length})</CardTitle>
+            <CardTitle className='text-sm'>
+              Processing Logs ({progressLogs.length})
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-48 overflow-y-auto space-y-1 text-xs font-mono">
+            <div className='max-h-48 space-y-1 overflow-y-auto font-mono text-xs'>
               {progressLogs.map((line, idx) => (
                 <div
                   key={idx}
-                  data-testid="processing-log-line"
-                  className="whitespace-pre-wrap"
+                  data-testid='processing-log-line'
+                  className='whitespace-pre-wrap'
                 >
                   {line}
                 </div>
@@ -561,29 +713,31 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
       {/* Error Display */}
       {error && (
-        <Alert variant="destructive">
-          <XCircle className="w-4 h-4" />
+        <Alert variant='destructive'>
+          <XCircle className='h-4 w-4' />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       {/* Progressive Extraction Results */}
       {progressiveResult && (
-        <div className="space-y-6" data-testid="document-evaluation">
+        <div className='space-y-6' data-testid='document-evaluation'>
           <ProgressiveExtractionDisplay progressiveResult={progressiveResult} />
-          
+
           {/* Document Content (for progressive results) */}
           {progressiveResult.content && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
+                <CardTitle className='flex items-center gap-2'>
+                  <FileText className='h-5 w-5' />
                   Document Content
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="bg-muted p-4 rounded-lg max-h-60 overflow-y-auto">
-                  <pre className="text-sm whitespace-pre-wrap">{progressiveResult.content}</pre>
+                <div className='bg-muted max-h-60 overflow-y-auto rounded-lg p-4'>
+                  <pre className='text-sm whitespace-pre-wrap'>
+                    {progressiveResult.content}
+                  </pre>
                 </div>
               </CardContent>
             </Card>
@@ -593,84 +747,123 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
       {/* Template Extraction Results */}
       {templateExtractionResult && !progressiveResult && (
-  <div className="space-y-6" data-testid="document-processed">
+        <div className='space-y-6' data-testid='document-processed'>
           {/* Extracted Fields */}
-          <Card data-testid="extracted-fields">
+          <Card data-testid='extracted-fields'>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
+              <CardTitle className='flex items-center gap-2'>
+                <CheckCircle className='h-5 w-5 text-green-500' />
                 Extracted Template Fields
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className='space-y-6'>
               {/* Form Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(templateExtractionResult.extractedFields).map(([fieldName, field]) => {
-                  const variable = templateExtractionResult.template.smart_variables.find(v => v.name === fieldName);
-                  const confidenceColor = field.confidence >= 0.8 ? 'text-green-600 dark:text-green-400' :
-                                        field.confidence >= 0.6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
-                  const confidenceLabel = field.confidence >= 0.8 ? 'High' :
-                                        field.confidence >= 0.6 ? 'Medium' : 'Low';
+              <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+                {Object.entries(templateExtractionResult.extractedFields).map(
+                  ([fieldName, field]) => {
+                    const variable =
+                      templateExtractionResult.template.smart_variables.find(
+                        (v) => v.name === fieldName
+                      )
+                    const confidenceColor =
+                      field.confidence >= 0.8
+                        ? 'text-green-600 dark:text-green-400'
+                        : field.confidence >= 0.6
+                          ? 'text-yellow-600 dark:text-yellow-400'
+                          : 'text-red-600 dark:text-red-400'
+                    const confidenceLabel =
+                      field.confidence >= 0.8
+                        ? 'High'
+                        : field.confidence >= 0.6
+                          ? 'Medium'
+                          : 'Low'
 
-                  return (
-                    <div key={fieldName} className="space-y-2" data-testid="extracted-field">
-                      <Label htmlFor={`field-${fieldName}`} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{fieldName}</span>
-                          {variable && (
-                            <Badge variant="outline" className="text-xs">
-                              {variable.type}
-                            </Badge>
+                    return (
+                      <div
+                        key={fieldName}
+                        className='space-y-2'
+                        data-testid='extracted-field'
+                      >
+                        <Label
+                          htmlFor={`field-${fieldName}`}
+                          className='flex items-center justify-between'
+                        >
+                          <div className='flex items-center gap-2'>
+                            <span className='font-medium'>{fieldName}</span>
+                            {variable && (
+                              <Badge variant='outline' className='text-xs'>
+                                {variable.type}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className='flex items-center gap-2'>
+                            <span
+                              className={`text-xs font-medium ${confidenceColor}`}
+                            >
+                              {confidenceLabel}
+                            </span>
+                            <span className='text-muted-foreground text-xs'>
+                              {Math.round(field.confidence * 100)}%
+                            </span>
+                          </div>
+                        </Label>
+
+                        <Input
+                          id={`field-${fieldName}`}
+                          value={String(field.value)}
+                          readOnly
+                          className='font-mono text-sm'
+                        />
+
+                        {variable && (
+                          <p className='text-muted-foreground text-xs'>
+                            {variable.description}
+                          </p>
+                        )}
+
+                        {field.sourceText &&
+                          !field.sourceText.startsWith(
+                            'No extraction found'
+                          ) && (
+                            <div className='text-muted-foreground text-xs'>
+                              <span className='font-medium'>Source: </span>
+                              <span className='italic'>
+                                "{field.sourceText}"
+                              </span>
+                            </div>
                           )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-medium ${confidenceColor}`}>
-                            {confidenceLabel}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {Math.round(field.confidence * 100)}%
-                          </span>
-                        </div>
-                      </Label>
-
-                      <Input
-                        id={`field-${fieldName}`}
-                        value={String(field.value)}
-                        readOnly
-                        className="font-mono text-sm"
-                      />
-
-                      {variable && (
-                        <p className="text-xs text-muted-foreground">{variable.description}</p>
-                      )}
-
-                      {field.sourceText && !field.sourceText.startsWith('No extraction found') && (
-                        <div className="text-xs text-muted-foreground">
-                          <span className="font-medium">Source: </span>
-                          <span className="italic">"{field.sourceText}"</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      </div>
+                    )
+                  }
+                )}
               </div>
 
               {/* Raw JSON Toggle */}
-              <div className="border-t pt-4">
+              <div className='border-t pt-4'>
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant='ghost'
+                  size='sm'
                   onClick={() => setShowRawJSON(!showRawJSON)}
-                  className="flex items-center gap-2"
+                  className='flex items-center gap-2'
                 >
-                  {showRawJSON ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  Raw JSON ({Object.keys(templateExtractionResult.extractedFields).length} fields)
+                  {showRawJSON ? (
+                    <ChevronDown className='h-4 w-4' />
+                  ) : (
+                    <ChevronRight className='h-4 w-4' />
+                  )}
+                  Raw JSON (
+                  {Object.keys(templateExtractionResult.extractedFields).length}{' '}
+                  fields)
                 </Button>
 
                 {showRawJSON && (
-                  <div className="mt-3 bg-muted p-4 rounded-lg max-h-96 overflow-y-auto">
-                    <pre className="text-xs font-mono whitespace-pre-wrap">
-                      {JSON.stringify(templateExtractionResult.extractedFields, null, 2)}
+                  <div className='bg-muted mt-3 max-h-96 overflow-y-auto rounded-lg p-4'>
+                    <pre className='font-mono text-xs whitespace-pre-wrap'>
+                      {JSON.stringify(
+                        templateExtractionResult.extractedFields,
+                        null,
+                        2
+                      )}
                     </pre>
                   </div>
                 )}
@@ -681,14 +874,16 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
           {/* Document Content */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
+              <CardTitle className='flex items-center gap-2'>
+                <FileText className='h-5 w-5' />
                 Document Content
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="bg-muted p-4 rounded-lg max-h-60 overflow-y-auto">
-                <pre className="text-sm whitespace-pre-wrap">{templateExtractionResult.content}</pre>
+              <div className='bg-muted max-h-60 overflow-y-auto rounded-lg p-4'>
+                <pre className='text-sm whitespace-pre-wrap'>
+                  {templateExtractionResult.content}
+                </pre>
               </div>
             </CardContent>
           </Card>
@@ -699,25 +894,33 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
               <CardTitle>Document Structure</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className='space-y-4'>
                 {/* Headings */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('headings')}
-                    className="mb-2"
+                    className='mb-2'
                   >
-                    Headings ({templateExtractionResult.structure.headings.length})
+                    Headings (
+                    {templateExtractionResult.structure.headings.length})
                   </Button>
                   {showStructure.headings && (
-                    <div className="space-y-2 ml-4">
-                      {templateExtractionResult.structure.headings.map((heading) => {
-                        const key = `${heading.text}-${heading.position}`;
-                        return (
-                          <div key={key} className={`${headingIndentClass(heading.level)} py-1 font-medium`}>{heading.text}</div>
-                        );
-                      })}
+                    <div className='ml-4 space-y-2'>
+                      {templateExtractionResult.structure.headings.map(
+                        (heading) => {
+                          const key = `${heading.text}-${heading.position}`
+                          return (
+                            <div
+                              key={key}
+                              className={`${headingIndentClass(heading.level)} py-1 font-medium`}
+                            >
+                              {heading.text}
+                            </div>
+                          )
+                        }
+                      )}
                     </div>
                   )}
                 </div>
@@ -725,20 +928,26 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 {/* Tables */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('tables')}
-                    className="mb-2"
+                    className='mb-2'
                   >
                     Tables ({templateExtractionResult.structure.tables.length})
                   </Button>
                   {showStructure.tables && (
-                    <div className="space-y-2 ml-4">
-                      {templateExtractionResult.structure.tables.map((table, index) => (
-                        <div key={index} className="text-sm text-muted-foreground">
-                          Table {index + 1}: {table.rows} rows, {table.columns} columns
-                        </div>
-                      ))}
+                    <div className='ml-4 space-y-2'>
+                      {templateExtractionResult.structure.tables.map(
+                        (table, index) => (
+                          <div
+                            key={index}
+                            className='text-muted-foreground text-sm'
+                          >
+                            Table {index + 1}: {table.rows} rows,{' '}
+                            {table.columns} columns
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
@@ -746,25 +955,31 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 {/* Images */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('images')}
-                    className="mb-2"
+                    className='mb-2'
                   >
                     Images ({templateExtractionResult.structure.images.length})
                   </Button>
                   {showStructure.images && (
-                    <div className="space-y-2 ml-4">
-                      {templateExtractionResult.structure.images.map((image, index) => (
-                        <div key={index} className="text-sm text-muted-foreground">
-                          {image.alt || `Image ${index + 1}`}
-                          {image.dimensions && (
-                            <span className="ml-2">
-                              ({image.dimensions.width}x{image.dimensions.height})
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                    <div className='ml-4 space-y-2'>
+                      {templateExtractionResult.structure.images.map(
+                        (image, index) => (
+                          <div
+                            key={index}
+                            className='text-muted-foreground text-sm'
+                          >
+                            {image.alt || `Image ${index + 1}`}
+                            {image.dimensions && (
+                              <span className='ml-2'>
+                                ({image.dimensions.width}x
+                                {image.dimensions.height})
+                              </span>
+                            )}
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
@@ -776,24 +991,24 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
 
       {/* Processed Document Results (Generic Processing) */}
       {processedDocument && !templateExtractionResult && (
-        <div className="space-y-6" data-testid="generic-processed-document">
+        <div className='space-y-6' data-testid='generic-processed-document'>
           {/* Document Info */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
+              <CardTitle className='flex items-center gap-2'>
+                <FileText className='h-5 w-5' />
                 {processedDocument.metadata.title || 'Processed Document'}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className='grid grid-cols-2 gap-4 text-sm md:grid-cols-4'>
                 <div>
-                  <span className="font-semibold">Format:</span>
+                  <span className='font-semibold'>Format:</span>
                   <div>{processedDocument.metadata.format}</div>
                 </div>
                 {processedDocument.metadata.pages && (
                   <div>
-                    <span className="font-semibold">Pages:</span>
+                    <span className='font-semibold'>Pages:</span>
                     <div>{processedDocument.metadata.pages}</div>
                   </div>
                 )}
@@ -807,34 +1022,44 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
               <CardTitle>Template Suggestions</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className='space-y-3'>
                 {processedDocument.templateSuggestions.map((suggestion) => (
                   <div
                     key={suggestion.templateId}
-                    className={`p-4 border rounded-lg ${
+                    className={`rounded-lg border p-4 ${
                       selectedTemplate === suggestion.templateId
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
                         : 'border-border'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className='flex items-center justify-between'>
                       <div>
-                        <h3 className="font-semibold">{suggestion.templateName}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="secondary">
+                        <h3 className='font-semibold'>
+                          {suggestion.templateName}
+                        </h3>
+                        <div className='mt-1 flex items-center gap-2'>
+                          <Badge variant='secondary'>
                             {Math.round(suggestion.confidence * 100)}%
                           </Badge>
-                          <span className="text-sm text-muted-foreground">
+                          <span className='text-muted-foreground text-sm'>
                             {suggestion.matchReasons.join(', ')}
                           </span>
                         </div>
                       </div>
                       <Button
-                        variant={selectedTemplate === suggestion.templateId ? "default" : "outline"}
-                        onClick={() => handleTemplateSelection(suggestion.templateId)}
+                        variant={
+                          selectedTemplate === suggestion.templateId
+                            ? 'default'
+                            : 'outline'
+                        }
+                        onClick={() =>
+                          handleTemplateSelection(suggestion.templateId)
+                        }
                         aria-label={`Select ${suggestion.templateName}`}
                       >
-                        {selectedTemplate === suggestion.templateId ? 'Selected' : 'Select'}
+                        {selectedTemplate === suggestion.templateId
+                          ? 'Selected'
+                          : 'Select'}
                       </Button>
                     </div>
                   </div>
@@ -849,24 +1074,29 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
               <CardTitle>Document Structure</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <div className='space-y-4'>
                 {/* Headings */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('headings')}
-                    className="mb-2"
+                    className='mb-2'
                   >
                     Headings ({processedDocument.structure.headings.length})
                   </Button>
                   {showStructure.headings && (
-                    <div className="space-y-2 ml-4">
+                    <div className='ml-4 space-y-2'>
                       {processedDocument.structure.headings.map((heading) => {
-                        const key = `${heading.text}-${heading.position}`;
+                        const key = `${heading.text}-${heading.position}`
                         return (
-                          <div key={key} className={`${headingIndentClass(heading.level)} py-1 font-medium`}>{heading.text}</div>
-                        );
+                          <div
+                            key={key}
+                            className={`${headingIndentClass(heading.level)} py-1 font-medium`}
+                          >
+                            {heading.text}
+                          </div>
+                        )
                       })}
                     </div>
                   )}
@@ -875,21 +1105,27 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 {/* Tables */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('tables')}
-                    className="mb-2"
-                    aria-label="Toggle tables"
+                    className='mb-2'
+                    aria-label='Toggle tables'
                   >
                     Tables ({processedDocument.structure.tables.length})
                   </Button>
                   {showStructure.tables && (
-                    <div className="space-y-2 ml-4">
-                      {processedDocument.structure.tables.map((table, index) => (
-                        <div key={index} className="text-sm text-muted-foreground">
-                          Table {index + 1}: {table.rows} rows, {table.columns} columns
-                        </div>
-                      ))}
+                    <div className='ml-4 space-y-2'>
+                      {processedDocument.structure.tables.map(
+                        (table, index) => (
+                          <div
+                            key={index}
+                            className='text-muted-foreground text-sm'
+                          >
+                            Table {index + 1}: {table.rows} rows,{' '}
+                            {table.columns} columns
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
@@ -897,25 +1133,31 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 {/* Images */}
                 <div>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant='ghost'
+                    size='sm'
                     onClick={() => toggleStructureSection('images')}
-                    className="mb-2"
+                    className='mb-2'
                   >
                     Images ({processedDocument.structure.images.length})
                   </Button>
                   {showStructure.images && (
-                    <div className="space-y-2 ml-4">
-                      {processedDocument.structure.images.map((image, index) => (
-                        <div key={index} className="text-sm text-muted-foreground">
-                          {image.alt || `Image ${index + 1}`}
-                          {image.dimensions && (
-                            <span className="ml-2">
-                              ({image.dimensions.width}x{image.dimensions.height})
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                    <div className='ml-4 space-y-2'>
+                      {processedDocument.structure.images.map(
+                        (image, index) => (
+                          <div
+                            key={index}
+                            className='text-muted-foreground text-sm'
+                          >
+                            {image.alt || `Image ${index + 1}`}
+                            {image.dimensions && (
+                              <span className='ml-2'>
+                                ({image.dimensions.width}x
+                                {image.dimensions.height})
+                              </span>
+                            )}
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
@@ -926,9 +1168,9 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
           {/* Selected Template Display */}
           {selectedTemplate && (
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
+              <CardContent className='pt-6'>
+                <div className='flex items-center gap-2'>
+                  <CheckCircle className='h-5 w-5 text-green-500' />
                   <span>Selected template: {getSelectedTemplateName()}</span>
                 </div>
               </CardContent>
@@ -942,47 +1184,57 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
                 <CardTitle>Execute Workflow</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {!workflowExecution.isExecuting && !workflowExecution.result && !workflowExecution.error && (
-                    <Button
-                      onClick={handleWorkflowExecution}
-                      className="w-full"
-                      aria-label="Execute workflow"
-                    >
-                      Execute Workflow with {getSelectedTemplateName()}
-                    </Button>
-                  )}
+                <div className='space-y-4'>
+                  {!workflowExecution.isExecuting &&
+                    !workflowExecution.result &&
+                    !workflowExecution.error && (
+                      <Button
+                        onClick={handleWorkflowExecution}
+                        className='w-full'
+                        aria-label='Execute workflow'
+                      >
+                        Execute Workflow with {getSelectedTemplateName()}
+                      </Button>
+                    )}
 
                   {workflowExecution.isExecuting && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                    <div className='space-y-2'>
+                      <div className='flex items-center gap-2'>
+                        <Loader2 className='h-4 w-4 animate-spin' />
                         <span>Executing workflow...</span>
                       </div>
-                      <Progress value={workflowExecution.progress} className="w-full" />
-                      <div className="text-sm text-muted-foreground">{workflowExecution.status}</div>
+                      <Progress
+                        value={workflowExecution.progress}
+                        className='w-full'
+                      />
+                      <div className='text-muted-foreground text-sm'>
+                        {workflowExecution.status}
+                      </div>
                     </div>
                   )}
 
-                  {workflowExecution.result !== undefined && workflowExecution.result !== null && (
-                    <Alert>
-                      <CheckCircle className="w-4 h-4" />
-                      <AlertDescription>
-                        {`Workflow completed successfully! Result: ${(() => {
-                          try {
-                            return JSON.stringify(workflowExecution.result);
-                          } catch {
-                            return String(workflowExecution.result);
-                          }
-                        })()}`}
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  {workflowExecution.result !== undefined &&
+                    workflowExecution.result !== null && (
+                      <Alert>
+                        <CheckCircle className='h-4 w-4' />
+                        <AlertDescription>
+                          {`Workflow completed successfully! Result: ${(() => {
+                            try {
+                              return JSON.stringify(workflowExecution.result)
+                            } catch {
+                              return String(workflowExecution.result)
+                            }
+                          })()}`}
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
                   {workflowExecution.error && (
-                    <Alert variant="destructive">
-                      <XCircle className="w-4 h-4" />
-                      <AlertDescription>{workflowExecution.error}</AlertDescription>
+                    <Alert variant='destructive'>
+                      <XCircle className='h-4 w-4' />
+                      <AlertDescription>
+                        {workflowExecution.error}
+                      </AlertDescription>
                     </Alert>
                   )}
                 </div>
@@ -992,5 +1244,5 @@ export function DocumentWorkflow({ selectedTemplateId, templateSource }: Documen
         </div>
       )}
     </div>
-  );
+  )
 }
