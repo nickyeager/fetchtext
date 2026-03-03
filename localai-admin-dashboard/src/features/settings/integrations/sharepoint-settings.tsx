@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { useOrganization } from '@/context/organization-context'
 import { integrationService, integrationKeys } from '@/lib/services/integration-service'
 import { IntegrationCard } from '@/components/integrations/IntegrationCard'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function SharePointSettings() {
   const { activeOrganization } = useOrganization()
@@ -12,7 +14,7 @@ export function SharePointSettings() {
   const navigate = useNavigate()
   const [callbackProcessed, setCallbackProcessed] = useState(false)
 
-  const { data: integrations } = useQuery({
+  const { data: integrations, isLoading: loadingIntegrations } = useQuery({
     queryKey: integrationKeys.list(),
     queryFn: () => integrationService.listIntegrations(),
   })
@@ -41,6 +43,20 @@ export function SharePointSettings() {
       navigate({ to: '/settings/integrations', search: {}, replace: true })
     }
   }, [callbackProcessed, navigate, refetch, activeOrganization?.id])
+
+  if (loadingIntegrations) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="mt-2 h-4 w-64" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (!activeOrganization) return null
 

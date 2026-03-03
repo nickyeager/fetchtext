@@ -180,46 +180,36 @@ test.describe('SharePoint/OneDrive OAuth Integration', () => {
   test('Connect button triggers OAuth initiation', async ({ page }) => {
     await page.goto(`${FRONTEND_URL}/settings/integrations`)
     await page.waitForLoadState('domcontentloaded')
-    await page.waitForTimeout(3000) // Allow JS hydration + API calls
 
-    // Find the SharePoint/Microsoft card specifically, then scope buttons to it
+    // Wait for the SharePoint card to finish loading (skeleton → real content)
+    // The card shows a Skeleton while the integrations list API resolves,
+    // then renders the real card with Connect/Disconnect/Not Configured state.
     const microsoftCard = page.locator('[class*="card"]').filter({
       hasText: /SharePoint|Microsoft 365|OneDrive/i,
     }).first()
-    await expect(microsoftCard).toBeVisible({ timeout: 15000 })
+    await expect(microsoftCard).toBeVisible({ timeout: 20000 })
 
     const connectBtn = microsoftCard.getByRole('button', { name: /connect/i })
     const disconnectBtn = microsoftCard.getByRole('button', { name: /disconnect/i })
 
     // If already connected, disconnect first
-    if (await disconnectBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await disconnectBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       console.log('[Test] Microsoft already connected, disconnecting first...')
       await disconnectBtn.click()
       await page.waitForTimeout(3000)
       await page.reload()
       await page.waitForLoadState('domcontentloaded')
-      await page.waitForTimeout(2000)
     }
 
-    // Now find Connect button within the Microsoft card
+    // Wait for the card to load after potential reload
     const microsoftCardRefresh = page.locator('[class*="card"]').filter({
       hasText: /SharePoint|Microsoft 365|OneDrive/i,
     }).first()
-    const connectBtnRefresh = microsoftCardRefresh.getByRole('button', { name: /connect/i })
+    await expect(microsoftCardRefresh).toBeVisible({ timeout: 20000 })
 
-    // Card may show "Not Configured" (server credentials missing) instead of Connect button
-    const isConnectVisible = await connectBtnRefresh.isVisible({ timeout: 5000 }).catch(() => false)
-    if (!isConnectVisible) {
-      const notConfigured = await microsoftCardRefresh.locator('text=Not Configured').isVisible().catch(() => false)
-      if (notConfigured) {
-        console.log('[Test] SharePoint card shows "Not Configured" — server-side credentials may be incomplete')
-        test.skip(true, 'SharePoint not fully configured — no Connect button available')
-        return
-      }
-      console.log('[Test] Connect button not visible — skipping')
-      test.skip(true, 'Connect button not visible on SharePoint card')
-      return
-    }
+    // Wait for the Connect button — give enough time for the integrations list API to resolve
+    const connectBtnRefresh = microsoftCardRefresh.getByRole('button', { name: /connect/i })
+    await expect(connectBtnRefresh).toBeVisible({ timeout: 15000 })
 
     // Listen for the OAuth initiation fetch to the backend
     const requestPromise = page.waitForRequest(
@@ -443,28 +433,41 @@ test.describe('SSO Settings', () => {
   })
 
   test('SSO settings page renders with SP metadata', async ({ page }) => {
+    if (IS_PRODUCTION) test.setTimeout(60_000)
+
     await page.goto(`${FRONTEND_URL}/settings/organization`)
     await page.waitForLoadState('domcontentloaded')
 
     // Heading should always render
     await expect(page.getByRole('heading', { name: 'Single Sign-On' })).toBeVisible({ timeout: 10_000 })
 
-    // Wait for SSO status to load (may stay stuck at "Loading SSO status..." if API fails)
-    const loaded = await page.getByText('SAML SSO').isVisible({ timeout: 15_000 }).catch(() => false)
+    // Wait for organization context + SSO status to load.
+    // The component initially shows "Please select an organization" or "Loading SSO status..."
+    // before the real content appears. Wait for "SAML SSO" card title which indicates full load.
+    // NOTE: locator.isVisible() does NOT wait — use waitFor() instead.
+    let loaded = false
+    try {
+      await page.getByText('SAML SSO').waitFor({ state: 'visible', timeout: 25_000 })
+      loaded = true
+    } catch {
+      loaded = false
+    }
 
     if (loaded) {
       await expect(page.getByText('ACS URL')).toBeVisible({ timeout: 5_000 })
       await expect(page.getByText('Entity ID')).toBeVisible({ timeout: 5_000 })
       console.log('[Test] SSO settings page rendered with SP metadata fields')
     } else {
-      // SSO API may be returning 401 — check if loading state is shown
+      // Diagnose why SSO card didn't load
+      const isSelectOrg = await page.getByText('Please select an organization').isVisible().catch(() => false)
       const isLoading = await page.getByText('Loading SSO status').isVisible().catch(() => false)
-      if (isLoading) {
+      if (isSelectOrg) {
+        console.log('[Test] Organization context not loaded — org selection required')
+      } else if (isLoading) {
         console.log('[Test] SSO status still loading — API may require auth or be unreachable')
       } else {
-        console.log('[Test] SSO content not visible and not loading — unexpected state')
+        console.log('[Test] SSO content not visible — unexpected state')
       }
-      // Still pass: the page rendered, heading is visible, API issue is separate
     }
 
     await page.screenshot({
@@ -524,20 +527,41 @@ test.describe('SSO Settings', () => {
   })
 
   test('Copy SP metadata buttons work', async ({ page }) => {
+    if (IS_PRODUCTION) test.setTimeout(60_000)
+
     await page.goto(`${FRONTEND_URL}/settings/organization`)
     await page.waitForLoadState('domcontentloaded')
 
-    // Wait for SSO status to load past "Loading SSO status..."
-    const spMetadataVisible = await page
-      .getByText('Service Provider Metadata')
-      .isVisible({ timeout: 15_000 })
-      .catch(() => false)
+    // Wait for SAML SSO card to fully load (org context + SSO status query)
+    // NOTE: locator.isVisible() does NOT wait — use waitFor() instead.
+    let ssoLoaded = false
+    try {
+      await page.getByText('SAML SSO').waitFor({ state: 'visible', timeout: 25_000 })
+      ssoLoaded = true
+    } catch {
+      ssoLoaded = false
+    }
+
+    if (!ssoLoaded) {
+      const isSelectOrg = await page.getByText('Please select an organization').isVisible().catch(() => false)
+      const isLoading = await page.getByText('Loading SSO status').isVisible().catch(() => false)
+      console.log(`[Test] SSO card not loaded (selectOrg=${isSelectOrg}, loading=${isLoading})`)
+      test.skip(true, 'SSO card not loaded — org context or API issue')
+      return
+    }
+
+    // Now check for SP metadata section
+    let spMetadataVisible = false
+    try {
+      await page.getByText('Service Provider Metadata').waitFor({ state: 'visible', timeout: 5_000 })
+      spMetadataVisible = true
+    } catch {
+      spMetadataVisible = false
+    }
 
     if (!spMetadataVisible) {
-      // SSO API may not be responding — SP metadata section won't render
-      const isLoading = await page.getByText('Loading SSO status').isVisible().catch(() => false)
-      console.log(`[Test] SP metadata not visible (loading=${isLoading}) — SSO API may be unreachable`)
-      test.skip(true, 'SSO status not loaded — SP metadata section not rendered')
+      console.log('[Test] SSO card loaded but SP metadata section not visible')
+      test.skip(true, 'SP metadata section not rendered')
       return
     }
 

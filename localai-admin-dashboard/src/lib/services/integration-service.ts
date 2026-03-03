@@ -106,6 +106,21 @@ class IntegrationService {
     this.baseUrl = `${DOCUMENT_PROCESSOR_URL}/api/integrations`
   }
 
+  /**
+   * Get auth headers from the current Supabase session.
+   * Required for all endpoints that use admin_auth on the backend.
+   */
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) {
+      throw new Error('Not authenticated')
+    }
+    return {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    }
+  }
+
   // ===========================================================================
   // List Available Integrations
   // ===========================================================================
@@ -172,7 +187,8 @@ class IntegrationService {
       url.searchParams.set('user_id', user.id)
     }
 
-    const response = await fetch(url.toString())
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { headers })
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to initiate OAuth')
@@ -215,11 +231,12 @@ class IntegrationService {
     integrationType: IntegrationType,
     credentials: Record<string, string>
   ): Promise<{ success: boolean; message: string; metadata?: Record<string, unknown> }> {
+    const headers = await this.getAuthHeaders()
     const response = await fetch(
       `${this.baseUrl}/${integrationType}/connect-credentials`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           organization_id: organizationId,
           credentials,
@@ -253,11 +270,12 @@ class IntegrationService {
   ): Promise<OAuthInitiateResponse> {
     const redirectUri = `${DOCUMENT_PROCESSOR_URL}/api/integrations/snowflake/oauth/callback`
 
+    const headers = await this.getAuthHeaders()
     const response = await fetch(
       `${this.baseUrl}/snowflake/oauth/initiate-with-account`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           organization_id: organizationId,
           account_identifier: accountIdentifier,
@@ -290,7 +308,8 @@ class IntegrationService {
     const url = new URL(`${this.baseUrl}/${integrationType}/status`)
     url.searchParams.set('organization_id', organizationId)
 
-    const response = await fetch(url.toString())
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { headers })
     if (!response.ok) {
       throw new Error(`Failed to get integration status: ${response.status}`)
     }
@@ -309,7 +328,8 @@ class IntegrationService {
     const url = new URL(`${this.baseUrl}/status/all`)
     url.searchParams.set('organization_id', organizationId)
 
-    const response = await fetch(url.toString())
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { headers })
     if (!response.ok) {
       throw new Error(`Failed to get integration statuses: ${response.status}`)
     }
@@ -346,7 +366,8 @@ class IntegrationService {
     const url = new URL(`${this.baseUrl}/${integrationType}/refresh`)
     url.searchParams.set('organization_id', organizationId)
 
-    const response = await fetch(url.toString(), { method: 'POST' })
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { method: 'POST', headers })
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to refresh token')
@@ -367,7 +388,8 @@ class IntegrationService {
     const url = new URL(`${this.baseUrl}/${integrationType}/disconnect`)
     url.searchParams.set('organization_id', organizationId)
 
-    const response = await fetch(url.toString(), { method: 'DELETE' })
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { method: 'DELETE', headers })
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.detail || 'Failed to disconnect integration')
@@ -390,7 +412,8 @@ class IntegrationService {
     const url = new URL(`${this.baseUrl}/${integrationType}/test`)
     url.searchParams.set('organization_id', organizationId)
 
-    const response = await fetch(url.toString())
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(url.toString(), { headers })
     if (!response.ok) {
       return {
         success: false,
