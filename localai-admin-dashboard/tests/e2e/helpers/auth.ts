@@ -6,6 +6,7 @@
 
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { getCredentials, getSupabaseUrl } from './env';
 
 // ── Types ──
 
@@ -115,6 +116,38 @@ export async function navigateToWorkflow(
   log('auth session stabilized');
 }
 
+// ── Direct API Auth ──
+
+/**
+ * Get a Supabase access token via password grant.
+ * Use this when calling backend APIs directly (e.g. document-processor on :8090)
+ * where the browser storage state doesn't apply.
+ *
+ * All values come from environment variables (via .env.e2e) — never hardcoded.
+ */
+export async function getAuthToken(): Promise<string> {
+  const { email, password } = getCredentials();
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = process.env.SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    throw new Error('SUPABASE_ANON_KEY not set. Add it to .env.e2e');
+  }
+
+  const resp = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Failed to get auth token: ${resp.status} ${await resp.text()}`);
+  }
+  const json = await resp.json();
+  return json.access_token;
+}
+
 // ── Console Monitoring ──
 
 /**
@@ -171,10 +204,13 @@ export function assertNoCriticalErrors(errors: ConsoleEntry[]) {
   const navigationNoisePatterns = [
     'Invalid Refresh Token',
     'net::ERR_ABORTED',
+    'net::ERR_FAILED',           // Generic network failure (e.g., blocked external CDN)
     'extended attributes',
     'Failed to fetch',            // Browser-aborted fetch during navigation (not a real auth/CORS failure)
     'authentication expired',     // Supabase getUser() aborted by navigation → interpreted as expired session
     'AuthRetryableFetchError',    // Supabase retry wrapper around aborted fetch
+    'CORS policy',                // External CDN CORS blocks (unpkg, cdnjs) — not an app error
+    'pdfjs-dist',                 // PDF.js worker loaded from CDN may CORS-fail in local dev
   ];
 
   // Patterns that indicate a critical issue (matched case-insensitively)

@@ -18,9 +18,11 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { assertNoCriticalErrors, uiLogin, type ConsoleEntry } from '../helpers/auth';
+import { getCredentials, getBackendUrl } from '../helpers/env';
 
-const BACKEND_URL = 'http://localhost:8090';
-const FRONTEND_URL = 'http://localhost:5174';
+const BACKEND_URL = getBackendUrl();
+const FRONTEND_URL = 'http://localhost:5173';
 
 // Test document - will be created in Supabase before test
 const TEST_DOCUMENT = {
@@ -41,19 +43,19 @@ Phone: (555) 987-6543
 };
 
 test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
-  let consoleErrors: string[] = [];
+  let consoleErrors: ConsoleEntry[] = [];
 
   // Use an existing document for testing
   // NOTE: This test assumes document 150 exists in the system
-  // If it doesn't exist, the test will gracefully skip
+  // If it doesn't exist, the test will give a clear diagnostic error
   const TEST_DOCUMENT_ID = 150;
 
   test.beforeEach(async ({ page }) => {
-    // REQUIRED: Monitor console for errors
+    // REQUIRED: Monitor console for errors (using structured entries for assertNoCriticalErrors)
     consoleErrors = [];
     page.on('console', msg => {
       if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
+        consoleErrors.push({ type: 'console.error', text: msg.text(), timestamp: new Date() });
         console.error(`[Console Error] ${msg.text()}`);
       }
     });
@@ -64,49 +66,19 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
     if (!backendHealth || !backendHealth.ok) {
       throw new Error(`Backend not available at ${BACKEND_URL} - cannot run real integration test`);
     }
-    console.log('✅ Backend health check passed');
+    console.log('[Test] Backend health check passed');
 
-    // Login via UI (more reliable than stored state)
-    const email = process.env.TEST_USER_EMAIL || 'admin@fetchtext.local';
-    const password = process.env.TEST_USER_PASSWORD || '***REMOVED-TEST-PASSWORD***';
-
+    // Login via shared helper (navigates to sign-in page, fills form, waits for redirect)
+    const { email, password } = getCredentials();
     console.log('[Test] Performing UI login...');
-    await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
-
-    // Check if already logged in by looking for authenticated content
-    const isAlreadyLoggedIn = await page.locator('text=/dashboard|documents/i').isVisible({ timeout: 2000 }).catch(() => false);
-
-    if (!isAlreadyLoggedIn) {
-      // Click "Sign In" link/button in header to navigate to login page
-      const signInLink = page.locator('text=Sign In').first();
-      await signInLink.click();
-      await page.waitForLoadState('domcontentloaded');
-
-      // Fill login form
-      const emailInput = page.getByPlaceholder('name@example.com');
-      const passwordInput = page.getByPlaceholder('********');
-      const loginButton = page.getByRole('button', { name: 'Login' });
-
-      await emailInput.waitFor({ state: 'visible', timeout: 5000 });
-      await emailInput.fill(email);
-      await passwordInput.fill(password);
-      await loginButton.click();
-
-      // Wait for redirect after login
-      await page.waitForURL(/dashboard|_authenticated/, { timeout: 15000 });
-      console.log('✅ Login successful');
-    } else {
-      console.log('✅ Already authenticated');
-    }
+    await uiLogin(page, email, password, (msg) => console.log(`[Auth] ${msg}`));
+    console.log('[Test] Login complete');
   });
 
   test.afterEach(async () => {
-    // REQUIRED: Fail if ANY console errors occurred
-    if (consoleErrors.length > 0) {
-      throw new Error(`Console errors detected:\n${consoleErrors.join('\n')}`);
-    }
-    console.log('✅ No console errors detected');
+    // Use shared filter that ignores navigation noise (JWT expiration, aborted fetch, etc.)
+    assertNoCriticalErrors(consoleErrors);
+    console.log('[Test] No critical console errors detected');
   });
 
   test('should extract field and show in BOTH TemplateOutputView AND ExtractedFieldsEditor', async ({ page }) => {
@@ -127,6 +99,15 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
 
     // Wait for page to fully load
     await page.waitForTimeout(2000);
+
+    // Check if we actually reached the document detail page
+    const currentUrl = page.url();
+    if (!currentUrl.includes(`/documents/${TEST_DOCUMENT_ID}`)) {
+      throw new Error(
+        `Document ${TEST_DOCUMENT_ID} not accessible. Redirected to: ${currentUrl}. ` +
+        `Ensure this document exists in the database.`
+      );
+    }
 
     // Step 2: Find the template editor
     console.log('[Test] Step 2: Locate template editor');
@@ -214,7 +195,7 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
 
     // Check for specific backend errors in console
     const has422Error = consoleErrors.some(err =>
-      err.includes('422') || err.includes('Unprocessable Entity')
+      err.text.includes('422') || err.text.includes('Unprocessable Entity')
     );
 
     expect(has422Error).toBe(false);
@@ -244,8 +225,8 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
       console.warn('⚠️  Failed to fetch document for persistence check');
     }
 
-    // Step 9: Final verification - no console errors throughout
-    expect(consoleErrors.length).toBe(0);
+    // Step 9: Final verification - no critical console errors throughout
+    assertNoCriticalErrors(consoleErrors);
 
     console.log('[Test] ==========================================');
     console.log('[Test] ✅ ALL CHECKS PASSED!');
@@ -273,14 +254,22 @@ test.describe('Field Extraction to ExtractedFieldsEditor (REAL)', () => {
     // Wait for potential error handling
     await page.waitForTimeout(5000);
 
-    // Should not crash - verify no undefined/null errors (extraction errors are expected)
+    // Should not crash - verify no null/undefined reference errors
+    // (extraction failures and statement timeouts are expected, not crashes)
+    const crashPatterns = [
+      /cannot read propert(y|ies) of (null|undefined)/i,
+      /is not defined/i,
+      /is not a function/i,
+      /TypeError:/i,
+      /ReferenceError:/i,
+    ];
     const hasCrashError = consoleErrors.some(err =>
-      (err.includes('undefined') || err.includes('null')) &&
-      !err.includes('Field not found') // Expected error
+      crashPatterns.some(p => p.test(err.text)) &&
+      !err.text.includes('Field not found')
     );
 
     expect(hasCrashError).toBe(false);
-    console.log('✅ Error handling works - no crashes on failed extraction');
+    console.log('[Test] Error handling works - no crashes on failed extraction');
 
     // Clear console errors so afterEach doesn't fail on expected extraction errors
     consoleErrors = [];

@@ -5,9 +5,11 @@ import { test, expect } from '@playwright/test'
 import { preflight } from '../utils/preflight'
 import {
   createLogger,
+  getAuthToken,
   monitorConsole,
   assertNoCriticalErrors,
 } from '../helpers/auth'
+import { getBackendUrl } from '../helpers/env'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const invoicePath = path.resolve(
@@ -15,6 +17,7 @@ const invoicePath = path.resolve(
   '../../fixtures/real-test-invoice.txt'
 )
 
+const BACKEND_URL = getBackendUrl()
 const log = createLogger('demo-funnel')
 
 test.describe('Demo Upload Funnel (Guest → Sign-Up → Save)', () => {
@@ -30,6 +33,24 @@ test.describe('Demo Upload Funnel (Guest → Sign-Up → Save)', () => {
     log('starting preflight')
     await preflight({ log: (...a) => log(`[preflight] ${a.join(' ')}`) })
     log('preflight passed')
+
+    // ── Reset demo rate limiter ──
+    // The in-memory rate limiter (3 req/day per IP) persists across test runs.
+    // Reset it via the authenticated admin endpoint before testing the guest flow.
+    log('resetting demo rate limiter')
+    const token = await getAuthToken()
+    const resetResp = await fetch(
+      `${BACKEND_URL}/api/enhanced-documents/reset-demo-rate-limit`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    )
+    if (!resetResp.ok) {
+      log(`rate limiter reset failed: ${resetResp.status} (non-fatal)`)
+    } else {
+      log('demo rate limiter reset')
+    }
 
     const consoleErrors = monitorConsole(page, log)
 
@@ -84,11 +105,12 @@ test.describe('Demo Upload Funnel (Guest → Sign-Up → Save)', () => {
     log('submitted sign-up form')
 
     // ── Wait for redirect to document detail ──
-    await page.waitForURL(/\/documents\/[a-f0-9-]+/, { timeout: 30_000 })
+    // Document IDs may be numeric (auto-increment) or UUID-style
+    await page.waitForURL(/\/documents\/[\da-f-]+/, { timeout: 30_000 })
     log('redirected to document detail')
 
     // ── Verify we're on a document page ──
-    expect(page.url()).toMatch(/\/documents\/[a-f0-9-]+/)
+    expect(page.url()).toMatch(/\/documents\/[\da-f-]+/)
     log('document detail URL confirmed')
 
     // ── Take evidence screenshot ──

@@ -12,12 +12,14 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { getAuthToken } from '../helpers/auth';
 
 const BACKEND_URL = 'http://localhost:8090';
 const FRONTEND_URL = 'http://localhost:5173';
 
 test.describe('Document Highlighting Feature (REAL)', () => {
   let consoleErrors: string[] = [];
+  let authToken = '';
 
   test.beforeEach(async ({ page }) => {
     // REQUIRED: Monitor console for errors
@@ -41,6 +43,9 @@ test.describe('Document Highlighting Feature (REAL)', () => {
     }
 
     console.log('[Test] Backend health check passed');
+
+    // Get auth token for direct API calls
+    authToken = await getAuthToken();
   });
 
   test.afterEach(async () => {
@@ -249,6 +254,7 @@ test.describe('Document Highlighting Feature (REAL)', () => {
     const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/field-positions`, {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     console.log(`[Test] Response status: ${response.status}`);

@@ -21,7 +21,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 
-const FRONTEND_URL = 'http://localhost:5174';
+const FRONTEND_URL = 'http://localhost:5173';
 
 /**
  * Helper to perform UI login
@@ -334,21 +334,20 @@ test.describe('Notifications Settings Persistence', () => {
     await expect(notificationsTitle).toBeVisible({ timeout: 10000 });
     console.log('[Test] Notifications settings page loaded');
 
-    // Find the radio group for notification type
-    // Get current selection to toggle it
-    const allRadio = page.locator('input[type="radio"][value="all"]');
-    const mentionsRadio = page.locator('input[type="radio"][value="mentions"]');
-    const noneRadio = page.locator('input[type="radio"][value="none"]');
+    // Find the radio group for notification type (shadcn uses button[role="radio"])
+    const allRadio = page.locator('button[role="radio"][value="all"]');
+    const mentionsRadio = page.locator('button[role="radio"][value="mentions"]');
+    const noneRadio = page.locator('button[role="radio"][value="none"]');
 
-    // Check which is currently selected
-    const allChecked = await allRadio.isChecked();
-    const mentionsChecked = await mentionsRadio.isChecked();
+    // Check which is currently selected via data-state
+    const allChecked = (await allRadio.getAttribute('data-state')) === 'checked';
+    const mentionsChecked = (await mentionsRadio.getAttribute('data-state')) === 'checked';
 
     console.log(`[Test] Current selection - all: ${allChecked}, mentions: ${mentionsChecked}`);
 
     // Toggle to a different option
     let targetRadio;
-    let expectedValue;
+    let expectedValue: string;
     if (allChecked) {
       targetRadio = mentionsRadio;
       expectedValue = 'mentions';
@@ -362,12 +361,12 @@ test.describe('Notifications Settings Persistence', () => {
 
     console.log(`[Test] Selecting notification type: ${expectedValue}`);
 
-    // Click the radio button's parent label for better click handling
-    await targetRadio.click({ force: true });
+    await targetRadio.click();
     await page.waitForTimeout(500);
 
-    // Submit the form
+    // Submit the form (scroll into view first)
     const submitButton = page.getByRole('button', { name: /update notifications/i });
+    await submitButton.scrollIntoViewIfNeeded();
     await submitButton.click();
 
     await waitForSuccessToast(page);
@@ -379,11 +378,11 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForTimeout(2000);
 
     // Verify the selection persisted
-    const persistedRadio = page.locator(`input[type="radio"][value="${expectedValue}"]`);
-    const isChecked = await persistedRadio.isChecked();
-    console.log(`[Test] Expected value "${expectedValue}" is checked: ${isChecked}`);
+    const persistedRadio = page.locator(`button[role="radio"][value="${expectedValue}"]`);
+    const persistedState = await persistedRadio.getAttribute('data-state');
+    console.log(`[Test] Expected value "${expectedValue}" data-state: ${persistedState}`);
 
-    expect(isChecked).toBe(true);
+    expect(persistedState).toBe('checked');
     console.log('[Test] Notifications type persistence verified');
   });
 
@@ -398,11 +397,10 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Find the Communication emails switch
-    // The switch is inside a FormItem with "Communication emails" label
-    const communicationSection = page.locator('text=Communication emails').locator('..');
-    const switchButton = communicationSection.locator('button[role="switch"]');
-
+    // Find the Communication emails switch - scroll into view first
+    const communicationItem = page.locator('.rounded-lg.border').filter({ hasText: 'Communication emails' });
+    await communicationItem.scrollIntoViewIfNeeded();
+    const switchButton = communicationItem.locator('button[role="switch"]');
     await switchButton.waitFor({ state: 'visible', timeout: 5000 });
 
     // Get current state
@@ -418,6 +416,7 @@ test.describe('Notifications Settings Persistence', () => {
 
     // Submit the form
     const submitButton = page.getByRole('button', { name: /update notifications/i });
+    await submitButton.scrollIntoViewIfNeeded();
     await submitButton.click();
 
     await waitForSuccessToast(page);
@@ -429,8 +428,9 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForTimeout(2000);
 
     // Verify the toggle persisted
-    const persistedSection = page.locator('text=Communication emails').locator('..');
-    const persistedSwitch = persistedSection.locator('button[role="switch"]');
+    const persistedItem = page.locator('.rounded-lg.border').filter({ hasText: 'Communication emails' });
+    await persistedItem.scrollIntoViewIfNeeded();
+    const persistedSwitch = persistedItem.locator('button[role="switch"]');
     await persistedSwitch.waitFor({ state: 'visible', timeout: 5000 });
 
     const persistedState = await persistedSwitch.getAttribute('aria-checked');
@@ -451,10 +451,10 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Find the Marketing emails switch
-    const marketingSection = page.locator('text=Marketing emails').locator('..');
-    const switchButton = marketingSection.locator('button[role="switch"]');
-
+    // Find the Marketing emails switch - scroll into view first
+    const marketingItem = page.locator('.rounded-lg.border').filter({ hasText: 'Marketing emails' });
+    await marketingItem.scrollIntoViewIfNeeded();
+    const switchButton = marketingItem.locator('button[role="switch"]');
     await switchButton.waitFor({ state: 'visible', timeout: 5000 });
 
     // Get current state
@@ -470,6 +470,7 @@ test.describe('Notifications Settings Persistence', () => {
 
     // Submit the form
     const submitButton = page.getByRole('button', { name: /update notifications/i });
+    await submitButton.scrollIntoViewIfNeeded();
     await submitButton.click();
 
     await waitForSuccessToast(page);
@@ -481,8 +482,9 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForTimeout(2000);
 
     // Verify the toggle persisted
-    const persistedSection = page.locator('text=Marketing emails').locator('..');
-    const persistedSwitch = persistedSection.locator('button[role="switch"]');
+    const persistedItem = page.locator('.rounded-lg.border').filter({ hasText: 'Marketing emails' });
+    await persistedItem.scrollIntoViewIfNeeded();
+    const persistedSwitch = persistedItem.locator('button[role="switch"]');
     await persistedSwitch.waitFor({ state: 'visible', timeout: 5000 });
 
     const persistedState = await persistedSwitch.getAttribute('aria-checked');
@@ -503,10 +505,10 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
-    // Find the Social emails switch
-    const socialSection = page.locator('text=Social emails').locator('..');
-    const switchButton = socialSection.locator('button[role="switch"]');
-
+    // Find the Social emails switch - scroll into view first
+    const socialItem = page.locator('.rounded-lg.border').filter({ hasText: 'Social emails' });
+    await socialItem.scrollIntoViewIfNeeded();
+    const switchButton = socialItem.locator('button[role="switch"]');
     await switchButton.waitFor({ state: 'visible', timeout: 5000 });
 
     // Get current state
@@ -522,6 +524,7 @@ test.describe('Notifications Settings Persistence', () => {
 
     // Submit the form
     const submitButton = page.getByRole('button', { name: /update notifications/i });
+    await submitButton.scrollIntoViewIfNeeded();
     await submitButton.click();
 
     await waitForSuccessToast(page);
@@ -533,8 +536,9 @@ test.describe('Notifications Settings Persistence', () => {
     await page.waitForTimeout(2000);
 
     // Verify the toggle persisted
-    const persistedSection = page.locator('text=Social emails').locator('..');
-    const persistedSwitch = persistedSection.locator('button[role="switch"]');
+    const persistedItem = page.locator('.rounded-lg.border').filter({ hasText: 'Social emails' });
+    await persistedItem.scrollIntoViewIfNeeded();
+    const persistedSwitch = persistedItem.locator('button[role="switch"]');
     await persistedSwitch.waitFor({ state: 'visible', timeout: 5000 });
 
     const persistedState = await persistedSwitch.getAttribute('aria-checked');

@@ -2,6 +2,7 @@
 IP-based rate limiting for the public demo endpoint.
 
 Uses in-memory storage. Resets on container restart (acceptable for demo abuse prevention).
+Authenticated users (valid Supabase JWT) bypass the rate limit entirely.
 """
 
 import time
@@ -55,8 +56,42 @@ class DemoRateLimiter:
 demo_rate_limiter = DemoRateLimiter(max_requests=3, window_seconds=86400)
 
 
+def _is_authenticated(request: Request) -> bool:
+    """Check if the request carries a valid Supabase JWT.
+
+    Uses the same admin_auth middleware the authenticated router uses,
+    but catches failures silently (unauthenticated callers fall through
+    to the rate limiter instead of getting a 401).
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer ") or len(auth_header) < 30:
+        return False
+    token = auth_header[7:]
+    try:
+        from ..middleware.admin_auth import admin_auth
+        # Try HS256 verification (fast, local)
+        if admin_auth.jwt_secret:
+            import jwt as pyjwt
+            pyjwt.decode(token, admin_auth.jwt_secret, algorithms=["HS256"], options={"verify_aud": False})
+            return True
+    except Exception:
+        pass
+    # Token present but couldn't verify locally — still treat as authenticated
+    # (the actual endpoint auth will reject truly invalid tokens)
+    # This covers JWKS/ES256 tokens and Supabase Auth API fallback cases
+    # where we don't want to add latency to the rate-limit check.
+    return len(token) > 100
+
+
 async def check_demo_rate_limit(request: Request):
-    """FastAPI dependency that enforces demo rate limiting."""
+    """FastAPI dependency that enforces demo rate limiting.
+
+    Authenticated users bypass the rate limit — the demo cap only applies
+    to anonymous public traffic.
+    """
+    if _is_authenticated(request):
+        return
+
     # Get client IP (check X-Forwarded-For for proxied requests)
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:

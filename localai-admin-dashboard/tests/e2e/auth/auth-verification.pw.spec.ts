@@ -33,19 +33,19 @@ test.describe('Authentication Verification', () => {
   });
 
   test('Frontend loads and renders correctly', async ({ page }) => {
-    await page.goto('http://localhost:5174');
-    
+    await page.goto('/');
+
     // Wait for the page to load
     await page.waitForLoadState('networkidle');
-    
+
     // Check if the page loads with expected content
     const pageTitle = await page.title();
     expect(pageTitle).toContain('FetchText Admin');
-    
+
     // Check that the page loaded (not a 404 or error page)
     const pageContent = await page.textContent('body');
     expect(pageContent).toBeTruthy(); // Should have some content
-    
+
     // Verify it's our app and not an error page
     expect(pageContent).not.toContain('404');
     expect(pageContent).not.toContain('Cannot GET');

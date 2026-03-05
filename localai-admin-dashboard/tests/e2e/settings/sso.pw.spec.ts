@@ -18,7 +18,7 @@ test.describe('SSO Settings', () => {
     await page.goto('/settings/organization', { waitUntil: 'networkidle' });
 
     // SSO settings should render
-    await expect(page.getByText('Single Sign-On')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Single Sign-On' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('ACS URL')).toBeVisible();
 
     log('SSO settings page rendered');

@@ -146,15 +146,33 @@ export function DemoWidget() {
         throw new Error('No file or results to save')
       }
 
-      // Create document record
+      // Look up the user's organization (auto-created by trigger on sign-up)
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', session.user.id)
+        .limit(1)
+        .single()
+
+      const organizationId = membership?.organization_id
+      if (!organizationId) {
+        throw new Error('No organization found for user')
+      }
+
+      // Storage path for the uploaded file
+      const storagePath = `${session.user.id}/${Date.now()}/${file.name}`
+
+      // Create document record with correct column names
       const { data: doc, error: docError } = await supabase
         .from('documents')
         .insert({
           name: file.name,
+          file_path: storagePath,
           file_type: file.type || 'application/octet-stream',
           file_size: file.size,
-          status: 'completed',
-          created_by: session.user.id,
+          processing_status: 'completed',
+          uploaded_by: session.user.id,
+          organization_id: organizationId,
           metadata: {
             document_type: result.document_type,
             processing_time_ms: result.processing_time_ms,
@@ -175,7 +193,6 @@ export function DemoWidget() {
       if (docError) throw docError
 
       // Upload file to storage
-      const storagePath = `${session.user.id}/${doc.id}/${file.name}`
       const { error: storageError } = await supabase.storage
         .from('documents')
         .upload(storagePath, file)

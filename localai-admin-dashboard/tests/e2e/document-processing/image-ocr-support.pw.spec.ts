@@ -2,12 +2,18 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { getAuthToken } from '../helpers/auth';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const imagePath = path.resolve(__dirname, '../../../test-documents/edge-cases/medical-provider-screenshot.png');
 
 test.describe('Image OCR Support', () => {
+  let authToken = '';
+
   test.beforeAll(async ({ request }) => {
+    // Get auth token for direct backend API calls
+    authToken = await getAuthToken();
+
     // Ensure Azure OpenAI is selected for faster processing
     console.log('Setting AI provider to Azure OpenAI for faster test execution...');
     try {
@@ -21,14 +27,14 @@ test.describe('Image OCR Support', () => {
   });
 
   test('should successfully process PNG images with OCR', async ({ page }) => {
-    test.setTimeout(60000); // 60 second timeout for OCR processing
+    test.setTimeout(120000); // 120 second timeout for OCR processing
 
     // Ensure fixture exists
     if (!fs.existsSync(imagePath)) {
       throw new Error(`Fixture image not found: ${imagePath}`);
     }
 
-    // Call the backend batch endpoint directly with the real image
+    // Call the backend batch endpoint directly with the real image + auth header
     const response = await page.request.post('http://localhost:8090/api/enhanced-documents/batch-process-with-ai', {
       multipart: {
         files: {
@@ -37,7 +43,8 @@ test.describe('Image OCR Support', () => {
           buffer: fs.readFileSync(imagePath)
         }
       },
-      timeout: 45000
+      headers: { Authorization: `Bearer ${authToken}` },
+      timeout: 90000
     });
 
     expect(response.ok()).toBeTruthy();

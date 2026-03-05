@@ -2,11 +2,18 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { getAuthToken } from '../helpers/auth';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.resolve(__dirname, '../../fixtures/Stucco Contract V1.pdf');
 
 test.describe('PDF Text Extraction - Backend Integration', () => {
+  let authToken = '';
+
+  test.beforeEach(async () => {
+    authToken = await getAuthToken();
+  });
+
   test('should verify backend processes PDF correctly', async ({ page }) => {
     test.setTimeout(60000);
 
@@ -15,7 +22,7 @@ test.describe('PDF Text Extraction - Backend Integration', () => {
       throw new Error(`Fixture not found: ${fixturePath}`);
     }
 
-    // Call the backend batch endpoint
+    // Call the backend batch endpoint with auth header
     const response = await page.request.post('http://localhost:8090/api/enhanced-documents/batch-process-with-ai', {
       multipart: {
         files: {
@@ -23,7 +30,8 @@ test.describe('PDF Text Extraction - Backend Integration', () => {
           mimeType: 'application/pdf',
           buffer: fs.readFileSync(fixturePath)
         }
-      }
+      },
+      headers: { Authorization: `Bearer ${authToken}` }
     });
 
     expect(response.ok()).toBeTruthy();

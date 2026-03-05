@@ -30,7 +30,7 @@ except Exception:
 
 from ..middleware.file_validation import validate_and_save_uploaded_file
 from ..middleware.admin_auth import admin_auth
-from ..middleware.demo_rate_limit import check_demo_rate_limit
+from ..middleware.demo_rate_limit import check_demo_rate_limit, demo_rate_limiter
 from ..services.enhanced_docling_service import enhanced_docling_service
 from ..services.ai_template_generator import ai_template_generator
 from ..services.document_evaluator import document_evaluator
@@ -52,6 +52,13 @@ public_router = APIRouter(
     prefix="/api/enhanced-documents",
     tags=["enhanced-documents"],
 )
+
+
+@router.post("/reset-demo-rate-limit")
+async def reset_demo_rate_limit():
+    """Reset the demo rate limiter. Requires authentication."""
+    demo_rate_limiter.reset()
+    return {"status": "ok", "message": "Demo rate limiter reset"}
 
 
 async def cleanup_temp_file(file_path: Path):

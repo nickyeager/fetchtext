@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getAuthToken } from '../helpers/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,8 @@ const __dirname = path.dirname(__filename);
 const BACKEND_URL = 'http://localhost:8090';
 
 test.describe('Document Highlighting - Full E2E Test', () => {
+  let authToken = '';
+
   test.beforeEach(async () => {
     // REQUIRED: Verify backend is running
     const backendHealth = await fetch(`${BACKEND_URL}/health`).catch(() => null);
@@ -28,6 +31,10 @@ test.describe('Document Highlighting - Full E2E Test', () => {
       throw new Error(`Backend not available at ${BACKEND_URL} - cannot run integration test`);
     }
     console.log('[Test] Backend health check passed');
+
+    // Get auth token for direct API calls
+    authToken = await getAuthToken();
+    console.log('[Test] Auth token acquired');
   });
 
   test('should return bbox coordinates for extracted field values in PDF', async () => {
@@ -59,6 +66,7 @@ test.describe('Document Highlighting - Full E2E Test', () => {
     const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/field-positions`, {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     console.log(`[Test] Response status: ${response.status}`);
@@ -132,6 +140,7 @@ test.describe('Document Highlighting - Full E2E Test', () => {
     const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/field-positions`, {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     expect(response.ok).toBe(true);
@@ -168,6 +177,7 @@ test.describe('Document Highlighting - Full E2E Test', () => {
     const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/field-positions`, {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     expect(response.ok).toBe(true);
@@ -195,6 +205,7 @@ test.describe('Document Highlighting - Full E2E Test', () => {
     const response = await fetch(`${BACKEND_URL}/api/enhanced-documents/field-positions`, {
       method: 'POST',
       body: formData,
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     expect(response.ok).toBe(true);

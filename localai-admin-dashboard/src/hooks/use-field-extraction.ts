@@ -12,6 +12,7 @@ import { fieldExtractionReducer, isExtracting, canRetry } from '@/lib/field-extr
 import { FieldPersistenceService } from '@/services/field-persistence-service';
 import { useFieldNotifications } from './use-field-notifications';
 import { API_ENDPOINTS } from '@/lib/api-config';
+import { supabase } from '@/lib/supabase';
 import type {
   FieldExtractionState,
   SmartVariable,
@@ -121,14 +122,19 @@ export function useFieldExtraction(
       });
 
       try {
+        // Get auth token for backend API call
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
         // Call backend extraction API
-        // Note: This uses the DocumentProcessorEnhanced which calls the backend
-        // We create a minimal template with just this one variable
         const response = await fetch(API_ENDPOINTS.smartExtract, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify({
             text_content: documentText,
             template_data: {
