@@ -28,8 +28,14 @@ export function createLogger(prefix: string) {
 // ── UI Login ──
 
 /**
- * Perform UI login. Tries /(auth)/sign-in first, then /sign-in as fallback.
+ * Perform UI login via /sign-in.
  * Returns once the browser is on an authenticated route.
+ *
+ * URL reference (TanStack Router — parenthesized dirs are pathless groups,
+ * underscore-prefixed dirs are layout routes — neither appears in the URL):
+ *   File path: src/routes/(auth)/sign-in.tsx  →  Browser URL: /sign-in
+ *   File path: src/routes/_authenticated/dashboard.tsx  →  Browser URL: /dashboard
+ *   File path: src/routes/_authenticated/documents/upload.tsx  →  Browser URL: /documents/upload
  */
 export async function uiLogin(
   page: Page,
@@ -38,30 +44,23 @@ export async function uiLogin(
   log: (msg: string) => void = () => {},
 ) {
   log('navigating to sign-in');
-  await page.goto('/(auth)/sign-in', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
 
-  let emailInput = page.getByPlaceholder('name@example.com');
-  let loginButton = page.getByRole('button', { name: 'Login' });
-
-  if (!(await emailInput.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false))) {
-    log('fallback to /sign-in');
-    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
-    emailInput = page.getByPlaceholder('name@example.com');
-    loginButton = page.getByRole('button', { name: 'Login' });
-  }
+  const emailInput = page.getByPlaceholder('name@example.com');
+  const loginButton = page.getByRole('button', { name: 'Login' });
 
   if (await loginButton.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false)) {
     log('filling login form');
     await emailInput.fill(email);
     await page.getByPlaceholder('********').fill(password);
     await loginButton.click();
-    await page.waitForURL(/dashboard|_authenticated|documents/, {
+    await page.waitForURL(/dashboard|documents/, {
       timeout: 30_000,
     });
     log('login complete');
   } else {
     log('already authenticated, skipping login');
-    await page.waitForURL(/dashboard|_authenticated|documents/, {
+    await page.waitForURL(/dashboard|documents/, {
       timeout: 20_000,
     });
   }
@@ -99,7 +98,7 @@ export async function navigateToWorkflow(
     await retryEmail.fill(email);
     await retryPwd.fill(password);
     await retryBtn.click();
-    await page.waitForURL(/dashboard|_authenticated|documents/, {
+    await page.waitForURL(/dashboard|documents/, {
       timeout: 30_000,
     });
     log('retry login done, reloading workflow');

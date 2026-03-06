@@ -17,7 +17,7 @@ test.describe('Document Polling and Status Updates', () => {
     if (!fs.existsSync(contractPath)) throw new Error(`Fixture not found: ${contractPath}`);
 
     // Login
-    await page.goto('/(auth)/sign-in', { waitUntil: 'domcontentloaded' });
+    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
     let emailInput = page.getByPlaceholder('name@example.com');
     let loginButton = page.getByRole('button', { name: 'Login' });
     if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
@@ -29,7 +29,7 @@ test.describe('Document Polling and Status Updates', () => {
       await emailInput.fill(email);
       await page.getByPlaceholder('********').fill(password);
       await loginButton.click();
-      await page.waitForURL(/dashboard|_authenticated|documents/, { timeout: 20000 });
+      await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
     }
 
     // Navigate to documents list and look for an existing document

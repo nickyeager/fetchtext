@@ -81,7 +81,7 @@ test.describe('Variable Addition Flow', () => {
       await emailInput.fill(email);
       await page.getByPlaceholder('********').fill(password);
       await loginButton.click();
-      await page.waitForURL(/dashboard|_authenticated|documents/, {
+      await page.waitForURL(/dashboard|documents/, {
         timeout: 20000,
       });
       logStep('login complete');
@@ -398,7 +398,7 @@ test.describe('Variable Addition Flow', () => {
       await page.getByPlaceholder('name@example.com').fill(email);
       await page.getByPlaceholder('********').fill(password);
       await loginButton.click();
-      await page.waitForURL(/dashboard|_authenticated|documents/, {
+      await page.waitForURL(/dashboard|documents/, {
         timeout: 20000,
       });
     }
@@ -484,7 +484,7 @@ test.describe('Variable Addition Flow', () => {
       await page.getByPlaceholder('name@example.com').fill(email);
       await page.getByPlaceholder('********').fill(password);
       await loginButton.click();
-      await page.waitForURL(/dashboard|_authenticated|documents/, {
+      await page.waitForURL(/dashboard|documents/, {
         timeout: 20000,
       });
     }

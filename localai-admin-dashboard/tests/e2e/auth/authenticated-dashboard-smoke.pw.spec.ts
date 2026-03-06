@@ -8,7 +8,7 @@ test.describe('Authenticated Dashboard', () => {
     if (!email || !password) test.skip(true, 'Missing test credentials');
 
     // Login via UI
-    await page.goto('/(auth)/sign-in');
+    await page.goto('/sign-in');
     const emailInput = page.getByLabel('Email');
     if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
       await page.goto('/sign-in');
@@ -18,8 +18,8 @@ test.describe('Authenticated Dashboard', () => {
     await page.getByRole('button', { name: 'Login' }).click();
 
     // Expect redirect to an authenticated route (dashboard)
-    await page.waitForURL(/_authenticated|dashboard/, { timeout: 20000 });
-    await page.goto('/_authenticated/dashboard');
+    await page.waitForURL(/dashboard/, { timeout: 20000 });
+    await page.goto('/dashboard');
 
     // Assert some generic UI content is visible (adjust as needed)
     await expect(page.locator('body')).toBeVisible();

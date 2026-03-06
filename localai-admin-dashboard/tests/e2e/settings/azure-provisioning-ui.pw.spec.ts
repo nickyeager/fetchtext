@@ -54,7 +54,7 @@ test.describe('Azure Provisioning UI - Complete User Journey', () => {
       await page.click('button[type="submit"]');
 
       // Wait for redirect to dashboard or home
-      await page.waitForURL(/\/(dashboard|$)/, { timeout: 15000 });
+      await page.waitForURL(/\/(dashboard|$)/, { timeout: 15000 }); // /dashboard is the correct URL
     }
     console.log('[Auth] Authenticated successfully');
   }

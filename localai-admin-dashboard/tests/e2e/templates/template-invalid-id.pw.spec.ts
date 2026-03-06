@@ -11,7 +11,7 @@ test.describe('Smart template fetch with invalid id', () => {
     // Login if creds provided (keeps behavior consistent with authenticated requests)
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     if (email && password) {
-      await page.goto('/(auth)/sign-in').catch(() => {})
+      await page.goto('/sign-in').catch(() => {})
       let emailInput = page.getByPlaceholder('name@example.com')
       let pwdInput = page.getByPlaceholder('********')
       let loginButton = page.getByRole('button', { name: 'Login' })
@@ -21,12 +21,12 @@ test.describe('Smart template fetch with invalid id', () => {
         pwdInput = page.getByPlaceholder('********')
         loginButton = page.getByRole('button', { name: 'Login' })
       }
-      const alreadyAuthed = /_authenticated|dashboard/.test(page.url())
+      const alreadyAuthed = /dashboard/.test(page.url())
       if (!alreadyAuthed) {
         await emailInput.fill(email)
         await pwdInput.fill(password)
         await loginButton.click()
-        await page.waitForURL(/_authenticated|dashboard/, { timeout: 20000 })
+        await page.waitForURL(/dashboard/, { timeout: 20000 })
       }
     }
 

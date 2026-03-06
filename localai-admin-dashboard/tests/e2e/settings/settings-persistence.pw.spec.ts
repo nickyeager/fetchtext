@@ -41,7 +41,7 @@ async function loginWithCredentials(page: Page): Promise<boolean> {
   await page.waitForLoadState('networkidle');
 
   // Check if already authenticated (redirected to dashboard)
-  if (page.url().includes('dashboard') || page.url().includes('_authenticated')) {
+  if (page.url().includes('dashboard')) {
     console.log('[Auth] Already authenticated');
     return true;
   }
@@ -60,7 +60,7 @@ async function loginWithCredentials(page: Page): Promise<boolean> {
   await loginButton.click();
 
   try {
-    await page.waitForURL(/dashboard|documents|_authenticated/, { timeout: 20000 });
+    await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
     console.log('[Auth] Login successful');
     return true;
   } catch {

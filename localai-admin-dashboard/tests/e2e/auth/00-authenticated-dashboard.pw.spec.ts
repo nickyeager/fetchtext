@@ -15,7 +15,7 @@ test.describe('Top Authenticated Dashboard', () => {
     // Attempt up to 3 tries (handles early client-side redirects / aborted nav)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await page.goto('/(auth)/sign-in', { waitUntil: 'domcontentloaded' });
+        await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
       } catch (err) {
         if (attempt === 3) throw err;
         // Small backoff then retry navigation
@@ -32,7 +32,7 @@ test.describe('Top Authenticated Dashboard', () => {
         loginButton = page.getByRole('button', { name: 'Login' });
       }
 
-      const alreadyRedirected = /_authenticated|dashboard/.test(page.url());
+      const alreadyRedirected = /dashboard/.test(page.url());
       if (!alreadyRedirected) {
         // Make sure form inputs are there before filling
         await expect(emailInput).toBeVisible({ timeout: 5000 });
@@ -43,7 +43,7 @@ test.describe('Top Authenticated Dashboard', () => {
       }
 
       try {
-        await page.waitForURL(/_authenticated|dashboard/, { timeout: 20000 });
+        await page.waitForURL(/dashboard/, { timeout: 20000 });
         break; // success
       } catch (err) {
         if (attempt === 3) throw err;
@@ -51,8 +51,8 @@ test.describe('Top Authenticated Dashboard', () => {
     }
 
     // Navigate explicitly to dashboard (SSR fallback may differ)
-    await page.goto('/_authenticated/dashboard', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/_authenticated\/dashboard/);
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/dashboard/);
     // Basic visible body + ensure root element hydrated
     await expect(page.locator('#root')).toBeVisible();
     const childCount = await page.evaluate(() => document.getElementById('root')?.childElementCount || 0);

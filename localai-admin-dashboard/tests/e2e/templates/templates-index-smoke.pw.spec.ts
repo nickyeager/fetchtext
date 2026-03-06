@@ -8,7 +8,7 @@ test.describe('Templates Index - Authenticated Smoke', () => {
     if (!email || !password) test.skip(true, 'TEST_USER_EMAIL/TEST_USER_PASSWORD not set');
 
     // UI login (preferred and deterministic)
-    await page.goto('/(auth)/sign-in');
+    await page.goto('/sign-in');
     let emailInput = page.getByLabel('Email');
     let loginButton = page.getByRole('button', { name: 'Login' });
     if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
@@ -20,7 +20,7 @@ test.describe('Templates Index - Authenticated Smoke', () => {
     await emailInput.fill(email!);
     await page.getByLabel('Password').fill(password!);
     await loginButton.click();
-    await page.waitForURL(/dashboard|_authenticated/, { timeout: 20000 });
+    await page.waitForURL(/dashboard/, { timeout: 20000 });
 
     // Navigate to Templates index (child of authenticated layout)
     await page.goto('/templates');

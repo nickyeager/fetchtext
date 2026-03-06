@@ -83,7 +83,7 @@ test.describe('Document Processing With Logs', () => {
 
     // Login flow
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.goto('/(auth)/sign-in').catch(() => {});
+    await page.goto('/sign-in').catch(() => {});
     let emailInput = page.getByPlaceholder('name@example.com');
     let pwdInput = page.getByPlaceholder('********');
     let loginButton = page.getByRole('button', { name: 'Login' });
@@ -93,13 +93,13 @@ test.describe('Document Processing With Logs', () => {
       pwdInput = page.getByPlaceholder('********');
       loginButton = page.getByRole('button', { name: 'Login' });
     }
-    const alreadyAuthed = /_authenticated|dashboard/.test(page.url());
+    const alreadyAuthed = /dashboard/.test(page.url());
     if (!alreadyAuthed) {
       await expect(emailInput).toBeVisible();
       await emailInput.fill(email!);
       await pwdInput.fill(password!);
       await loginButton.click();
-      await page.waitForURL(/_authenticated|dashboard/, { timeout: 20000 });
+      await page.waitForURL(/dashboard/, { timeout: 20000 });
     }
 
     // Navigate to processing route (optionally with template)

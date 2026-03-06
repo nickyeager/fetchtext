@@ -33,7 +33,7 @@ test.describe('Authenticated Document Upload', () => {
   // Always perform UI login to ensure deterministic session
   // Try preferred route, then fallback
   logStep('navigating to sign-in');
-  await page.goto('/(auth)/sign-in', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
   let emailInput = page.getByPlaceholder('name@example.com');
   let loginButton = page.getByRole('button', { name: 'Login' });
   if (!(await emailInput.isVisible({ timeout: 2000 }).catch(() => false))) {
@@ -49,12 +49,12 @@ test.describe('Authenticated Document Upload', () => {
     await page.getByPlaceholder('********').fill(password);
     await loginButton.click();
     // Wait for post-login routing; allow any authenticated path
-    await page.waitForURL(/dashboard|_authenticated|documents/, { timeout: 20000 });
+    await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
     logStep('login navigation complete');
   } else {
     logStep('login form not visible; assuming session already authenticated');
     // Ensure we're on an authenticated route
-    await page.waitForURL(/dashboard|_authenticated|documents/, { timeout: 20000 });
+    await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
   }
 
   // Navigate to workflow (optionally with templateId + smart_templates source)
@@ -76,7 +76,7 @@ test.describe('Authenticated Document Upload', () => {
     await retryEmail.fill(email);
     await retryPwd.fill(password);
     await retryBtn.click();
-    await page.waitForURL(/dashboard|_authenticated|documents/, { timeout: 20000 });
+    await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
     logStep('retry login complete, reloading workflow');
     await page.goto(workflowUrl, { waitUntil: 'domcontentloaded' });
   }

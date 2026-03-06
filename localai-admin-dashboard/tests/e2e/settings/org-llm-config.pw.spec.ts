@@ -72,7 +72,7 @@ async function loginWithCredentials(page: Page): Promise<boolean> {
   await loginButton.click();
 
   try {
-    await page.waitForURL(/dashboard|documents|_authenticated/, { timeout: 20000 });
+    await page.waitForURL(/dashboard|documents/, { timeout: 20000 });
     console.log('[Auth] Login successful');
     return true;
   } catch {

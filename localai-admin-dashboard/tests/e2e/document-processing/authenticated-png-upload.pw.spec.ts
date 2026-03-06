@@ -109,7 +109,7 @@ test.describe('Authenticated PNG Upload Test', () => {
       // Skip complex navigation and go directly to upload page
       // This bypasses the documents page that's causing auth issues
       console.log('🚀 Navigating directly to upload page...');
-      await page.goto('/_authenticated/documents/upload', { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await page.goto('/documents/upload', { waitUntil: 'domcontentloaded', timeout: 10000 });
 
       const uploadUrl = page.url();
       console.log('🔍 Current URL after direct navigation:', uploadUrl);
@@ -167,7 +167,7 @@ test.describe('Authenticated PNG Upload Test', () => {
         console.log('Page content preview:', bodyText?.substring(0, 500));
 
         // Just verify we're authenticated and fail gracefully
-        expect(page.url()).toMatch(/_authenticated|documents|dashboard/);
+        expect(page.url()).toMatch(/documents|dashboard/);
         console.log('✅ Successfully authenticated, but upload UI not found');
         return;
       }
@@ -270,13 +270,13 @@ test.describe('Authenticated PNG Upload Test', () => {
     );
 
     // Navigate to a protected route to verify authentication works
-    await page.goto('/_authenticated/dashboard', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded', timeout: 10000 });
 
     const url = page.url();
     console.log('Current URL:', url);
 
     // Should be on an authenticated page (not redirected to login)
-    expect(url).toMatch(/_authenticated/);
+    expect(url).toMatch(/dashboard/);
 
     // Should not be on login page
     const isOnLoginPage = await page.locator('text="Login"').isVisible().catch(() => false);

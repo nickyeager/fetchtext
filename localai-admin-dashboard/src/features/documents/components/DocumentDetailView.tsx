@@ -3008,31 +3008,31 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
                 ?.rerun_timestamp === 'string' && (
                 <p className='mt-1 text-xs text-green-700 dark:text-green-300'>
                   {(() => {
-                    const ts = (document.metadata as Record<string, unknown>)
-                      .rerun_timestamp as string
+                    const ts = (document.metadata as Record<string, unknown> | null | undefined)
+                      ?.rerun_timestamp as string
                     return `Last updated: ${new Date(ts).toLocaleString()}`
                   })()}
                 </p>
               )}
               {/* Display current template information */}
               {(() => {
-                const meta = document.metadata as Record<string, unknown>
-                const tName = meta.template_name as string | undefined
-                const tId = meta.template_id as number | undefined
+                const meta = document.metadata as Record<string, unknown> | null | undefined
+                const tName = meta?.template_name as string | undefined
+                const tId = meta?.template_id as number | undefined
                 return Boolean(tName || tId)
               })() && (
                 <div className='mt-3 border-t border-green-200 pt-3 dark:border-green-800'>
                   <p className='text-sm text-green-700 dark:text-green-300'>
                     <span className='font-medium'>Template Used:</span>{' '}
                     {(() => {
-                      const meta = document.metadata as Record<string, unknown>
-                      const tName = meta.template_name as string | undefined
-                      const tId = meta.template_id as number | undefined
+                      const meta = document.metadata as Record<string, unknown> | null | undefined
+                      const tName = meta?.template_name as string | undefined
+                      const tId = meta?.template_id as number | undefined
                       return tName || `Template ID: ${tId}`
                     })()}
                     {(() => {
-                      const meta = document.metadata as Record<string, unknown>
-                      const tId = meta.template_id as number | undefined
+                      const meta = document.metadata as Record<string, unknown> | null | undefined
+                      const tId = meta?.template_id as number | undefined
                       return tId ? (
                         <Button
                           variant='ghost'

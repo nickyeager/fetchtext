@@ -6,9 +6,7 @@ test.describe('Document UI Smoke (no external service mocks)', () => {
   test('navigates candidate document routes and asserts basic shell renders', async ({ page }, testInfo) => {
     const candidatePaths = [
       '/documents/gallery',
-      '/_authenticated/documents/gallery',
       '/documents/workflow',
-      '/_authenticated/documents/workflow',
       '/documents',
       '/'
     ];
