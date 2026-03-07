@@ -45,6 +45,7 @@ export default defineConfig({
     '**/production/**/*.pw.spec.ts',
     '**/auth/00-auth-smoke.pw.spec.ts',
     '**/ui-smoke/02-basic-app-shell.pw.spec.ts',
+    '**/document-processing/stucco-upload-e2e.pw.spec.ts',
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
