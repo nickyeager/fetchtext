@@ -1753,7 +1753,7 @@ export class DocumentProcessorEnhanced {
    */
   async processWithExistingTemplate(
     file: File,
-    templateId: number
+    templateId: number | string
   ): Promise<any> {
     try {
       const { supabase } = await import('@/lib/supabase')

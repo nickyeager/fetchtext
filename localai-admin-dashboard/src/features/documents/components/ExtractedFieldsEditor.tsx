@@ -49,7 +49,7 @@ interface ExtractedFieldsEditorProps {
   onSave?: (fields: Record<string, unknown>) => Promise<void>;
   onCreateTemplate?: (fields: ExtractedField[]) => Promise<void>;
   onUpdateTemplate?: (fields: ExtractedField[]) => Promise<void>;
-  templateId?: number;
+  templateId?: number | string;
   templateName?: string;
   readOnly?: boolean;
   showCreateTemplate?: boolean;

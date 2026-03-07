@@ -46,7 +46,7 @@ export interface DocumentMetadata {
   original_filename: string
 
   // Processing information
-  template_id?: number
+  template_id?: number | string
   template_name?: string
   // Allow broader set of processing methods used across the app
   processing_method?: string
@@ -1113,7 +1113,7 @@ export class UnifiedDocumentService {
         .from('documents')
         .upload(filePath, blob, {
           cacheControl: '3600',
-          upsert: false,
+          upsert: true,
           contentType: file.type || 'application/octet-stream',
         })
 
@@ -1144,7 +1144,7 @@ export class UnifiedDocumentService {
             .from('documents')
             .upload(filePath, cleanFile, {
               cacheControl: '3600',
-              upsert: false,
+              upsert: true,
             })
 
           if (retryError) {

@@ -104,7 +104,7 @@ class TemplateService {
   /**
    * Get a single smart template by ID
    */
-  async getTemplate(id: number): Promise<SmartTemplate | null> {
+  async getTemplate(id: number | string): Promise<SmartTemplate | null> {
     return withAuthentication(async (user) => {
       const { data, error } = await supabase
         .from('smart_templates')

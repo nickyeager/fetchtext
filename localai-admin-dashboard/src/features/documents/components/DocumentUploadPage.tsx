@@ -239,44 +239,46 @@ export function DocumentUploadPage({
                 // Index the template in Qdrant for vector search so the next
                 // upload of a similar document matches immediately.
                 if (savedGeneratedTemplate?.id) {
-                  try {
-                    const embeddingHeaders: Record<string, string> = {
-                      'Content-Type': 'application/json',
+                  // Fire-and-forget: Qdrant indexing is non-fatal and should
+                  // never block document finalization or navigation.
+                  const templateToIndex = savedGeneratedTemplate
+                  const contentSnippet = result.content
+                    ? result.content.substring(0, 2000)
+                    : undefined
+                  const token = session?.access_token
+                  ;(async () => {
+                    try {
+                      const embeddingHeaders: Record<string, string> = {
+                        'Content-Type': 'application/json',
+                      }
+                      if (token) {
+                        embeddingHeaders['Authorization'] = `Bearer ${token}`
+                      }
+                      await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
+                        method: 'POST',
+                        headers: embeddingHeaders,
+                        body: JSON.stringify({
+                          template_id: templateToIndex.id,
+                          name: templateToIndex.name || '',
+                          description: templateToIndex.description || '',
+                          category: templateToIndex.category || '',
+                          smart_variables:
+                            templateToIndex.smart_variables || [],
+                          is_public: templateToIndex.is_public || false,
+                          document_text: contentSnippet,
+                        }),
+                      })
+                      console.log(
+                        '[DocumentUpload] Template indexed in Qdrant:',
+                        templateToIndex.id
+                      )
+                    } catch (indexErr) {
+                      console.warn(
+                        '[DocumentUpload] Failed to index template in Qdrant (non-fatal):',
+                        indexErr
+                      )
                     }
-                    if (session?.access_token) {
-                      embeddingHeaders['Authorization'] =
-                        `Bearer ${session.access_token}`
-                    }
-                    await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
-                      method: 'POST',
-                      headers: embeddingHeaders,
-                      body: JSON.stringify({
-                        template_id: savedGeneratedTemplate.id,
-                        name: savedGeneratedTemplate.name || '',
-                        description: savedGeneratedTemplate.description || '',
-                        category: savedGeneratedTemplate.category || '',
-                        smart_variables:
-                          savedGeneratedTemplate.smart_variables || [],
-                        is_public: savedGeneratedTemplate.is_public || false,
-                        // Send source document text for exemplar embedding —
-                        // enables much higher cosine similarity on future
-                        // uploads of similar documents (doc-to-doc matching).
-                        document_text: result.content
-                          ? result.content.substring(0, 2000)
-                          : undefined,
-                      }),
-                    })
-                    console.log(
-                      '[DocumentUpload] Template indexed in Qdrant:',
-                      savedGeneratedTemplate.id
-                    )
-                  } catch (indexErr) {
-                    // Non-fatal: template will be indexed on next container restart
-                    console.warn(
-                      '[DocumentUpload] Failed to index template in Qdrant (non-fatal):',
-                      indexErr
-                    )
-                  }
+                  })()
                 }
               } catch (saveErr) {
                 console.error(
@@ -334,6 +336,7 @@ export function DocumentUploadPage({
               chosen_template: result.chosen_template,
             },
             template_suggestions: result.alternatives || [],
+            extracted_values: result.extracted_fields,
             extracted_data: extractedData,
             title: result.metadata?.title,
             author: result.metadata?.author,

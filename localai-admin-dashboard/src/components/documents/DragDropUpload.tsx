@@ -1,57 +1,322 @@
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Upload, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ProcessingLog } from '@/components/ui/processing-log';
 import { useAuth } from '@/context/auth-context';
 import { useOrganization } from '@/context/organization-context';
 import { useDocumentManager } from '@/hooks/use-document-manager';
-import { UploadSource, DocumentStatus } from '@/services/unified-document-service';
+import { useProcessingStream } from '@/hooks/use-processing-stream';
+import { UploadSource } from '@/services/unified-document-service';
+import { supabase } from '@/lib/supabase';
+import { withAuthentication } from '@/lib/supabase-auth-utils';
+import { API_ENDPOINTS } from '@/lib/api-config';
 import { toast } from 'sonner';
 
 interface DragDropUploadProps {
   className?: string;
   onUploadStart?: () => void;
   onUploadComplete?: (documentId: string) => void;
+  showProcessingLog?: boolean;
 }
 
 const ACCEPTED_FORMATS = ['.pdf', '.docx', '.html', '.htm', '.jpg', '.jpeg', '.png', '.txt', '.md', '.pptx', '.xlsx', '.csv', '.gif', '.webp', '.bmp', '.tiff'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 
-export function DragDropUpload({ 
+export function DragDropUpload({
   className,
   onUploadStart,
-  onUploadComplete 
+  onUploadComplete,
+  showProcessingLog: showProcessingLogProp = true,
 }: DragDropUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const handledResultRef = useRef(false);
+  const handledErrorRef = useRef(false);
+
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user, session } = useAuth();
   const { activeOrganization } = useOrganization();
   const documentManager = useDocumentManager({ enableRealTimeUpdates: true });
+  const stream = useProcessingStream();
 
-  // Dev-safe logger to avoid lint errors in production builds
-  const isDev = (() => {
-    // Prefer Vite env if present, otherwise fall back to NODE_ENV
-    try { return (import.meta as unknown as { env?: { DEV?: boolean } })?.env?.DEV === true; } catch { /* noop */ }
-    try { return typeof process !== 'undefined' && process.env?.NODE_ENV === 'development'; } catch { /* noop */ }
-    return false;
-  })();
-  // eslint-disable-next-line no-console
-  const devLog = React.useCallback((...args: unknown[]) => { if (isDev) { console.log(...args); } }, [isDev]);
-  // eslint-disable-next-line no-console
-  const devError = React.useCallback((...args: unknown[]) => { if (isDev) { console.error(...args); } }, [isDev]);
+  // Keep a ref to activeOrganization so stream-completion effect always reads
+  // the current value even though it's not in the dependency array.
+  const activeOrgRef = useRef(activeOrganization);
+  useEffect(() => {
+    activeOrgRef.current = activeOrganization;
+  }, [activeOrganization]);
+
+  // ── Handle stream completion: finalize document + notify parent ────
+  useEffect(() => {
+    if (
+      stream.status !== 'complete' ||
+      !stream.result ||
+      !documentId ||
+      handledResultRef.current
+    ) {
+      return;
+    }
+
+    handledResultRef.current = true;
+    const result = stream.result;
+
+    (async () => {
+      try {
+        // Build extracted data in the format DocumentDetailView expects
+        let extractedData = null;
+        if (
+          result.extracted_fields &&
+          Object.keys(result.extracted_fields).length > 0
+        ) {
+          extractedData = {
+            extracted_values: result.extracted_fields,
+            confidence_scores: Object.entries(result.extracted_fields).reduce(
+              (acc, [key, field]: [string, any]) => {
+                acc[key] = field.confidence || 0;
+                return acc;
+              },
+              {} as Record<string, number>
+            ),
+          };
+        }
+
+        // If a template was generated, save it to the database
+        let savedGeneratedTemplate = null;
+        if (result.action === 'generate_new' && result.generated_template) {
+          const genTemplate = result.generated_template;
+          const templateVariables =
+            genTemplate.smart_variables || genTemplate.variables || [];
+          const primaryType =
+            result.evaluation?.type_evaluation?.primary_type || 'document';
+
+          if (
+            Array.isArray(templateVariables) &&
+            templateVariables.length > 0
+          ) {
+            const currentOrg = activeOrgRef.current;
+            if (!currentOrg) {
+              console.warn(
+                '[DragDropUpload] Cannot save template: No active organization'
+              );
+              toast.error(
+                'Template generated but could not be saved — organization context was lost.'
+              );
+            } else {
+              try {
+                const templateName =
+                  genTemplate.name ||
+                  `${primaryType.charAt(0).toUpperCase() + primaryType.slice(1)} Template`;
+
+                savedGeneratedTemplate = await withAuthentication(
+                  async (authUser) => {
+                    const { data, error: dbError } = await supabase
+                      .from('smart_templates')
+                      .insert({
+                        name: templateName,
+                        description:
+                          genTemplate.description ||
+                          `Auto-generated template for ${primaryType} documents`,
+                        category:
+                          primaryType || genTemplate.category || 'document',
+                        smart_variables: templateVariables,
+                        extraction_rules: genTemplate.extraction_rules || [],
+                        is_public: false,
+                        created_by: authUser.id,
+                        organization_id: currentOrg.id,
+                        template_type: 'smart',
+                        template_content: genTemplate.template_content || '',
+                        tags: genTemplate.tags || ['ai-generated', primaryType],
+                      })
+                      .select()
+                      .single();
+
+                    if (dbError) {
+                      if (dbError.code === '23505') {
+                        console.log(
+                          `[DragDropUpload] Template "${templateName}" already exists, reusing`
+                        );
+                        const { data: existing } = await supabase
+                          .from('smart_templates')
+                          .select()
+                          .eq('name', templateName)
+                          .single();
+                        if (existing) return existing;
+                      }
+                      throw dbError;
+                    }
+                    return data;
+                  },
+                  'Save Generated Template'
+                );
+
+                console.log(
+                  '[DragDropUpload] Generated template saved:',
+                  savedGeneratedTemplate?.id
+                );
+
+                // Fire-and-forget: Qdrant indexing is non-fatal and should
+                // never block document finalization or navigation.
+                if (savedGeneratedTemplate?.id) {
+                  const templateToIndex = savedGeneratedTemplate;
+                  const contentSnippet = result.content
+                    ? result.content.substring(0, 2000)
+                    : undefined;
+                  const token = session?.access_token;
+                  (async () => {
+                    try {
+                      const embeddingHeaders: Record<string, string> = {
+                        'Content-Type': 'application/json',
+                      };
+                      if (token) {
+                        embeddingHeaders['Authorization'] = `Bearer ${token}`;
+                      }
+                      await fetch(API_ENDPOINTS.indexTemplateEmbedding, {
+                        method: 'POST',
+                        headers: embeddingHeaders,
+                        body: JSON.stringify({
+                          template_id: templateToIndex.id,
+                          name: templateToIndex.name || '',
+                          description: templateToIndex.description || '',
+                          category: templateToIndex.category || '',
+                          smart_variables: templateToIndex.smart_variables || [],
+                          is_public: templateToIndex.is_public || false,
+                          document_text: contentSnippet,
+                        }),
+                      });
+                      console.log(
+                        '[DragDropUpload] Template indexed in Qdrant:',
+                        templateToIndex.id
+                      );
+                    } catch (indexErr) {
+                      console.warn(
+                        '[DragDropUpload] Failed to index template in Qdrant (non-fatal):',
+                        indexErr
+                      );
+                    }
+                  })();
+                }
+              } catch (saveErr) {
+                console.error(
+                  '[DragDropUpload] Failed to save generated template:',
+                  saveErr
+                );
+                toast.error(
+                  'Template was generated but failed to save. You can recreate it from the document.'
+                );
+              }
+            }
+          }
+        }
+
+        const appliedTemplate =
+          result.chosen_template ||
+          (savedGeneratedTemplate
+            ? {
+                template_id: savedGeneratedTemplate.id,
+                template_name: savedGeneratedTemplate.name,
+              }
+            : null);
+
+        const evaluation = result.evaluation || {};
+        const typeEval = evaluation.type_evaluation || {};
+
+        const customTemplateContent =
+          result.generated_template?.template_content ?? undefined;
+
+        await documentManager.finalizeDocument(documentId, {
+          status: 'completed',
+          content_text: result.content,
+          extracted_fields: extractedData,
+          metadata: {
+            document_type: typeEval.primary_type,
+            type_confidence: typeEval.confidence,
+            ai_classification: {
+              primary_category: typeEval.primary_type,
+              confidence_score: typeEval.confidence,
+              detection_method: typeEval.detection_method,
+            },
+            template_id: appliedTemplate?.template_id,
+            template_name: appliedTemplate?.template_name,
+            custom_template_content: customTemplateContent,
+            template_decision: {
+              action: result.action,
+              validation_level: result.decision_metadata?.validation_level,
+              match_score: result.decision_metadata?.match_score,
+              extraction_quality: result.decision_metadata?.extraction_quality,
+              combined_score: result.decision_metadata?.combined_score,
+              auto_applied: !!extractedData,
+              chosen_template: result.chosen_template,
+            },
+            template_suggestions: result.alternatives || [],
+            extracted_values: result.extracted_fields,
+            extracted_data: extractedData,
+            title: result.metadata?.title,
+            author: result.metadata?.author,
+            page_count: result.metadata?.page_count,
+          },
+        });
+
+        await queryClient.invalidateQueries({
+          queryKey: ['processedDocuments'],
+        });
+
+        console.log(
+          '[DragDropUpload] Document finalized, navigating to:',
+          documentId
+        );
+
+        toast.success('Document processed successfully!');
+
+        if (onUploadComplete) {
+          onUploadComplete(documentId);
+        } else {
+          navigate({ to: `/documents/${documentId}` });
+        }
+      } catch (err) {
+        console.error('[DragDropUpload] Failed to finalize document:', err);
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to finalize document'
+        );
+      } finally {
+        setIsUploading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stream.result excluded to prevent double-firing
+  }, [
+    stream.status,
+    documentId,
+    documentManager,
+    queryClient,
+    navigate,
+    onUploadComplete,
+    session?.access_token,
+  ]);
+
+  // Propagate stream errors
+  useEffect(() => {
+    if (stream.status === 'error' && stream.error && !handledErrorRef.current) {
+      handledErrorRef.current = true;
+      toast.error(stream.error);
+      if (documentId) {
+        documentManager.markDocumentFailed(documentId, stream.error);
+      }
+      setIsUploading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- documentManager excluded: unstable ref
+  }, [stream.status, stream.error, documentId]);
 
   const validateFile = useCallback((file: File): string | null => {
-    // Check file size
     if (file.size > MAX_SIZE) {
       return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds maximum allowed size (${(MAX_SIZE / 1024 / 1024).toFixed(1)}MB)`;
     }
 
-    // Check file format
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
     if (!ACCEPTED_FORMATS.includes(fileExtension)) {
       return `File format "${fileExtension}" is not supported. Accepted formats: ${ACCEPTED_FORMATS.join(', ')}`;
@@ -61,97 +326,69 @@ export function DragDropUpload({
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
-    devLog('🔵 UPLOAD: Starting file upload process', {
+    console.log('[DragDropUpload] Starting file upload process', {
       fileName: file.name,
       fileSize: file.size,
-      fileType: file.type,
-      timestamp: new Date().toISOString()
     });
 
-    // Validate file
     const validationError = validateFile(file);
     if (validationError) {
-      devLog('🔴 UPLOAD ERROR: File validation failed', { error: validationError });
       toast.error(validationError);
       return;
     }
-    devLog('🔵 UPLOAD: File validation passed');
 
-    // Check authentication
     if (!user || !session) {
-      devLog('🔴 UPLOAD ERROR: User not authenticated');
       toast.error('Please sign in to upload documents');
-      navigate({ to: '/sign-in' });
+      navigate({ to: '/sign-in', search: { redirect: '/documents' } });
       return;
     }
-    devLog('🔵 UPLOAD: Authentication verified', { userId: user.id });
 
-    // Check organization is selected
     if (!activeOrganization) {
-      devLog('🔴 UPLOAD ERROR: No organization selected');
       toast.error('Please select an organization before uploading documents');
       return;
     }
-    devLog('🔵 UPLOAD: Organization verified', { organizationId: activeOrganization.id });
 
     setIsUploading(true);
+    handledResultRef.current = false;
+    handledErrorRef.current = false;
     onUploadStart?.();
 
     try {
-      devLog('🔵 UPLOAD: Creating document record...');
-      
       // Create document record
       const documentRecord = await documentManager.createDocument({
         file,
         uploadSource: UploadSource.SMART_UPLOAD,
         organizationId: activeOrganization.id,
       });
-      
-      devLog('🔵 UPLOAD: Document record created', {
-        documentId: documentRecord.id,
-        documentName: documentRecord.name,
-        processingStatus: documentRecord.processing_status,
-        filePath: documentRecord.file_path
-      });
 
       if (!documentRecord.id) {
         throw new Error('Document record created without a valid ID — cannot proceed with upload');
       }
 
-      devLog('🟡 ANALYSIS: Triggering AI analysis...');
+      setDocumentId(documentRecord.id);
 
-      // Update status to analyzing
+      // Use 'processing' (not 'analyzing') to avoid triggering triggerAIAnalysis()
       await documentManager.updateDocumentStatus(documentRecord.id, {
-        status: DocumentStatus.ANALYZING,
+        status: 'processing' as any,
+        metadata: { processing_method: 'sse_stream' },
       });
-      
-      devLog('🟡 ANALYSIS: Status updated to analyzing');
 
-      toast.success('Document uploaded successfully!');
-      
-      devLog('🔵 UPLOAD: Navigating to document detail page', { 
-        documentId: documentRecord.id,
-        route: `/documents/${documentRecord.id}` 
+      console.log('[DragDropUpload] Starting SSE stream for:', file.name);
+
+      stream.startProcessing(file, {
+        quickScan: true,
+        minMatchConfidence: 0.6,
+        allowGeneration: true,
+        organizationId: activeOrganization.id,
+        accessToken: session?.access_token,
       });
-      
-      // Navigate to document detail page for AI evaluation
-  navigate({ to: `/documents/${documentRecord.id}` });
-      
-      onUploadComplete?.(documentRecord.id);
 
     } catch (err) {
-      devError('🔴 UPLOAD ERROR: Document upload failed:', err);
-      devLog('🔴 UPLOAD ERROR: Error details', {
-        message: err instanceof Error ? err.message : 'Unknown error',
-        stack: err instanceof Error ? err.stack : undefined,
-        timestamp: new Date().toISOString()
-      });
+      console.error('[DragDropUpload] Document upload failed:', err);
       toast.error(err instanceof Error ? err.message : 'Document upload failed');
-    } finally {
       setIsUploading(false);
-      devLog('🔵 UPLOAD: Upload process completed, isUploading set to false');
     }
-  }, [user, session, activeOrganization, navigate, documentManager, validateFile, onUploadStart, onUploadComplete, devError, devLog]);
+  }, [user, session, activeOrganization, navigate, documentManager, validateFile, onUploadStart, stream]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -193,6 +430,12 @@ export function DragDropUpload({
     }
   }, [isUploading]);
 
+  const isStreamActive =
+    stream.status === 'connecting' || stream.status === 'streaming';
+  const showLog =
+    showProcessingLogProp &&
+    (isStreamActive || stream.status === 'complete' || stream.status === 'error');
+
   return (
     <Card className={cn("overflow-hidden", className)}>
       {/* Hidden File Input */}
@@ -209,62 +452,90 @@ export function DragDropUpload({
       />
 
       {/* Drag Drop Zone */}
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={openFileDialog}
-        className={cn(
-          "relative p-8 transition-all duration-200 cursor-pointer",
-          "border-2 border-dashed rounded-lg",
-          "hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/50",
-          isDragging && "border-blue-500 bg-blue-50 dark:bg-blue-950",
-          isUploading && "cursor-not-allowed opacity-50",
-          !isDragging && "border-gray-300 dark:border-gray-600"
-        )}
-      >
-        <div className="flex flex-col items-center justify-center space-y-4">
-          {isUploading ? (
-            <>
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-              <div className="text-center">
-                <p className="text-lg font-medium text-gray-900 dark:text-white">Uploading document...</p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">Please wait while we process your file</p>
-              </div>
-            </>
-          ) : (
-            <>
-              <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500" />
-              <div className="text-center">
-                <p className="text-lg font-medium text-gray-900 dark:text-white">
-                  Drag & drop your document here
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">or click to browse files</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  Supported formats: PDF, Word, Excel, PowerPoint, HTML, Images, Text
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Maximum size: 10MB
-                </p>
-              </div>
-              
-              {/* Upload Button Alternative */}
-              <Button 
-                variant="outline" 
+      {!showLog && (
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={openFileDialog}
+          className={cn(
+            "relative p-8 transition-all duration-200 cursor-pointer",
+            "border-2 border-dashed rounded-lg",
+            "hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/50",
+            isDragging && "border-blue-500 bg-blue-50 dark:bg-blue-950",
+            isUploading && "cursor-not-allowed opacity-50",
+            !isDragging && "border-gray-300 dark:border-gray-600"
+          )}
+        >
+          <div className="flex flex-col items-center justify-center space-y-4">
+            {isUploading ? (
+              <>
+                <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                <div className="text-center">
+                  <p className="text-lg font-medium text-gray-900 dark:text-white">Processing document...</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">AI is analyzing your file</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                <div className="text-center">
+                  <p className="text-lg font-medium text-gray-900 dark:text-white">
+                    Drag & drop your document here
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">or click to browse files</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Supported formats: PDF, Word, Excel, PowerPoint, HTML, Images, Text
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Maximum size: 10MB
+                  </p>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFileDialog();
+                  }}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Select File
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Streaming Processing Log */}
+      {showLog && (
+        <div className="p-4">
+          <ProcessingLog
+            logs={stream.logs}
+            progress={stream.progress}
+            status={stream.status}
+            error={stream.error}
+          />
+          {stream.status === 'error' && (
+            <div className="flex justify-center mt-4">
+              <Button
+                variant="ghost"
                 size="sm"
-                className="mt-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openFileDialog();
+                onClick={() => {
+                  stream.reset();
+                  setIsUploading(false);
+                  setDocumentId(null);
                 }}
               >
-                <Upload className="w-4 h-4 mr-2" />
-                Select File
+                Try Again
               </Button>
-            </>
+            </div>
           )}
         </div>
-      </div>
+      )}
     </Card>
   );
 }

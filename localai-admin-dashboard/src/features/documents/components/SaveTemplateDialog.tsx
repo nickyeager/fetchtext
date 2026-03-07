@@ -19,7 +19,7 @@ interface SaveTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templateName?: string
-  templateId?: number
+  templateId?: number | string
   /** Whether to show the override option */
   enableOverride?: boolean
   /** Document ID (required when enableOverride is true) */

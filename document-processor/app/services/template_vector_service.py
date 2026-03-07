@@ -81,7 +81,13 @@ class TemplateVectorService:
     # ------------------------------------------------------------------
 
     async def ensure_collection_exists(self) -> bool:
-        """Create the ``template_embeddings`` collection if it doesn't exist."""
+        """Create the ``template_embeddings`` collection if it doesn't exist.
+
+        Also detects and fixes a legacy mismatch where the collection was
+        created with **named** vectors (e.g. ``azure``, ``ollama``) but the
+        current code expects **unnamed** vectors.  When the mismatch is
+        found the collection is deleted and recreated with the correct config.
+        """
         if not self.available or not self.client:
             return False
 
@@ -90,7 +96,26 @@ class TemplateVectorService:
 
         try:
             existing = [c.name for c in self.client.get_collections().collections]
-            if self.collection_name not in existing:
+            needs_create = self.collection_name not in existing
+
+            # Check for named-vector mismatch on an existing collection
+            if not needs_create:
+                try:
+                    info = self.client.get_collection(self.collection_name)
+                    vectors_config = info.config.params.vectors
+                    # Unnamed vectors → VectorParams directly; named vectors → dict
+                    if isinstance(vectors_config, dict):
+                        logger.warning(
+                            f"Qdrant collection '{self.collection_name}' has named vectors "
+                            f"{list(vectors_config.keys())} but code expects unnamed vectors. "
+                            f"Deleting and recreating collection."
+                        )
+                        self.client.delete_collection(self.collection_name)
+                        needs_create = True
+                except Exception as check_err:
+                    logger.warning(f"Could not inspect collection config (non-fatal): {check_err}")
+
+            if needs_create:
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(size=1536, distance=Distance.COSINE),

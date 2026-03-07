@@ -110,7 +110,13 @@ export function getExtractedFields(
     },
     {
       name: 'metadata.extracted_fields',
-      data: metadata.extracted_fields as Record<string, unknown> | undefined,
+      data: (() => {
+        const raw = metadata.extracted_fields as Record<string, unknown> | undefined;
+        if (raw && 'extracted_values' in raw && typeof raw.extracted_values === 'object') {
+          return raw.extracted_values as Record<string, unknown>;
+        }
+        return raw;
+      })(),
     },
     {
       name: 'metadata.extracted_data.extracted_values',

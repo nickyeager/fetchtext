@@ -167,6 +167,21 @@ Before declaring ANY feature complete or deployable:
 4. **Identify any blockers** - Note authentication, UI, or functionality issues
 5. **Provide workarounds** - If blockers exist, explain how to work around them
 
+### Mandatory Gate Test — Stucco Contract Upload
+
+**After EVERY implementation session**, before declaring work complete, you MUST run the stucco contract E2E test. This is the primary smoke test for the full document processing pipeline (upload → SSE streaming → template matching → field extraction → detail page rendering).
+
+```bash
+cd localai-admin-dashboard
+source ~/.nvm/nvm.sh && nvm use 20
+E2E_SKIP_GLOBAL_SETUP=1 npx playwright test tests/e2e/document-processing/stucco-upload-e2e.pw.spec.ts --reporter=list
+```
+
+**Expected result**: 2 passed (backend health + full upload flow)
+**Key assertions verified**: SSE streaming, Qdrant template matching, extracted field rendering, "Nicholas Yeager" and "$8,000" values visible on detail page.
+
+**If this test fails, the implementation is NOT complete.** Investigate and fix before finishing.
+
 ### Integration Test Location
 
 All integration tests go in: `src/__tests__/integration/`

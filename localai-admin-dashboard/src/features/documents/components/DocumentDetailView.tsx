@@ -355,7 +355,7 @@ export function DocumentDetailView({
   // Extract templateId for dependency tracking
   const documentTemplateId = (
     document?.metadata as Record<string, unknown> | undefined
-  )?.template_id as number | undefined
+  )?.template_id as number | string | undefined
 
   // Fetch raw template content when template_id is available
   // Also check for custom_template_content in document metadata (document-specific override)
@@ -590,7 +590,7 @@ export function DocumentDetailView({
       {
         name: 'metadata.extracted_fields',
         getter: () => document.metadata?.extracted_fields,
-        hasConfidence: false,
+        hasConfidence: true,
       },
       {
         name: 'metadata.fields',
@@ -805,7 +805,7 @@ export function DocumentDetailView({
     const generateOutput = async () => {
       const extractedData = documentContent.processed.extracted_data
       const metadata = document?.metadata as Record<string, unknown> | undefined
-      const templateId = metadata?.template_id as number | undefined
+      const templateId = metadata?.template_id as number | string | undefined
 
       // If no extracted data, return original
       if (!extractedData || Object.keys(extractedData).length === 0) {
@@ -884,7 +884,7 @@ export function DocumentDetailView({
 
   // Navigate to correct template edit page based on template type
   const navigateToTemplateEdit = async (
-    templateId: number,
+    templateId: number | string,
     _editMode = true
   ) => {
     try {
@@ -936,7 +936,7 @@ export function DocumentDetailView({
 
   const handleProcessingAction = async (
     action: 'use_template' | 'generate_template',
-    templateId?: number
+    templateId?: number | string
   ) => {
     if (!document || !evaluation) return
 
@@ -2550,7 +2550,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
     // Get metadata with proper typing
     const metadata = document?.metadata as Record<string, unknown> | undefined
     const templateName = metadata?.template_name as string | undefined
-    const templateId = metadata?.template_id as number | undefined
+    const templateId = metadata?.template_id as number | string | undefined
     const updatedAt = metadata?.updated_at as string | undefined
 
     // Determine which output to show based on toggle
@@ -2581,7 +2581,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
     const { extractedFields, confidenceScores } = comprehensiveFieldDetection
     const metadata = document?.metadata as Record<string, unknown> | undefined
     const templateName = metadata?.template_name as string | undefined
-    const templateId = metadata?.template_id as number | undefined
+    const templateId = metadata?.template_id as number | string | undefined
 
     // Determine which content to show based on toggle
     let templateContent: string
@@ -2729,7 +2729,9 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
                 </Badge>
               )}
               <span className='text-muted-foreground text-sm'>
-                {new Date(document.created_at).toLocaleDateString()}
+                {document.created_at
+                  ? new Date(document.created_at).toLocaleDateString()
+                  : ''}
               </span>
               {Boolean(document.metadata?.rerun_extraction) && (
                 <Badge variant='secondary' className='text-xs'>
@@ -3018,7 +3020,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               {(() => {
                 const meta = document.metadata as Record<string, unknown> | null | undefined
                 const tName = meta?.template_name as string | undefined
-                const tId = meta?.template_id as number | undefined
+                const tId = meta?.template_id as number | string | undefined
                 return Boolean(tName || tId)
               })() && (
                 <div className='mt-3 border-t border-green-200 pt-3 dark:border-green-800'>
@@ -3027,12 +3029,12 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
                     {(() => {
                       const meta = document.metadata as Record<string, unknown> | null | undefined
                       const tName = meta?.template_name as string | undefined
-                      const tId = meta?.template_id as number | undefined
+                      const tId = meta?.template_id as number | string | undefined
                       return tName || `Template ID: ${tId}`
                     })()}
                     {(() => {
                       const meta = document.metadata as Record<string, unknown> | null | undefined
-                      const tId = meta?.template_id as number | undefined
+                      const tId = meta?.template_id as number | string | undefined
                       return tId ? (
                         <Button
                           variant='ghost'
@@ -3178,7 +3180,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               const metadata = document?.metadata as
                 | Record<string, unknown>
                 | undefined
-              const templateId = metadata?.template_id as number | undefined
+              const templateId = metadata?.template_id as number | string | undefined
               const templateName = metadata?.template_name as string | undefined
 
               return (

@@ -38,7 +38,7 @@ interface DocumentPipelineViewProps {
   finalOutput: string;
   documentName?: string;
   templateName?: string;
-  templateId?: number;
+  templateId?: number | string;
   templateUpdatedAt?: string;
   onUpdateTemplate?: () => void;
 }

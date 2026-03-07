@@ -48,7 +48,7 @@ interface DualDocumentViewProps {
   /** Template name */
   templateName?: string;
   /** Template ID */
-  templateId?: number;
+  templateId?: number | string;
   /** Handler for editing template */
   onEditTemplate?: () => void;
   /** Handler for export */

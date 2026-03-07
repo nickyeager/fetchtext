@@ -74,7 +74,7 @@ interface TemplateOutputViewProps {
   /** Template name */
   templateName?: string
   /** Template ID for editing */
-  templateId?: number
+  templateId?: number | string
   /** Whether to show the raw template vs filled */
   showRaw?: boolean
   /** Handler for editing the template */
