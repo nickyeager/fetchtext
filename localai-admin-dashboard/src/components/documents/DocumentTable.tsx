@@ -1,31 +1,33 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
-import { 
-  MoreHorizontal, 
-  FileText, 
-  Download, 
-  RefreshCw, 
-  Eye, 
-  Trash2, 
-  File, 
-  FileSpreadsheet, 
-  FileCode, 
+import {
+  MoreHorizontal,
+  FileText,
+  Download,
+  RefreshCw,
+  Eye,
+  Trash2,
+  File,
+  FileSpreadsheet,
+  FileCode,
   Image,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Target
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Document, SortParams } from '@/hooks/use-document-gallery';
+import { getMatchScoreColor, getMatchScoreBadgeVariant } from '@/lib/confidence-utils';
 
 interface DocumentTableProps {
   documents: Document[];
@@ -179,6 +181,7 @@ export function DocumentTable({
               </Button>
             </TableHead>
             <TableHead>Type</TableHead>
+            <TableHead>Template Match</TableHead>
             <TableHead>
               <Button 
                 variant="ghost" 
@@ -195,7 +198,7 @@ export function DocumentTable({
         <TableBody>
           {documents.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+              <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                 No documents found
               </TableCell>
             </TableRow>
@@ -250,12 +253,32 @@ export function DocumentTable({
                 </TableCell>
                 <TableCell>
                   {document.document_type && (
-                    <Badge 
-                      variant="outline" 
+                    <Badge
+                      variant="outline"
                       className={`text-xs ${getDocumentTypeColor(document.document_type)}`}
                     >
                       {document.document_type}
                     </Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {document.metadata?.template_name ? (
+                    <div className="flex items-center gap-1.5">
+                      <Target className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="text-xs truncate max-w-[100px]" title={document.metadata.template_name}>
+                        {document.metadata.template_name}
+                      </span>
+                      {document.metadata?.match_score != null && (
+                        <Badge
+                          variant={getMatchScoreBadgeVariant(Number(document.metadata.match_score))}
+                          className="text-[10px] shrink-0"
+                        >
+                          {Math.round(Number(document.metadata.match_score) * 100)}%
+                        </Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell className="text-gray-600">

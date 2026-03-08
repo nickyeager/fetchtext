@@ -1430,3 +1430,66 @@ async def get_field_positions(
             await cleanup_temp_file(temp_file_path)
 
 
+class AddVariableRequest(BaseModel):
+    name: str
+    type: str = "text"
+    description: str = ""
+    extraction_hints: List[str] = []
+    required: bool = False
+    default_value: Optional[str] = None
+
+
+@router.post("/templates/{template_id}/variables")
+async def add_template_variable(template_id: int, variable: AddVariableRequest):
+    """Append a smart variable to an existing template's smart_variables array."""
+    client = db_config.client
+    if not client:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    # Fetch existing template
+    result = client.table("smart_templates").select("id, smart_variables").eq("id", template_id).single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail=f"Template {template_id} not found")
+
+    existing_vars = result.data.get("smart_variables") or []
+
+    # Check for duplicate variable name
+    for v in existing_vars:
+        if v.get("name") == variable.name:
+            raise HTTPException(status_code=409, detail=f"Variable '{variable.name}' already exists in this template")
+
+    new_var = {
+        "id": str(uuid.uuid4()),
+        "name": variable.name,
+        "type": variable.type,
+        "description": variable.description,
+        "extraction_hints": variable.extraction_hints,
+        "required": variable.required,
+    }
+    if variable.default_value is not None:
+        new_var["default_value"] = variable.default_value
+
+    updated_vars = existing_vars + [new_var]
+
+    # Update template
+    update_result = client.table("smart_templates").update({
+        "smart_variables": updated_vars,
+    }).eq("id", template_id).execute()
+
+    if not update_result.data:
+        raise HTTPException(status_code=500, detail="Failed to update template")
+
+    # Re-index template embedding in Qdrant (non-fatal)
+    try:
+        template_data = client.table("smart_templates").select("*").eq("id", template_id).single().execute()
+        if template_data.data and embedding_service:
+            await embedding_service.index_template(template_data.data)
+            logger.info(f"Re-indexed template {template_id} in Qdrant after variable addition")
+    except Exception as e:
+        logger.warning(f"Failed to re-index template {template_id} (non-fatal): {e}")
+
+    return JSONResponse(content={
+        "template_id": template_id,
+        "variable": new_var,
+        "total_variables": len(updated_vars),
+    })

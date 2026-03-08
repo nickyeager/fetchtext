@@ -501,6 +501,39 @@ class TemplateService {
       errors
     };
   }
+
+  /**
+   * Add a smart variable to an existing template.
+   * Fetches the current variables, appends the new one, and saves.
+   */
+  async addVariableToTemplate(
+    templateId: number,
+    variable: { name: string; type: string; description: string; extraction_hints: string[] },
+  ): Promise<SmartTemplate> {
+    const template = await this.getTemplate(templateId);
+    if (!template) {
+      throw new Error(`Template ${templateId} not found`);
+    }
+
+    const existingVars: SmartVariableWithFallback[] = template.smart_variables || [];
+
+    if (existingVars.some((v) => v.name === variable.name)) {
+      throw new Error(`Variable "${variable.name}" already exists in this template`);
+    }
+
+    const newVar: SmartVariableWithFallback = {
+      id: crypto.randomUUID(),
+      name: variable.name,
+      type: variable.type as SmartVariableWithFallback['type'],
+      description: variable.description,
+      extraction_hints: variable.extraction_hints,
+      confidence_threshold: 0.7,
+    };
+
+    return this.updateTemplate(templateId, {
+      smart_variables: [...existingVars, newVar],
+    });
+  }
 }
 
 // Export singleton instance

@@ -1,13 +1,22 @@
-import { createFileRoute, useNavigate, Outlet, useMatches } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, AlertTriangle, Loader2, FileText, LayoutTemplate } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TemplateViewer } from '@/components/templates/TemplateViewer';
+import { TemplateDocumentsList } from '@/features/templates/components/TemplateDocumentsList';
 import { templateService } from '@/services/template-service';
+import { Header } from '@/components/layout/header';
+import { Main } from '@/components/layout/main';
+import { ProfileDropdown } from '@/components/profile-dropdown';
+import { ThemeSwitch } from '@/components/theme-switch';
 
 export const Route = createFileRoute('/_authenticated/templates/$templateId')({
   component: SmartTemplateViewPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: (search.tab as string) || 'overview',
+  }),
   errorComponent: ({ error }) => (
     <div className="container mx-auto p-6">
       <Alert variant="destructive">
@@ -33,15 +42,8 @@ export const Route = createFileRoute('/_authenticated/templates/$templateId')({
 function SmartTemplateViewPage() {
   const navigate = useNavigate();
   const { templateId } = Route.useParams();
-  const matches = useMatches();
+  const { tab } = Route.useSearch();
 
-  // Check if we have an active child route (like /edit)
-  const hasActiveChildRoute = matches.some(match =>
-    match.routeId.includes('/edit') || match.routeId.endsWith('/$templateId/edit')
-  );
-
-  // Use React Query for proper caching and invalidation
-  // Disable query when child route is active to avoid unnecessary fetches
   const {
     data: template,
     isLoading,
@@ -55,66 +57,120 @@ function SmartTemplateViewPage() {
       }
       return foundTemplate;
     },
-    enabled: !!templateId && !hasActiveChildRoute,
+    enabled: !!templateId,
   });
 
   const handleBack = () => {
     navigate({ to: '/templates' });
   };
 
-  // If we have an active child route, just render the outlet
-  if (hasActiveChildRoute) {
-    return <Outlet />;
-  }
+  const handleTabChange = (value: string) => {
+    navigate({
+      to: '/templates/$templateId',
+      params: { templateId },
+      search: { tab: value },
+      replace: true,
+    });
+  };
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
-        </div>
-      </div>
+      <>
+        <Header>
+          <div className='ml-auto flex items-center space-x-4'>
+            <ThemeSwitch />
+            <ProfileDropdown />
+          </div>
+        </Header>
+        <Main>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        </Main>
+      </>
     );
   }
 
   if (error || (!isLoading && !template)) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center mb-6">
-          <Button variant="outline" onClick={handleBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Templates
-          </Button>
-        </div>
-
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            {error instanceof Error ? error.message : 'Smart template not found'}
-          </AlertDescription>
-        </Alert>
-      </div>
+      <>
+        <Header>
+          <div className='ml-auto flex items-center space-x-4'>
+            <ThemeSwitch />
+            <ProfileDropdown />
+          </div>
+        </Header>
+        <Main>
+          <div className="container mx-auto p-6">
+            <div className="flex items-center mb-6">
+              <Button variant="outline" onClick={handleBack}>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Templates
+              </Button>
+            </div>
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                {error instanceof Error ? error.message : 'Smart template not found'}
+              </AlertDescription>
+            </Alert>
+          </div>
+        </Main>
+      </>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Templates
-        </Button>
-      </div>
+    <>
+      <Header>
+        <div className='ml-auto flex items-center space-x-4'>
+          <ThemeSwitch />
+          <ProfileDropdown />
+        </div>
+      </Header>
+      <Main>
+        <div className="container mx-auto p-6">
+          <div className="flex items-center mb-6">
+            <Button variant="outline" size="sm" onClick={handleBack}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Templates
+            </Button>
+            <h1 className="ml-4 text-xl font-semibold truncate">
+              {template?.name}
+            </h1>
+          </div>
 
-      {/* Smart Template Viewer - View Only */}
-      <TemplateViewer
-        template={{
-          ...(template as object as { [k: string]: unknown }),
-          tags: (template?.tags || []) as string[],
-          type: 'smart' as const
-        } as any}
-      />
-    </div>
+          <Tabs value={tab} onValueChange={handleTabChange}>
+            <TabsList>
+              <TabsTrigger value="overview" className="gap-1.5">
+                <LayoutTemplate className="h-4 w-4" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="gap-1.5">
+                <FileText className="h-4 w-4" />
+                Documents
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="mt-4">
+              <TemplateViewer
+                template={{
+                  ...(template as object as { [k: string]: unknown }),
+                  tags: (template?.tags || []) as string[],
+                  type: 'smart' as const
+                } as any}
+              />
+            </TabsContent>
+
+            <TabsContent value="documents" className="mt-4">
+              <TemplateDocumentsList
+                templateId={Number(templateId)}
+                templateName={template?.name}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </Main>
+    </>
   );
 }

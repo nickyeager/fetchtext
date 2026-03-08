@@ -15,6 +15,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DocumentDetailView } from '@/features/documents/components/DocumentDetailView';
 import { UnifiedDocumentService, DocumentStatus } from '@/services/unified-document-service';
+import { Header } from '@/components/layout/header';
+import { Main } from '@/components/layout/main';
+import { ProfileDropdown } from '@/components/profile-dropdown';
+import { ThemeSwitch } from '@/components/theme-switch';
 
 // Route search params validation
 interface DocumentDetailSearch {
@@ -77,7 +81,7 @@ function DocumentDetailPage() {
    * Handle navigation back to documents list
    */
   const handleBack = () => {
-    navigate({ to: '/documents/gallery' });
+    navigate({ to: '/documents' });
   };
 
   /**
@@ -123,11 +127,21 @@ function DocumentDetailPage() {
   };
 
   return (
-    <DocumentDetailView
-      documentId={documentId}
-      onBack={handleBack}
-      onDownload={handleDownload}
-      onSave={handleSave}
-    />
+    <>
+      <Header>
+        <div className='ml-auto flex items-center space-x-4'>
+          <ThemeSwitch />
+          <ProfileDropdown />
+        </div>
+      </Header>
+      <Main>
+        <DocumentDetailView
+          documentId={documentId}
+          onBack={handleBack}
+          onDownload={handleDownload}
+          onSave={handleSave}
+        />
+      </Main>
+    </>
   );
 }

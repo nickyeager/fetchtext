@@ -1412,6 +1412,70 @@ export class UnifiedDocumentService {
   }
 
   /**
+   * Get documents associated with a specific template.
+   * Queries JSONB metadata->template_id.
+   */
+  static async getDocumentsByTemplate(
+    templateId: number | string,
+  ): Promise<DocumentRecord[]> {
+    try {
+      await requireAuthentication()
+
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('metadata->>template_id', String(templateId))
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        throw new Error(
+          `Failed to fetch documents for template: ${error.message}`,
+        )
+      }
+
+      return data || []
+    } catch (error) {
+      console.error('Failed to get documents by template:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Get document counts grouped by template_id.
+   * Returns a map of templateId -> count.
+   */
+  static async getDocumentCountsByTemplate(): Promise<
+    Record<string, number>
+  > {
+    try {
+      await requireAuthentication()
+
+      const { data, error } = await supabase
+        .from('documents')
+        .select('metadata')
+
+      if (error) {
+        throw new Error(
+          `Failed to fetch document counts: ${error.message}`,
+        )
+      }
+
+      const counts: Record<string, number> = {}
+      for (const doc of data || []) {
+        const tid = (doc.metadata as any)?.template_id
+        if (tid != null) {
+          const key = String(tid)
+          counts[key] = (counts[key] || 0) + 1
+        }
+      }
+      return counts
+    } catch (error) {
+      console.error('Failed to get document counts by template:', error)
+      throw error
+    }
+  }
+
+  /**
    * REMOVED: Realtime subscriptions
    * Use polling or manual refresh instead
    */

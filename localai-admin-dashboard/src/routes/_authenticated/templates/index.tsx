@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Settings, FileText, Eye } from 'lucide-react';
@@ -11,6 +13,7 @@ import { Search } from '@/components/search';
 import { ThemeSwitch } from '@/components/theme-switch';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { templateService, SmartTemplate } from '@/services/template-service';
+import { UnifiedDocumentService } from '@/services/unified-document-service';
 import { useOrganization } from '@/context/organization-context';
 
 export const Route = createFileRoute('/_authenticated/templates/')({
@@ -24,6 +27,12 @@ export function TemplatesIndexPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [templates, setTemplates] = useState<SmartTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Document counts per template
+  const { data: documentCounts = {} } = useQuery({
+    queryKey: ['templateDocumentCounts'],
+    queryFn: () => UnifiedDocumentService.getDocumentCountsByTemplate(),
+  });
 
   // Load templates on component mount
   React.useEffect(() => {
@@ -170,6 +179,7 @@ export function TemplatesIndexPage() {
           onTemplateDelete={handleDeleteTemplate}
           onCreateTemplate={handleCreateTemplate}
           gridView={true}
+          documentCounts={documentCounts}
         />
       </Main>
     </>
@@ -185,6 +195,7 @@ interface TemplateListProps {
   onTemplateDelete: (templateId: number) => void;
   onCreateTemplate: () => void;
   gridView?: boolean;
+  documentCounts?: Record<string, number>;
 }
 
 function TemplateList({
@@ -194,7 +205,8 @@ function TemplateList({
   onTemplateSelect,
   onTemplateEdit,
   onTemplateDelete,
-  gridView = false
+  gridView = false,
+  documentCounts = {},
 }: TemplateListProps) {
   if (isLoading) {
     return (
@@ -228,6 +240,7 @@ function TemplateList({
             onSelect={onTemplateSelect}
             onEdit={onTemplateEdit}
             onDelete={onTemplateDelete}
+            documentCount={template.id ? documentCounts[String(template.id)] || 0 : 0}
           />
         ))}
       </div>
@@ -291,9 +304,10 @@ interface TemplateCardProps {
   onSelect: (template: SmartTemplate) => void;
   onEdit: (template: SmartTemplate) => void;
   onDelete: (templateId: number) => void;
+  documentCount?: number;
 }
 
-function TemplateCard({ template, onSelect, onEdit }: TemplateCardProps) {
+function TemplateCard({ template, onSelect, onEdit, documentCount = 0 }: TemplateCardProps) {
   return (
     <Card 
       className="cursor-pointer hover:shadow-md transition-shadow"
@@ -323,9 +337,17 @@ function TemplateCard({ template, onSelect, onEdit }: TemplateCardProps) {
             <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
               {template.category}
             </span>
-            <span className="text-muted-foreground">
-              {template.smart_variables.length} variables
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">
+                {template.smart_variables.length} variables
+              </span>
+              {documentCount > 0 && (
+                <Badge variant="secondary" className="text-[10px] gap-1">
+                  <FileText className="h-3 w-3" />
+                  {documentCount}
+                </Badge>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center justify-between">

@@ -25,9 +25,7 @@ from fastapi.responses import JSONResponse
 
 from ..middleware.api_auth import api_key_auth
 from ..services.webhook_service import webhook_service
-from ..services.enhanced_docling_service import enhanced_docling_service
-from ..services.document_evaluator import document_evaluator
-from ..services.smart_field_extractor import smart_field_extractor
+from ..services.document_processing_pipeline import pipeline
 from ..config.database import db_config
 from ..models.api_v1_responses import (
     ProcessDocumentResponse,
@@ -218,44 +216,19 @@ async def _process_with_template(
     confidence_threshold: float
 ) -> Dict[str, Any]:
     """Process document with a specific template."""
-    if not db_config.client:
-        raise ValueError("Database not configured")
-
-    # Fetch template
-    template_result = db_config.client.table('smart_templates').select(
-        'id, name, smart_variables, category'
-    ).eq('id', template_id).execute()
-
-    if not template_result.data:
+    template = await pipeline.fetch_template(template_id)
+    if not template:
         raise ValueError(f"Template {template_id} not found")
 
-    template = template_result.data[0]
-
     # Extract document text
-    doc_result = await enhanced_docling_service.process_document(
-        file_path,
-        extract_text=True,
-        extract_metadata=True,
-        extract_structure=False
-    )
-
+    doc_result = await pipeline.extract_text(file_path)
     text_content = doc_result.get('content', {}).get('text', '')
-
-    if not text_content:
-        raise ValueError("No text could be extracted from document")
 
     # Extract fields using template
     smart_variables = template.get('smart_variables', [])
-
-    if smart_variables:
-        extracted_data = await smart_field_extractor.extract_fields_intelligently(
-            text_content,
-            smart_variables,
-            confidence_threshold,
-            provider='azure'
-        )
-    else:
-        extracted_data = {'message': 'Template has no smart variables defined'}
+    extracted_data = await pipeline.extract_fields(
+        text_content, smart_variables, confidence_threshold
+    )
 
     return {
         'template_id': template_id,
@@ -275,17 +248,23 @@ async def _process_with_auto_template(
     original_filename: str
 ) -> Dict[str, Any]:
     """Process document with automatic template matching/generation."""
-    # Evaluate document type and get template suggestions
-    evaluation = await document_evaluator.evaluate_document(
-        file_path,
-        original_filename,
-        '',  # content_type not needed
-        quick_scan=True,
-        user_id=None  # Use org-level templates
+    # Extract text first so we can reuse it (avoids re-extraction)
+    doc_result = await pipeline.extract_text(file_path)
+    text_content = doc_result.get('content', {}).get('text', '')
+
+    # Evaluate document type with the already-extracted text
+    evaluation = await pipeline.evaluate_document(
+        file_path, original_filename, extracted_text=text_content
     )
 
-    suggestions = evaluation.get('template_suggestions', [])
     doc_type = evaluation.get('type_evaluation', {}).get('primary_type', 'document')
+
+    # Try vector search first (was missing in API v1), then fall back to evaluator suggestions
+    suggestions = await pipeline.match_templates_vector(
+        text_content, organization_id, min_score=confidence_threshold
+    )
+    if not suggestions:
+        suggestions = evaluation.get('template_suggestions', [])
 
     # Check for strong template match
     if suggestions and suggestions[0].get('match_score', 0) >= confidence_threshold:
@@ -294,22 +273,27 @@ async def _process_with_auto_template(
 
         logger.info(f"Template matched: {matched.get('template_name')} (score: {matched.get('match_score')})")
 
-        # Process with matched template
-        result = await _process_with_template(
-            file_path=file_path,
-            template_id=str(template_id),
-            organization_id=organization_id,
-            confidence_threshold=confidence_threshold
-        )
+        # Fetch template and extract fields (reuse already-extracted text)
+        template = await pipeline.fetch_template(template_id)
+        if template:
+            smart_variables = template.get('smart_variables', [])
+            extracted_data = await pipeline.extract_fields(
+                text_content, smart_variables, confidence_threshold
+            )
 
-        result['match_score'] = matched.get('match_score')
-        result['extraction_method'] = 'template_matched'
-        result['alternatives'] = [
-            {'id': s.get('template_id'), 'name': s.get('template_name'), 'score': s.get('match_score')}
-            for s in suggestions[1:4]  # Top 3 alternatives
-        ]
-
-        return result
+            return {
+                'template_id': template_id,
+                'template_name': template.get('name'),
+                'template_category': template.get('category'),
+                'extracted_data': extracted_data,
+                'document_preview': text_content[:500] if text_content else None,
+                'match_score': matched.get('match_score'),
+                'extraction_method': 'template_matched',
+                'alternatives': [
+                    {'id': s.get('template_id'), 'name': s.get('template_name'), 'score': s.get('match_score')}
+                    for s in suggestions[1:4]
+                ],
+            }
 
     # No strong match - generate template if allowed
     if auto_generate_template:
@@ -318,10 +302,11 @@ async def _process_with_auto_template(
         try:
             from ..services.ai_template_generator import ai_template_generator
 
-            # Analyze document structure
-            analysis = await ai_template_generator.analyze_document_structure(file_path)
+            # Use already-extracted text instead of re-extracting from file
+            analysis = await ai_template_generator._detect_fields_with_azure_openai(
+                text_content, doc_type
+            )
 
-            # Generate template
             template_name = f"{doc_type.title()} Template (Auto-generated)"
             generated = await ai_template_generator.generate_template_from_analysis(
                 analysis, template_name
@@ -344,7 +329,7 @@ async def _process_with_auto_template(
 
                     # Index template embedding for vector search (fire-and-forget)
                     try:
-                        from app.services.template_vector_service import template_vector_service
+                        from ..services.template_vector_service import template_vector_service
                         if template_vector_service.available:
                             await template_vector_service.index_template(saved.data[0])
                     except Exception as embed_err:

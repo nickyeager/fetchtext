@@ -69,6 +69,9 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import TemplateSelector from '@/components/documents/TemplateSelector'
+import { TemplateMatchCard } from '@/components/documents/TemplateMatchCard'
+import { AddFieldFromSelectionDialog, type NewFieldData } from '@/components/documents/AddFieldFromSelectionDialog'
+import { useTextSelection } from '@/hooks/use-text-selection'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { GeneratedTemplateDialog } from '@/components/templates/GeneratedTemplateDialog'
 import { CreateTemplateFromFields } from './CreateTemplateFromFields'
@@ -166,6 +169,10 @@ export function DocumentDetailView({
     >
   >(new Map())
   const [isLoadingPositions, setIsLoadingPositions] = React.useState(false)
+
+  // Text selection for adding template fields
+  const contentRef = useRef<HTMLDivElement>(null)
+  const textSelection = useTextSelection(contentRef)
 
   // Fetch document data with real-time updates
   const {
@@ -882,24 +889,29 @@ export function DocumentDetailView({
     documentContent.processed.text,
   ])
 
+  // Add a field to the document's matched template from text selection
+  const handleAddFieldFromSelection = useCallback(
+    async (_templateId: number, field: NewFieldData) => {
+      await templateService.addVariableToTemplate(_templateId, field)
+      // Refresh template data
+      queryClient.invalidateQueries({ queryKey: ['template', _templateId] })
+      refetch()
+    },
+    [queryClient, refetch],
+  )
+
   // Navigate to correct template edit page based on template type
   const navigateToTemplateEdit = async (
     templateId: number | string,
     _editMode = true
   ) => {
     try {
-      // Since all templates are now smart templates, navigate directly to the smart template edit route
-      navigate({
-        to: '/templates/$templateId/edit',
-        params: { templateId: templateId.toString() },
-      })
-    } catch (error) {
-      console.error('Error navigating to template edit:', error)
-      // Fallback to view route
       navigate({
         to: '/templates/$templateId',
         params: { templateId: templateId.toString() },
       })
+    } catch (error) {
+      console.error('Error navigating to template:', error)
     }
   }
 
@@ -2137,38 +2149,15 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               <div className='space-y-3'>
                 <h4 className='font-medium'>Processing Options</h4>
 
-                {/* Primary recommendation */}
+                {/* Template Match Results */}
                 {evaluation.template_suggestions.length > 0 && (
-                  <div className='rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950'>
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1'>
-                        <h5 className='mb-1 font-medium text-blue-900 dark:text-blue-100'>
-                          Recommended: Use Existing Template
-                        </h5>
-                        <p className='mb-2 text-sm text-blue-700 dark:text-blue-300'>
-                          {evaluation.template_suggestions[0].template_name}
-                        </p>
-                        <Badge variant='secondary' className='text-xs'>
-                          {Math.round(
-                            evaluation.template_suggestions[0].match_score * 100
-                          )}
-                          % match
-                        </Badge>
-                      </div>
-                      <Button
-                        onClick={() =>
-                          handleProcessingAction(
-                            'use_template',
-                            evaluation.template_suggestions[0].template_id
-                          )
-                        }
-                        disabled={isProcessing}
-                      >
-                        Use Template
-                        <Zap className='ml-2 h-4 w-4' />
-                      </Button>
-                    </div>
-                  </div>
+                  <TemplateMatchCard
+                    suggestions={evaluation.template_suggestions}
+                    onSelectTemplate={(templateId) =>
+                      handleProcessingAction('use_template', templateId)
+                    }
+                    compact
+                  />
                 )}
 
                 {/* Alternative actions */}
@@ -2375,7 +2364,7 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
             value='processed'
             className='px-2 py-2 text-xs sm:text-sm'
           >
-            <span className='hidden sm:inline'>Extracted Fieldssss</span>
+            <span className='hidden sm:inline'>Extracted Fields</span>
             <span className='sm:hidden'>Extracted</span>
           </TabsTrigger>
         </TabsList>
@@ -2407,10 +2396,25 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               </div>
             </CardHeader>
             <CardContent>
-              <MarkdownViewer
-                content={documentContent.original.text}
-                height='h-64 sm:h-96'
-              />
+              <div ref={contentRef} className='relative'>
+                <MarkdownViewer
+                  content={documentContent.original.text}
+                  height='h-64 sm:h-96'
+                />
+                {textSelection.selectedText &&
+                  textSelection.position &&
+                  (document.metadata as any)?.template_id && (
+                    <AddFieldFromSelectionDialog
+                      selectedText={textSelection.selectedText}
+                      position={textSelection.position}
+                      templateId={Number(
+                        (document.metadata as any).template_id,
+                      )}
+                      onAddField={handleAddFieldFromSelection}
+                      onClose={textSelection.clearSelection}
+                    />
+                  )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -2730,7 +2734,13 @@ ${contentToExport.replace(/\n/g, '<br>\n')}
               )}
               <span className='text-muted-foreground text-sm'>
                 {document.created_at
-                  ? new Date(document.created_at).toLocaleDateString()
+                  ? new Date(document.created_at).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })
                   : ''}
               </span>
               {Boolean(document.metadata?.rerun_extraction) && (

@@ -1,11 +1,12 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Upload, Loader2 } from 'lucide-react';
+import { Upload, Loader2, ArrowRight, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ProcessingLog } from '@/components/ui/processing-log';
+import { TemplateMatchCard, type TemplateSuggestion } from './TemplateMatchCard';
 import { useAuth } from '@/context/auth-context';
 import { useOrganization } from '@/context/organization-context';
 import { useDocumentManager } from '@/hooks/use-document-manager';
@@ -35,6 +36,10 @@ export function DragDropUpload({
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [completedResult, setCompletedResult] = useState<{
+    documentId: string;
+    suggestions: TemplateSuggestion[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handledResultRef = useRef(false);
   const handledErrorRef = useRef(false);
@@ -277,7 +282,32 @@ export function DragDropUpload({
         if (onUploadComplete) {
           onUploadComplete(documentId);
         } else {
-          navigate({ to: `/documents/${documentId}` });
+          // Build template suggestions for the results display
+          const suggestions: TemplateSuggestion[] = [];
+
+          if (result.chosen_template) {
+            suggestions.push({
+              template_id: result.chosen_template.template_id,
+              template_name: result.chosen_template.template_name,
+              category: result.chosen_template.category || 'document',
+              match_score: result.decision_metadata?.match_score ?? result.decision_metadata?.combined_score ?? 0,
+              field_count: result.chosen_template.field_count ?? 0,
+            });
+          }
+
+          if (result.alternatives && Array.isArray(result.alternatives)) {
+            for (const alt of result.alternatives) {
+              suggestions.push({
+                template_id: alt.template_id,
+                template_name: alt.template_name,
+                category: alt.category || 'document',
+                match_score: alt.match_score ?? 0,
+                field_count: alt.field_count ?? 0,
+              });
+            }
+          }
+
+          setCompletedResult({ documentId, suggestions });
         }
       } catch (err) {
         console.error('[DragDropUpload] Failed to finalize document:', err);
@@ -349,6 +379,7 @@ export function DragDropUpload({
     }
 
     setIsUploading(true);
+    setCompletedResult(null);
     handledResultRef.current = false;
     handledErrorRef.current = false;
     onUploadStart?.();
@@ -528,10 +559,44 @@ export function DragDropUpload({
                   stream.reset();
                   setIsUploading(false);
                   setDocumentId(null);
+                  setCompletedResult(null);
                 }}
               >
                 Try Again
               </Button>
+            </div>
+          )}
+
+          {/* Match results after processing completes */}
+          {completedResult && (
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-400">
+                <CheckCircle className="h-4 w-4" />
+                Processing complete
+              </div>
+
+              {completedResult.suggestions.length > 0 && (
+                <TemplateMatchCard
+                  suggestions={completedResult.suggestions}
+                  compact
+                  onViewTemplate={(templateId) =>
+                    navigate({ to: `/templates/${templateId}` })
+                  }
+                />
+              )}
+
+              <div className="flex justify-center">
+                <Button
+                  onClick={() =>
+                    navigate({
+                      to: `/documents/${completedResult.documentId}`,
+                    })
+                  }
+                >
+                  View Document
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </div>

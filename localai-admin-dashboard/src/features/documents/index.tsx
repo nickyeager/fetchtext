@@ -10,7 +10,6 @@ import {
   Eye,
   Plus,
   Sparkles,
-  Image,
   Upload,
   Clock,
   CheckCircle2,
@@ -223,13 +222,6 @@ export default function DocumentsPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => navigate({ to: '/documents/gallery' })}
-          >
-            <Image className="h-4 w-4 mr-2" />
-            Document Gallery
-          </Button>
-          <Button
-            variant="outline"
             onClick={() => navigate({ to: '/documents/upload' })}
             className="border-primary/30 hover:border-primary/60 hover:bg-primary/5"
           >
@@ -391,7 +383,7 @@ export default function DocumentsPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate({ to: '/documents/gallery' })}
+                onClick={() => navigate({ to: '/documents' })}
                 className="text-muted-foreground hover:text-foreground"
               >
                 View all {totalDocs} documents

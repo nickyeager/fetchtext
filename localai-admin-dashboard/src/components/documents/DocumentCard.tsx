@@ -2,16 +2,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, FileText, Download, RefreshCw, Eye, Trash2, File, FileSpreadsheet, FileCode, Image } from 'lucide-react';
+import { MoreHorizontal, FileText, Download, RefreshCw, Eye, Trash2, File, FileSpreadsheet, FileCode, Image, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { useState } from 'react';
 
-// Shared utilities - DRY refactor
 import { formatFileSize, getStatusColor, getStatusLabel } from '@/lib/document-utils';
+import { getMatchScoreBadgeVariant } from '@/lib/confidence-utils';
 
 interface DocumentMeta {
   pages?: number;
   language?: string;
+  template_name?: string;
+  match_score?: number;
   [key: string]: unknown;
 }
 
@@ -199,11 +201,28 @@ export function DocumentCard({
             
             {/* Document type badge */}
             {document.document_type && (
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={`text-xs ${getDocumentTypeColor(document.document_type)}`}
               >
                 {document.document_type}
+              </Badge>
+            )}
+
+            {/* Template match badge */}
+            {document.metadata?.template_name && (
+              <Badge
+                variant={document.metadata.match_score != null
+                  ? getMatchScoreBadgeVariant(Number(document.metadata.match_score))
+                  : 'outline'
+                }
+                className="text-xs gap-1"
+              >
+                <Target className="h-2.5 w-2.5" />
+                {document.metadata.match_score != null
+                  ? `${Math.round(Number(document.metadata.match_score) * 100)}%`
+                  : document.metadata.template_name
+                }
               </Badge>
             )}
 

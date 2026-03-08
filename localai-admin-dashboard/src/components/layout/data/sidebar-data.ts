@@ -1,30 +1,16 @@
 import {
-
   IconFile,
-
   IconLayoutDashboard,
-  IconLock,
-  IconLockAccess,
-  IconMessages,
   IconNotification,
-  IconPackages,
-  IconPalette,
-  IconServerOff,
   IconSettings,
   IconTemplate,
   IconTool,
   IconUserCog,
-  IconUserOff,
-  IconUsers,
-  IconGitBranch,
   IconCpu,
   IconUpload,
-  IconPhoto,
-  IconDatabase,
   IconCode,
 } from '@tabler/icons-react'
-import { AudioWaveform, Command, GalleryVerticalEnd } from 'lucide-react'
-import { ClerkLogo } from '@/assets/clerk-logo'
+import { Command } from 'lucide-react'
 import { type SidebarData } from '../types'
 
 export const sidebarData: SidebarData = {
@@ -37,17 +23,7 @@ export const sidebarData: SidebarData = {
     {
       name: 'FetchText',
       logo: Command,
-      plan: 'Vite + ShadcnUI',
-    },
-    {
-      name: 'Acme Inc',
-      logo: GalleryVerticalEnd,
-      plan: 'Enterprise',
-    },
-    {
-      name: 'Acme Corp.',
-      logo: AudioWaveform,
-      plan: 'Startup',
+      plan: 'Document Intelligence',
     },
   ],
   navGroups: [
@@ -55,37 +31,25 @@ export const sidebarData: SidebarData = {
       title: 'General',
       items: [
         {
-          title: 'Upload Document',
-          url: '/documents/upload',
-          icon: IconUpload,
-        },
-        {
           title: 'Dashboard',
           url: '/dashboard',
           icon: IconLayoutDashboard,
+        },
+        {
+          title: 'Upload Document',
+          url: '/documents/upload',
+          icon: IconUpload,
         },
         {
           title: 'Documents',
           url: '/documents',
           icon: IconFile,
         },
-        
-        {
-          title: 'Document Gallery',
-          url: '/documents/gallery',
-          icon: IconPhoto,
-        },
-
         {
           title: 'Templates',
           url: '/templates',
           icon: IconTemplate,
         },
-        {
-          title: 'Users',
-          url: '/users',
-          icon: IconUsers,
-        }
       ],
     },
     {
@@ -119,9 +83,9 @@ export const sidebarData: SidebarData = {
               title: 'Notifications',
               url: '/settings/notifications',
               icon: IconNotification,
-            }
+            },
           ],
-        }
+        },
       ],
     },
   ],
