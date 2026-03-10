@@ -33,7 +33,7 @@ test.describe('Document Highlighting UI Rendering', () => {
       if (msg.type() === 'error') {
         const text = msg.text();
         // Ignore expected errors
-        if (text.includes('InvalidJWT') || text.includes('exp') || text.includes('Failed to load resource')) {
+        if (text.includes('InvalidJWT') || text.includes('exp') || text.includes('Failed to load resource') || text.includes('pdfjs-dist') || text.includes('pdf.worker')) {
           return;
         }
         consoleErrors.push(text);

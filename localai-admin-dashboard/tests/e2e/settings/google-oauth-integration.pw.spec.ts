@@ -16,6 +16,7 @@
  * - User must have an organization
  */
 
+import 'dotenv/config'
 import { test, expect, Page } from '@playwright/test'
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'

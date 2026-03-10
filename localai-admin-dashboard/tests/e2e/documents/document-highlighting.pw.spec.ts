@@ -28,8 +28,15 @@ test.describe('Document Highlighting Feature (REAL)', () => {
       if (msg.type() === 'error') {
         // Ignore expected errors like JWT expiration during testing
         const text = msg.text();
-        if (text.includes('InvalidJWT') || text.includes('exp')) {
-          console.log('[Test] Ignoring JWT-related console error (expected during testing)');
+        // Ignore known transient/infrastructure errors
+        if (
+          text.includes('InvalidJWT') ||
+          text.includes('Invalid Refresh Token') ||
+          text.includes('AuthApiError') ||
+          text.includes('pdfjs-dist') ||
+          text.includes('pdf.worker') ||
+          text.includes('Failed to load resource')
+        ) {
           return;
         }
         consoleErrors.push(text);

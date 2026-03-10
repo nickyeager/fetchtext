@@ -37,15 +37,15 @@ test.describe('Smart template fetch with invalid id', () => {
       logs.push(text)
     })
 
-    // Navigate with invalid template id=0
-    await page.goto('/documents/process-document?templateId=0&templateSource=smart_templates', { waitUntil: 'domcontentloaded' })
+    // Navigate with invalid template id=0 (uses /documents/upload which replaced /documents/process-document)
+    await page.goto('/documents/upload?templateId=0&templateSource=smart_templates', { waitUntil: 'domcontentloaded' })
 
     // Wait a moment for any potential requests to complete
     await page.waitForTimeout(2000)
 
-    // UI should be usable despite invalid template ID: upload control visible
-    const fileInput = page.locator('[data-testid="document-file-input"]')
-    await expect(fileInput).toBeVisible({ timeout: 15000 })
+    // UI should be usable despite invalid template ID: upload drop zone visible
+    const dropZone = page.locator('[data-testid="drop-zone"]')
+    await expect(dropZone).toBeVisible({ timeout: 15000 })
 
     // Verify no 406 errors in console logs (the fix working)
     const has406Error = logs.some((l) => /406|Not Acceptable/i.test(l))

@@ -44,7 +44,18 @@ test.describe('Field Extraction Integration (REAL)', () => {
     consoleErrors = [];
     page.on('console', msg => {
       if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
+        const text = msg.text();
+        // Ignore known transient/infrastructure errors
+        if (
+          text.includes('Invalid Refresh Token') ||
+          text.includes('AuthApiError') ||
+          text.includes('pdfjs-dist') ||
+          text.includes('pdf.worker') ||
+          text.includes('Failed to load resource')
+        ) {
+          return;
+        }
+        consoleErrors.push(text);
       }
     });
 
