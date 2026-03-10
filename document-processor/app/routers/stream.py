@@ -39,6 +39,7 @@ from ..services.document_evaluator import document_evaluator
 from ..services.smart_field_extractor import smart_field_extractor
 from ..services.embedding_service import embedding_service
 from ..services.document_event_bus import document_event_bus
+from ..services.document_processing_pipeline import pipeline
 from ..config.database import db_config
 
 router = APIRouter(
@@ -80,6 +81,7 @@ async def _process_document_stream(
     min_match_confidence: float,
     allow_generation: bool,
     organization_id: Optional[str],
+    document_id: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields SSE events as processing progresses."""
 
@@ -142,6 +144,8 @@ async def _process_document_stream(
             "message": f"Text extraction timed out after {int(extraction_timeout)}s",
             "elapsed_ms": elapsed_ms(),
         })
+        if document_id:
+            await pipeline.update_document_status(document_id, "failed", metadata_updates={"error_message": f"Text extraction timed out after {int(extraction_timeout)}s"})
         return
     except Exception as exc:
         logger.error(f"[STREAM_TIMING] Text extraction FAILED | file={filename} | error={exc}", exc_info=True)
@@ -150,6 +154,8 @@ async def _process_document_stream(
             "message": f"Text extraction failed: {exc}",
             "elapsed_ms": elapsed_ms(),
         })
+        if document_id:
+            await pipeline.update_document_status(document_id, "failed", metadata_updates={"error_message": str(exc)})
         return
 
     char_count = len(document_text)
@@ -190,6 +196,8 @@ async def _process_document_stream(
             "message": f"Document evaluation timed out after {int(llm_timeout)}s",
             "elapsed_ms": elapsed_ms(),
         })
+        if document_id:
+            await pipeline.update_document_status(document_id, "failed", metadata_updates={"error_message": f"Document evaluation timed out after {int(llm_timeout)}s"})
         return
     except Exception as exc:
         logger.error(f"Evaluation failed: {exc}")
@@ -198,6 +206,8 @@ async def _process_document_stream(
             "message": f"Document evaluation failed: {exc}",
             "elapsed_ms": elapsed_ms(),
         })
+        if document_id:
+            await pipeline.update_document_status(document_id, "failed", metadata_updates={"error_message": str(exc)})
         return
 
     primary_type = (evaluation.get("type_evaluation") or {}).get("primary_type", "unknown")
@@ -507,6 +517,21 @@ async def _process_document_stream(
         "result": result,
     })
 
+    # ── Update document status in database ─────────────────────────
+    if document_id:
+        try:
+            import datetime
+            await pipeline.update_document_status(
+                document_id,
+                "completed",
+                metadata_updates={
+                    "processing_completed_at": datetime.datetime.utcnow().isoformat(),
+                    "processing_method": "sse_stream",
+                },
+            )
+        except Exception as exc:
+            logger.warning(f"[Stream] Failed to update document status: {exc}")
+
     # ── Emit document event for webhook subscriptions ──────────────
     try:
         await document_event_bus.emit(
@@ -544,6 +569,9 @@ async def process_document_stream(
     ),
     organization_id: Optional[str] = Query(
         None, description="Organization ID for org-specific LLM config"
+    ),
+    document_id: Optional[int] = Query(
+        None, description="Document ID for server-side status updates"
     ),
 ):
     """
@@ -595,6 +623,7 @@ async def process_document_stream(
                     min_match_confidence=min_match_confidence,
                     allow_generation=allow_generation,
                     organization_id=organization_id,
+                    document_id=document_id,
                 ):
                     await queue.put(event)
 

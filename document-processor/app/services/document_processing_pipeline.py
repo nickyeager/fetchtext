@@ -231,6 +231,49 @@ class DocumentProcessingPipeline:
             return result.data[0]
         return None
 
+    # ── Stage 6: Update Document Status ─────────────────────────────
+
+    async def update_document_status(
+        self,
+        document_id: int | str,
+        status: str,
+        metadata_updates: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Update document processing_status in the database.
+
+        Non-fatal: logs errors but never raises so it cannot break
+        the SSE stream or caller.
+        """
+        if not db_config.client or not document_id:
+            logger.warning(
+                "Cannot update document status: "
+                f"client={bool(db_config.client)}, id={document_id}"
+            )
+            return
+
+        update_data: Dict[str, Any] = {"processing_status": status}
+
+        if metadata_updates:
+            current = (
+                db_config.client.table("documents")
+                .select("metadata")
+                .eq("id", int(document_id))
+                .execute()
+            )
+            current_metadata = (
+                (current.data[0].get("metadata") or {}) if current.data else {}
+            )
+            current_metadata.update(metadata_updates)
+            update_data["metadata"] = current_metadata
+
+        try:
+            db_config.client.table("documents").update(update_data).eq(
+                "id", int(document_id)
+            ).execute()
+            logger.info(f"Document {document_id} status -> {status}")
+        except Exception as e:
+            logger.error(f"Failed to update document {document_id} status: {e}")
+
 
 # Singleton
 pipeline = DocumentProcessingPipeline()

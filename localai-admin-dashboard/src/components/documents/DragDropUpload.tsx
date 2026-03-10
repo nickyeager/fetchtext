@@ -411,6 +411,7 @@ export function DragDropUpload({
         minMatchConfidence: 0.6,
         allowGeneration: true,
         organizationId: activeOrganization.id,
+        documentId: documentRecord.id,
         accessToken: session?.access_token,
       });
 

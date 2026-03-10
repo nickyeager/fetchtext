@@ -49,6 +49,7 @@ export interface UseProcessingStreamReturn {
       minMatchConfidence?: number
       allowGeneration?: boolean
       organizationId?: string
+      documentId?: number | string
       accessToken?: string
     }
   ) => void
@@ -198,6 +199,8 @@ export function useProcessingStream(): UseProcessingStreamReturn {
         params.set('allow_generation', String(options.allowGeneration))
       if (options?.organizationId)
         params.set('organization_id', options.organizationId)
+      if (options?.documentId)
+        params.set('document_id', String(options.documentId))
 
       const url = `${DOCUMENT_PROCESSOR_URL}/api/enhanced-documents/process-document-stream?${params.toString()}`
 
