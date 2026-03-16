@@ -17,8 +17,6 @@ import { DocumentDetailView } from '@/features/documents/components/DocumentDeta
 import { UnifiedDocumentService, DocumentStatus } from '@/services/unified-document-service';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
-import { ProfileDropdown } from '@/components/profile-dropdown';
-import { ThemeSwitch } from '@/components/theme-switch';
 
 // Route search params validation
 interface DocumentDetailSearch {
@@ -128,12 +126,7 @@ function DocumentDetailPage() {
 
   return (
     <>
-      <Header>
-        <div className='ml-auto flex items-center space-x-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
-      </Header>
+      <Header />
       <Main>
         <DocumentDetailView
           documentId={documentId}

@@ -8,9 +8,6 @@ import { Plus, Settings, FileText, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
-import { ProfileDropdown } from '@/components/profile-dropdown';
-import { Search } from '@/components/search';
-import { ThemeSwitch } from '@/components/theme-switch';
 import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { templateService, SmartTemplate } from '@/services/template-service';
 import { UnifiedDocumentService } from '@/services/unified-document-service';
@@ -124,13 +121,7 @@ export function TemplatesIndexPage() {
   if (isEditing) {
     return (
       <>
-        <Header>
-          <Search />
-          <div className='ml-auto flex items-center space-x-4'>
-            <ThemeSwitch />
-            <ProfileDropdown />
-          </div>
-        </Header>
+        <Header />
         <Main>
           <TemplateEditor
             template={selectedTemplate}
@@ -145,13 +136,7 @@ export function TemplatesIndexPage() {
 
   return (
     <>
-      <Header>
-        <Search />
-        <div className='ml-auto flex items-center space-x-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
-      </Header>
+      <Header />
       <Main>
         {/* Header */}
         <div className="mb-8">

@@ -10,9 +10,6 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { Search } from '@/components/search'
-import { ThemeSwitch } from '@/components/theme-switch'
 import { Overview } from './components/overview'
 import { RecentDocuments } from './components/recent-documents'
 import { ProcessingMonitorWidget } from '@/components/documents/ProcessingMonitorWidget'
@@ -43,13 +40,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <Header>
-        <div className='ml-auto flex items-center space-x-4'>
-          <Search />
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
-      </Header>
+      <Header />
 
       <Main>
         <div className='mb-2 flex items-center justify-between space-y-2'>

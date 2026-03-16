@@ -20,9 +20,6 @@ import {
 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
-import { ProfileDropdown } from '@/components/profile-dropdown';
-import { Search } from '@/components/search';
-import { ThemeSwitch } from '@/components/theme-switch';
 import { CreateTemplateModal } from './components/CreateTemplateModal';
 import { UnifiedDocumentService, DocumentRecord } from '@/services/unified-document-service';
 import { useQuery } from '@tanstack/react-query';
@@ -197,13 +194,7 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <Header>
-        <Search />
-        <div className='ml-auto flex items-center space-x-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
-      </Header>
+      <Header />
 
       <Main>
         <div className="space-y-6">

@@ -12,6 +12,9 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { useBreadcrumbs } from '@/hooks/use-breadcrumbs'
+import { Search } from '@/components/search'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { ProfileDropdown } from '@/components/profile-dropdown'
 
 interface HeaderProps extends React.HTMLAttributes<HTMLElement> {
   fixed?: boolean
@@ -70,6 +73,11 @@ export const Header = ({
         </Breadcrumb>
       )}
       {children}
+      <div className='ml-auto flex items-center space-x-4'>
+        <Search />
+        <ThemeSwitch />
+        <ProfileDropdown />
+      </div>
     </header>
   )
 }

@@ -9,8 +9,6 @@ import { TemplateDocumentsList } from '@/features/templates/components/TemplateD
 import { templateService } from '@/services/template-service';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
-import { ProfileDropdown } from '@/components/profile-dropdown';
-import { ThemeSwitch } from '@/components/theme-switch';
 
 export const Route = createFileRoute('/_authenticated/templates/$templateId')({
   component: SmartTemplateViewPage,
@@ -76,12 +74,7 @@ function SmartTemplateViewPage() {
   if (isLoading) {
     return (
       <>
-        <Header>
-          <div className='ml-auto flex items-center space-x-4'>
-            <ThemeSwitch />
-            <ProfileDropdown />
-          </div>
-        </Header>
+        <Header />
         <Main>
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -94,12 +87,7 @@ function SmartTemplateViewPage() {
   if (error || (!isLoading && !template)) {
     return (
       <>
-        <Header>
-          <div className='ml-auto flex items-center space-x-4'>
-            <ThemeSwitch />
-            <ProfileDropdown />
-          </div>
-        </Header>
+        <Header />
         <Main>
           <div className="container mx-auto p-6">
             <div className="flex items-center mb-6">
@@ -122,12 +110,7 @@ function SmartTemplateViewPage() {
 
   return (
     <>
-      <Header>
-        <div className='ml-auto flex items-center space-x-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
-        </div>
-      </Header>
+      <Header />
       <Main>
         <div className="container mx-auto p-6">
           <div className="flex items-center mb-6">
