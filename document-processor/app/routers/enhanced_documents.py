@@ -1493,3 +1493,172 @@ async def add_template_variable(template_id: int, variable: AddVariableRequest):
         "variable": new_var,
         "total_variables": len(updated_vars),
     })
+
+
+# ── Template exemplar management ─────────────────────────────────────
+
+@router.post("/templates/{template_id}/exemplars")
+async def add_template_exemplar(
+    template_id: int,
+    file: UploadFile = File(...),
+):
+    """Upload an exemplar document for a template.
+
+    Extracts text from the uploaded file, generates an embedding, and
+    indexes it in Qdrant alongside the template's existing embeddings.
+    Also records the exemplar in the ``template_exemplars`` table.
+    """
+    from ..services.template_vector_service import template_vector_service
+    import hashlib
+
+    client = db_config.client
+    if not client:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    # Verify template exists
+    template_result = client.table("smart_templates").select("id, name").eq("id", template_id).single().execute()
+    if not template_result.data:
+        raise HTTPException(status_code=404, detail=f"Template {template_id} not found")
+
+    # Save uploaded file to temp location
+    temp_file_path = None
+    try:
+        temp_file_path = await validate_and_save_uploaded_file(file)
+
+        # Extract text using the shared pipeline (same as SSE upload flow)
+        from ..services.document_processing_pipeline import pipeline
+        extraction_result = await pipeline.extract_text(temp_file_path)
+        extracted_text = ""
+        if extraction_result and isinstance(extraction_result, dict):
+            content = extraction_result.get("content", {})
+            if isinstance(content, dict):
+                extracted_text = content.get("text", "")
+            if not extracted_text:
+                extracted_text = extraction_result.get("text", "")
+
+        if not extracted_text or len(extracted_text) < 20:
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract sufficient text from uploaded file"
+            )
+
+        text_hash = hashlib.sha256(extracted_text.encode()).hexdigest()
+
+        # Determine next exemplar index
+        existing_exemplars = client.table("template_exemplars").select(
+            "exemplar_index"
+        ).eq("template_id", template_id).order("exemplar_index", desc=True).limit(1).execute()
+
+        if existing_exemplars.data:
+            next_index = existing_exemplars.data[0]["exemplar_index"] + 1
+        else:
+            # Check if an exemplar_index=0 was created by index_template
+            next_index = 1
+
+        # Index in Qdrant
+        indexed = await template_vector_service.index_template_exemplar(
+            template_id=template_id,
+            document_text=extracted_text,
+            exemplar_index=next_index,
+            document_name=file.filename or "unnamed",
+        )
+
+        # Record in database
+        exemplar_record = {
+            "template_id": template_id,
+            "document_name": file.filename or "unnamed",
+            "exemplar_index": next_index,
+            "text_hash": text_hash,
+            "char_count": len(extracted_text),
+            "vector_indexed": indexed,
+        }
+
+        try:
+            insert_result = client.table("template_exemplars").insert(exemplar_record).execute()
+            db_id = insert_result.data[0]["id"] if insert_result.data else None
+        except Exception as db_err:
+            logger.warning(f"Failed to record exemplar in DB (vector still indexed): {db_err}")
+            db_id = None
+
+        # Count total exemplars for this template
+        count_result = client.table("template_exemplars").select(
+            "id", count="exact"
+        ).eq("template_id", template_id).execute()
+        total_exemplars = count_result.count if count_result.count is not None else next_index
+
+        return JSONResponse(content={
+            "template_id": template_id,
+            "exemplar_index": next_index,
+            "document_name": file.filename,
+            "char_count": len(extracted_text),
+            "vector_indexed": indexed,
+            "total_exemplars": total_exemplars,
+            "id": db_id,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add exemplar for template {template_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if temp_file_path:
+            await cleanup_temp_file(temp_file_path)
+
+
+@router.get("/templates/{template_id}/exemplars")
+async def list_template_exemplars(template_id: int):
+    """List all exemplar documents for a template."""
+    client = db_config.client
+    if not client:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    result = client.table("template_exemplars").select(
+        "id, document_name, exemplar_index, char_count, vector_indexed, created_at"
+    ).eq("template_id", template_id).order("exemplar_index").execute()
+
+    return JSONResponse(content={
+        "template_id": template_id,
+        "exemplars": result.data or [],
+        "total": len(result.data or []),
+    })
+
+
+@router.delete("/templates/{template_id}/exemplars/{exemplar_id}")
+async def delete_template_exemplar(template_id: int, exemplar_id: int):
+    """Delete a specific exemplar document from a template."""
+    from ..services.template_vector_service import template_vector_service
+
+    client = db_config.client
+    if not client:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    # Get exemplar to find its index
+    exemplar = client.table("template_exemplars").select(
+        "id, exemplar_index"
+    ).eq("id", exemplar_id).eq("template_id", template_id).single().execute()
+
+    if not exemplar.data:
+        raise HTTPException(status_code=404, detail="Exemplar not found")
+
+    exemplar_index = exemplar.data["exemplar_index"]
+
+    # Remove from Qdrant
+    try:
+        from qdrant_client.http import models as qdrant_models
+        point_id = template_vector_service._exemplar_point_id(template_id, exemplar_index)
+        template_vector_service.client.delete(
+            collection_name=template_vector_service.collection_name,
+            points_selector=qdrant_models.PointIdsList(points=[point_id]),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to remove exemplar point from Qdrant (non-fatal): {e}")
+
+    # Remove from database
+    client.table("template_exemplars").delete().eq("id", exemplar_id).execute()
+
+    return JSONResponse(content={
+        "deleted": True,
+        "template_id": template_id,
+        "exemplar_id": exemplar_id,
+    })

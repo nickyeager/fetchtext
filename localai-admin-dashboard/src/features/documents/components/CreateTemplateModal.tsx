@@ -13,9 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { templateService } from '@/services/template-service';
-import { useOrganization } from '@/context/organization-context';
 import { NewTemplate } from "../types";
-import { toast } from 'sonner';
 //
 
 interface CreateTemplateModalProps {
@@ -29,14 +27,13 @@ export function CreateTemplateModal({
   onOpenChange,
 }: CreateTemplateModalProps) {
   const queryClient = useQueryClient();
-  const { activeOrganization } = useOrganization();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [templateContent, setTemplateContent] = useState("");
 
   const mutation = useMutation({
-    mutationFn: (newTemplate: NewTemplate & { organization_id: string }) => {
+    mutationFn: (newTemplate: NewTemplate) => {
       // Adapt to SmartTemplate requirements
       return templateService.createTemplate({
         name: newTemplate.name,
@@ -49,7 +46,6 @@ export function CreateTemplateModal({
         smart_variables: [],
         extraction_rules: [],
         generation_settings: {},
-        organization_id: newTemplate.organization_id,
       });
     },
     onSuccess: () => {
@@ -77,17 +73,11 @@ export function CreateTemplateModal({
   }, [isSuccess, onOpenChange, reset]);
 
   const handleSubmit = () => {
-    if (!activeOrganization) {
-      toast.error('Please select an organization first');
-      return;
-    }
-
-    const templateData: NewTemplate & { organization_id: string } = {
+    const templateData: NewTemplate = {
       name,
       description,
       category,
       template_content: templateContent,
-      organization_id: activeOrganization.id,
     };
     mutation.mutate(templateData);
   };

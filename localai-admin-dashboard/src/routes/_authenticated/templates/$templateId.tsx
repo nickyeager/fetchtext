@@ -1,14 +1,18 @@
+import { useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, AlertTriangle, Loader2, FileText, LayoutTemplate } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Loader2, FileText, LayoutTemplate, BookOpen, Pencil } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TemplateViewer } from '@/components/templates/TemplateViewer';
+import { TemplateEditor } from '@/components/templates/TemplateEditor';
 import { TemplateDocumentsList } from '@/features/templates/components/TemplateDocumentsList';
+import { TemplateExemplarsList } from '@/features/templates/components/TemplateExemplarsList';
 import { templateService } from '@/services/template-service';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/_authenticated/templates/$templateId')({
   component: SmartTemplateViewPage,
@@ -39,8 +43,10 @@ export const Route = createFileRoute('/_authenticated/templates/$templateId')({
 
 function SmartTemplateViewPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { templateId } = Route.useParams();
   const { tab } = Route.useSearch();
+  const [isEditing, setIsEditing] = useState(false);
 
   const {
     data: template,
@@ -69,6 +75,19 @@ function SmartTemplateViewPage() {
       search: { tab: value },
       replace: true,
     });
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSaveTemplate = async (updated: any) => {
+    try {
+      await templateService.updateTemplate(Number(templateId), updated);
+      toast.success('Template updated successfully');
+      await queryClient.invalidateQueries({ queryKey: ['smart-template', templateId] });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Error saving template:', err);
+      toast.error('Failed to save template');
+    }
   };
 
   if (isLoading) {
@@ -108,6 +127,24 @@ function SmartTemplateViewPage() {
     );
   }
 
+  // ── Editing mode: show full TemplateEditor ──────────────────────
+  if (isEditing && template) {
+    return (
+      <>
+        <Header />
+        <Main>
+          <TemplateEditor
+            template={template}
+            onSave={handleSaveTemplate}
+            onCancel={() => setIsEditing(false)}
+            isEditMode
+          />
+        </Main>
+      </>
+    );
+  }
+
+  // ── View mode: tabs with overview, documents, examples ────────
   return (
     <>
       <Header />
@@ -121,6 +158,12 @@ function SmartTemplateViewPage() {
             <h1 className="ml-4 text-xl font-semibold truncate">
               {template?.name}
             </h1>
+            <div className="ml-auto">
+              <Button size="sm" onClick={() => setIsEditing(true)}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Template
+              </Button>
+            </div>
           </div>
 
           <Tabs value={tab} onValueChange={handleTabChange}>
@@ -132,6 +175,10 @@ function SmartTemplateViewPage() {
               <TabsTrigger value="documents" className="gap-1.5">
                 <FileText className="h-4 w-4" />
                 Documents
+              </TabsTrigger>
+              <TabsTrigger value="exemplars" className="gap-1.5">
+                <BookOpen className="h-4 w-4" />
+                Examples
               </TabsTrigger>
             </TabsList>
 
@@ -147,6 +194,13 @@ function SmartTemplateViewPage() {
 
             <TabsContent value="documents" className="mt-4">
               <TemplateDocumentsList
+                templateId={Number(templateId)}
+                templateName={template?.name}
+              />
+            </TabsContent>
+
+            <TabsContent value="exemplars" className="mt-4">
+              <TemplateExemplarsList
                 templateId={Number(templateId)}
                 templateName={template?.name}
               />

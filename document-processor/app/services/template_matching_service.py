@@ -2,9 +2,13 @@
 Template Matching Service - Core logic for intelligent template suggestions
 
 Uses semantic embeddings for improved matching accuracy.
+Includes cross-encoder re-ranking and field-level semantic scoring.
 """
+import hashlib
 import logging
 import asyncio
+import json
+import time as _time
 from typing import List, Dict, Any, Optional, Tuple
 import re
 from datetime import datetime
@@ -14,6 +18,29 @@ from .template_cache import TemplateCache
 from .embedding_service import embedding_service
 
 logger = logging.getLogger(__name__)
+
+# ── Cross-encoder re-ranking prompt ──────────────────────────────────
+TEMPLATE_RERANK_PROMPT = """You are a document-template matching expert.
+
+Given a document excerpt and a template description, rate how well the
+document matches this template on a scale of 0.0 to 1.0.
+
+Consider:
+- Does the document contain the types of information this template extracts?
+- Does the document structure match what the template expects?
+- Are the field names/types in the template relevant to the document?
+
+Document excerpt (first 1500 chars):
+{document_excerpt}
+
+Template:
+- Name: {template_name}
+- Category: {template_category}
+- Description: {template_description}
+- Fields: {template_fields}
+
+Respond with ONLY a JSON object:
+{{"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
 
 class TemplateMatchingService:
     """Service to find and score template matches for documents
@@ -34,7 +61,14 @@ class TemplateMatchingService:
         # Cache for template embeddings (template_id -> embedding)
         self._template_embeddings_cache: Dict[int, List[float]] = {}
         self._embeddings_available = embedding_service.provider is not None
-        
+
+        # Cross-encoder re-rank cache: (doc_hash, template_id) -> (score, timestamp)
+        self._rerank_cache: Dict[Tuple[str, int], Tuple[float, float]] = {}
+        self._rerank_cache_ttl = 3600  # 1 hour
+
+        # Field-level embedding cache: template_id -> list of field embeddings
+        self._field_embeddings_cache: Dict[int, List[Tuple[str, List[float]]]] = {}
+
         # Category mappings for document type -> template category matching
         # Keys are document types (from AI classification), values are compatible template categories
         self.category_mappings = {
@@ -129,7 +163,8 @@ class TemplateMatchingService:
             for template in all_templates:
                 try:
                     score = await self._calculate_template_score(
-                        template, document_type, content_keywords, document_embedding
+                        template, document_type, content_keywords, document_embedding,
+                        document_text=document_text,
                     )
                     self.logger.info(f"  Template '{template['name']}' (cat={template['category']}): score={score:.3f}")
 
@@ -321,35 +356,49 @@ class TemplateMatchingService:
         template: Dict[str, Any],
         document_type: str,
         content_keywords: List[str],
-        document_embedding: Optional[List[float]] = None
+        document_embedding: Optional[List[float]] = None,
+        document_text: Optional[str] = None,
     ) -> float:
         """
-        Calculate comprehensive template match score using 4 components.
+        Calculate comprehensive template match score using 5 components.
 
         Scoring components (weights total 100%):
-        - Category alignment (30%): How well template category matches document type
-        - Field detectability (25%): How many template fields can be detected
-        - Semantic similarity (35%): Embedding-based similarity between doc and template
+        - Category alignment (25%): How well template category matches document type
+        - Field semantic coverage (20%): Embedding-based field detectability
+        - Semantic similarity (30%): Embedding-based similarity between doc and template
+        - Cross-encoder re-rank (15%): LLM-based relevance judgement
         - Historical success (10%): Template's extraction success rate
         """
 
         score_components = {}
 
-        # 1. Category alignment (30% weight)
+        # 1. Category alignment (25% weight)
         category_score = self._score_category_match(template['category'], document_type)
-        score_components['category'] = category_score * 0.30
+        score_components['category'] = category_score * 0.25
 
-        # 2. Field detectability (25% weight)
-        field_score = await self._score_field_coverage(
-            template.get('smart_variables', []), content_keywords
-        )
-        score_components['fields'] = field_score * 0.25
+        # 2. Field semantic coverage (20% weight) - embedding-based
+        if document_embedding and self._embeddings_available:
+            field_score = await self._score_field_coverage_semantic(
+                template, document_embedding
+            )
+        else:
+            # Fallback to keyword-based scoring
+            field_score = await self._score_field_coverage(
+                template.get('smart_variables', []), content_keywords
+            )
+        score_components['fields'] = field_score * 0.20
 
-        # 3. Semantic similarity (35% weight) - uses embeddings if available
+        # 3. Semantic similarity (30% weight) - uses embeddings if available
         semantic_score = await self._score_semantic_similarity(template, document_embedding)
-        score_components['semantic'] = semantic_score * 0.35
+        score_components['semantic'] = semantic_score * 0.30
 
-        # 4. Historical success rate (10% weight)
+        # 4. Cross-encoder re-rank (15% weight) - LLM-based
+        rerank_score = await self._score_cross_encoder_rerank(
+            template, document_text
+        )
+        score_components['rerank'] = rerank_score * 0.15
+
+        # 5. Historical success rate (10% weight)
         success_score = template.get('success_rate', 0.5)
         score_components['success'] = success_score * 0.10
 
@@ -362,6 +411,7 @@ class TemplateMatchingService:
             f"cat={score_components['category']:.2f}, "
             f"field={score_components['fields']:.2f}, "
             f"semantic={score_components['semantic']:.2f}, "
+            f"rerank={score_components['rerank']:.2f}, "
             f"success={score_components['success']:.2f} "
             f"-> total={total_score:.2f}"
         )
@@ -529,6 +579,164 @@ class TemplateMatchingService:
         )
 
         return normalized_similarity
+
+    async def _score_cross_encoder_rerank(
+        self,
+        template: Dict[str, Any],
+        document_text: Optional[str],
+    ) -> float:
+        """LLM-based re-ranking: ask the LLM how well this document matches.
+
+        Results are cached per (document_hash, template_id) with a 1-hour TTL
+        to avoid redundant LLM calls on re-uploads of the same document.
+        """
+        if not document_text:
+            return 0.5  # Neutral if no text available
+
+        template_id = template.get("id")
+        doc_hash = hashlib.sha256(document_text[:2000].encode()).hexdigest()[:16]
+
+        # Check cache
+        cache_key = (doc_hash, template_id)
+        if cache_key in self._rerank_cache:
+            cached_score, cached_ts = self._rerank_cache[cache_key]
+            if _time.time() - cached_ts < self._rerank_cache_ttl:
+                self.logger.debug(f"Re-rank cache hit for template {template_id}")
+                return cached_score
+
+        try:
+            from .llm_service import get_llm_service
+            llm = get_llm_service()
+
+            # Build field description
+            fields = template.get("smart_variables", [])
+            field_strs = [
+                f"{v.get('name', '')} ({v.get('type', 'text')})"
+                for v in fields[:15]  # Limit to avoid token bloat
+            ]
+
+            prompt = TEMPLATE_RERANK_PROMPT.format(
+                document_excerpt=document_text[:1500],
+                template_name=template.get("name", ""),
+                template_category=template.get("category", ""),
+                template_description=template.get("description", ""),
+                template_fields=", ".join(field_strs) if field_strs else "none",
+            )
+
+            response = await llm.generate(prompt, temperature=0.1, max_tokens=200)
+
+            # Parse the JSON response
+            score = 0.5
+            try:
+                # Try direct JSON parse
+                parsed = json.loads(response.strip())
+                score = float(parsed.get("score", 0.5))
+            except (json.JSONDecodeError, ValueError):
+                # Try extracting JSON from the response
+                import re as _re
+                match = _re.search(r'\{[^}]*"score"\s*:\s*([\d.]+)[^}]*\}', response)
+                if match:
+                    score = float(match.group(1))
+
+            score = max(0.0, min(1.0, score))
+
+            # Cache result
+            self._rerank_cache[cache_key] = (score, _time.time())
+
+            self.logger.debug(
+                f"Cross-encoder re-rank for '{template.get('name')}': {score:.3f}"
+            )
+            return score
+
+        except Exception as e:
+            self.logger.warning(f"Cross-encoder re-rank failed for template {template_id}: {e}")
+            return 0.5  # Neutral fallback
+
+    async def _score_field_coverage_semantic(
+        self,
+        template: Dict[str, Any],
+        document_embedding: List[float],
+    ) -> float:
+        """Embedding-based field coverage scoring.
+
+        For each template field, generates an embedding of the field name +
+        description + extraction hints. Computes cosine similarity between
+        each field embedding and the document embedding. Returns the mean
+        of top similarities as the field coverage score.
+
+        Field embeddings are cached per template_id and invalidated when
+        the template is updated.
+        """
+        template_id = template.get("id")
+        smart_variables = template.get("smart_variables", [])
+
+        if not smart_variables or not document_embedding:
+            return 0.2  # Low but not zero
+
+        # Get or generate field embeddings
+        field_embeddings = await self._get_field_embeddings(template_id, smart_variables)
+        if not field_embeddings:
+            return 0.2
+
+        # Compute similarity of each field embedding against the document
+        similarities = []
+        for field_name, field_emb in field_embeddings:
+            sim = embedding_service.calculate_similarity(document_embedding, field_emb)
+            # Normalize from [-1,1] to [0,1]
+            normalized = max(0.0, min(1.0, (sim + 1) / 2))
+            similarities.append(normalized)
+
+        if not similarities:
+            return 0.2
+
+        # Use mean of all field similarities as coverage score
+        coverage = sum(similarities) / len(similarities)
+
+        self.logger.debug(
+            f"Field semantic coverage for '{template.get('name')}': "
+            f"{coverage:.3f} ({len(similarities)} fields)"
+        )
+        return coverage
+
+    async def _get_field_embeddings(
+        self,
+        template_id: int,
+        smart_variables: List[Dict[str, Any]],
+    ) -> List[Tuple[str, List[float]]]:
+        """Get or generate embeddings for each template field."""
+        if template_id in self._field_embeddings_cache:
+            return self._field_embeddings_cache[template_id]
+
+        field_embeddings = []
+        for var in smart_variables:
+            field_name = var.get("name", var.get("id", ""))
+            if not field_name:
+                continue
+
+            # Build rich text for the field
+            parts = [field_name]
+            field_type = var.get("type", "text")
+            if field_type:
+                parts.append(field_type)
+            desc = var.get("description", "")
+            if desc:
+                parts.append(desc)
+            hints = var.get("extraction_hints", [])
+            if hints and isinstance(hints, list):
+                parts.extend(hints[:5])
+
+            field_text = " ".join(parts)
+            try:
+                emb = await embedding_service.generate_single_embedding(field_text)
+                if emb:
+                    field_embeddings.append((field_name, emb))
+            except Exception as e:
+                self.logger.debug(f"Could not embed field '{field_name}': {e}")
+
+        if field_embeddings:
+            self._field_embeddings_cache[template_id] = field_embeddings
+
+        return field_embeddings
 
     def _create_template_text_for_embedding(self, template: Dict[str, Any]) -> str:
         """

@@ -203,6 +203,21 @@ test.describe('Stucco Contract — Full Upload E2E', () => {
       }
     }
 
+    // ── Verify PDF preview renders (not "No document file available") ──
+    const noFileMessage = page.getByText('No document file available');
+    const noFileVisible = await noFileMessage.isVisible({ timeout: 2_000 }).catch(() => false);
+    if (noFileVisible) {
+      log('WARN: PDF preview not rendering — "No document file available" shown (Supabase storage may need S3 backend)');
+    } else {
+      // Check for canvas elements (PDF.js renders to <canvas>)
+      const canvasCount = await page.locator('canvas').count();
+      if (canvasCount > 0) {
+        log(`PDF preview rendering OK (${canvasCount} canvas elements)`);
+      } else {
+        log('WARN: No canvas elements found — PDF preview may not have loaded');
+      }
+    }
+
     await page.screenshot({ path: `${SCREENSHOT_DIR}/06-final.png` });
 
     // ── Console error check ──

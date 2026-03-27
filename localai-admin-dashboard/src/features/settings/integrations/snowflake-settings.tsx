@@ -11,7 +11,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { AlertCircle, Loader2, Snowflake, Unlink, RefreshCw, KeyRound, ShieldCheck } from 'lucide-react'
+import { AlertCircle, Loader2, Snowflake, Unlink, RefreshCw, KeyRound, ShieldCheck, FolderOpen } from 'lucide-react'
 import {
   integrationService,
   integrationKeys,
@@ -33,6 +33,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { StageBrowser } from '@/components/snowflake/StageBrowser'
+import { StageFileBrowser } from '@/components/snowflake/StageFileBrowser'
+import { snowflakeService, type SnowflakeStage, type SnowflakeStageFile } from '@/lib/services/snowflake-service'
 
 function SnowflakeIcon({ className }: { className?: string }) {
   return <Snowflake className={className} />
@@ -44,6 +47,8 @@ export function SnowflakeSettings() {
   const [connecting, setConnecting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [credentials, setCredentials] = useState<Record<string, string>>({})
+  const [showBrowser, setShowBrowser] = useState(false)
+  const [selectedStageName, setSelectedStageName] = useState<string | null>(null)
 
   // OAuth form state
   const [oauthAccount, setOauthAccount] = useState('')
@@ -277,6 +282,28 @@ export function SnowflakeSettings() {
               </p>
             )}
 
+            {/* Browse & Import */}
+            {!showBrowser ? (
+              <Button
+                size="sm"
+                onClick={() => setShowBrowser(true)}
+              >
+                <FolderOpen className="mr-2 h-4 w-4" />
+                Browse & Import Documents
+              </Button>
+            ) : (
+              <SnowflakeImportBrowser
+                organizationId={activeOrganization!.id}
+                selectedStageName={selectedStageName}
+                onStageSelect={(stage) => setSelectedStageName(stage.name)}
+                onClearStage={() => setSelectedStageName(null)}
+                onClose={() => {
+                  setSelectedStageName(null)
+                  setShowBrowser(false)
+                }}
+              />
+            )}
+
             {/* Actions */}
             <div className="flex flex-wrap gap-2">
               <Button
@@ -466,5 +493,96 @@ export function SnowflakeSettings() {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+
+// ── Inline import browser ───────────────────────────────────────────
+
+interface SnowflakeImportBrowserProps {
+  organizationId: string
+  selectedStageName: string | null
+  onStageSelect: (stage: SnowflakeStage) => void
+  onClose: () => void
+  onClearStage: () => void
+}
+
+function SnowflakeImportBrowser({
+  organizationId,
+  selectedStageName,
+  onStageSelect,
+  onClose,
+  onClearStage,
+}: SnowflakeImportBrowserProps) {
+  const [processing, setProcessing] = useState(false)
+
+  const handleProcessFiles = async (files: SnowflakeStageFile[]) => {
+    if (!selectedStageName || files.length === 0) return
+
+    setProcessing(true)
+    try {
+      const result = await snowflakeService.batchDownload(
+        organizationId,
+        selectedStageName,
+        files.map((f) => f.name)
+      )
+      toast.success(`Import started: ${files.length} file(s)`, {
+        description: result.job_id
+          ? `Job ID: ${result.job_id}`
+          : `${result.successful || files.length} files queued for processing`,
+      })
+    } catch (error) {
+      toast.error('Import failed', {
+        description:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      })
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border p-4">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-medium">
+          {selectedStageName
+            ? `Stage: ${selectedStageName}`
+            : 'Select a Stage'}
+        </h4>
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+
+      {!selectedStageName ? (
+        <StageBrowser
+          organizationId={organizationId}
+          onStageSelect={onStageSelect}
+        />
+      ) : (
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearStage}
+          >
+            <FolderOpen className="mr-2 h-3.5 w-3.5" />
+            Change Stage
+          </Button>
+          {processing ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Processing files...
+            </div>
+          ) : (
+            <StageFileBrowser
+              organizationId={organizationId}
+              stageName={selectedStageName}
+              onProcess={handleProcessFiles}
+            />
+          )}
+        </div>
+      )}
+    </div>
   )
 }

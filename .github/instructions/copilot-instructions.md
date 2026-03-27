@@ -74,7 +74,7 @@ This is a FetchText admin dashboard with Docker-based services including Supabas
 - Use N8N webhook endpoints for email integration: `http://localhost:5678/webhook/[email-type]`
 - Email configuration handled via N8N workflow variables and parent environment
 - SendGrid API Key: Store in parent `.env` file for N8N workflow access
-- Verified sender: `nick@fetchtext.io`
+- Verified sender: `yeag123@gmail.com`
 - N8N workflows are deployed in the existing N8N container
 - Use N8N development mode for testing, production N8N workflows for real emails
 - Frontend should call N8N webhook endpoints directly (e.g., `http://localhost:5678/webhook/password-reset-email`)

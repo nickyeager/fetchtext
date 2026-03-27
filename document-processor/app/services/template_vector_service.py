@@ -196,10 +196,17 @@ class TemplateVectorService:
     # Index / remove
     # ------------------------------------------------------------------
 
-    # Offset added to template_id to create a separate point ID for
-    # document exemplar embeddings, avoiding collisions with the
-    # template metadata point (which uses the raw template_id).
-    EXEMPLAR_ID_OFFSET = 1_000_000
+    # ------------------------------------------------------------------
+    # Point ID scheme for multi-exemplar support
+    # ------------------------------------------------------------------
+    # Template metadata point:  template_id (raw)
+    # Exemplar points:          template_id * 10_000 + exemplar_index
+    # This supports up to 9,999 exemplar documents per template.
+    EXEMPLAR_ID_MULTIPLIER = 10_000
+
+    def _exemplar_point_id(self, template_id: int, exemplar_index: int) -> int:
+        """Compute Qdrant point ID for a template exemplar."""
+        return int(template_id) * self.EXEMPLAR_ID_MULTIPLIER + exemplar_index
 
     async def index_template(
         self,
@@ -212,10 +219,8 @@ class TemplateVectorService:
         calls for the same template overwrite the previous embedding.
 
         If *document_text* is provided, a **document exemplar** embedding is
-        also stored (point ID = template_id + EXEMPLAR_ID_OFFSET).  This
-        allows future uploads to be compared document-to-document rather
-        than document-to-template-metadata, yielding much higher cosine
-        similarity scores for genuine matches.
+        also stored as exemplar_index=0.  Use ``index_template_exemplar()``
+        to add additional exemplar documents.
         """
         if not self.available:
             return False
@@ -234,7 +239,7 @@ class TemplateVectorService:
 
             t0 = time.time()
 
-            # ── 1. Template metadata embedding (existing behaviour) ───
+            # ── 1. Template metadata embedding ───────────────────────
             text = self.build_template_text(template)
             if not text:
                 logger.warning(f"Empty text representation for template {template_id}")
@@ -262,16 +267,20 @@ class TemplateVectorService:
 
             points_to_upsert = [metadata_point]
 
-            # ── 2. Document exemplar embedding (new) ──────────────────
+            # ── 2. Document exemplar embedding (exemplar_index=0) ────
             if document_text:
                 doc_embedding = await self.embedding_service.generate_single_embedding(
-                    document_text[:2000]
+                    document_text[:4000]
                 )
                 if doc_embedding:
                     exemplar_point = PointStruct(
-                        id=int(template_id) + self.EXEMPLAR_ID_OFFSET,
+                        id=self._exemplar_point_id(int(template_id), 0),
                         vector=doc_embedding,
-                        payload={**base_payload, "point_type": "document_exemplar"},
+                        payload={
+                            **base_payload,
+                            "point_type": "document_exemplar",
+                            "exemplar_index": 0,
+                        },
                     )
                     points_to_upsert.append(exemplar_point)
 
@@ -293,16 +302,122 @@ class TemplateVectorService:
             logger.error(f"Failed to index template {template_id}: {e}")
             return False
 
+    async def index_template_exemplar(
+        self,
+        template_id: int,
+        document_text: str,
+        exemplar_index: int,
+        document_name: str = "",
+    ) -> bool:
+        """Index an additional exemplar document for a template.
+
+        Stores the document embedding as a separate Qdrant point so that
+        future uploads can be compared document-to-document.  Multiple
+        exemplars per template improve match accuracy by capturing different
+        "flavours" of documents that belong to the same template.
+
+        Args:
+            template_id: The template to attach this exemplar to.
+            document_text: Raw text of the exemplar document.
+            exemplar_index: 1-based index (0 is reserved for the initial
+                exemplar created by ``index_template``).
+            document_name: Optional human-readable name for logging.
+        """
+        if not self.available or not self.client:
+            return False
+
+        if self.embedding_service.provider is None:
+            logger.warning("Embedding provider not configured — skipping exemplar indexing")
+            return False
+
+        try:
+            await self.ensure_collection_exists()
+
+            t0 = time.time()
+            doc_embedding = await self.embedding_service.generate_single_embedding(
+                document_text[:4000]
+            )
+            if not doc_embedding:
+                logger.warning(f"Failed to generate embedding for exemplar {exemplar_index} of template {template_id}")
+                return False
+
+            point_id = self._exemplar_point_id(template_id, exemplar_index)
+
+            # Fetch template metadata for consistent payload
+            template_info = await self._get_template_info(template_id)
+
+            point = PointStruct(
+                id=point_id,
+                vector=doc_embedding,
+                payload={
+                    "template_id": int(template_id),
+                    "name": template_info.get("name", ""),
+                    "category": (template_info.get("category", "") or "").lower(),
+                    "description": template_info.get("description", ""),
+                    "field_count": template_info.get("field_count", 0),
+                    "is_public": template_info.get("is_public", False),
+                    "point_type": "document_exemplar",
+                    "exemplar_index": exemplar_index,
+                    "document_name": document_name,
+                },
+            )
+
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=[point],
+                wait=True,
+            )
+
+            elapsed_ms = (time.time() - t0) * 1000
+            logger.info(
+                f"Indexed exemplar {exemplar_index} for template {template_id}"
+                f" ('{document_name}') in {elapsed_ms:.0f}ms"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to index exemplar {exemplar_index} for template {template_id}: {e}")
+            return False
+
+    async def _get_template_info(self, template_id: int) -> Dict[str, Any]:
+        """Fetch basic template info from Supabase for payload population."""
+        try:
+            if not db_config.is_configured or not db_config.client:
+                return {}
+            result = db_config.client.table("smart_templates").select(
+                "id, name, category, description, smart_variables, is_public"
+            ).eq("id", template_id).limit(1).execute()
+            if result.data:
+                t = result.data[0]
+                return {
+                    "name": t.get("name", ""),
+                    "category": t.get("category", ""),
+                    "description": t.get("description", ""),
+                    "field_count": len(t.get("smart_variables", [])),
+                    "is_public": t.get("is_public", False),
+                }
+        except Exception as e:
+            logger.warning(f"Could not fetch template info for {template_id}: {e}")
+        return {}
+
     async def remove_template(self, template_id: int) -> bool:
-        """Remove a template embedding from Qdrant."""
+        """Remove a template embedding and all its exemplar points from Qdrant."""
         if not self.available or not self.client:
             return False
         try:
+            # Delete metadata point + all exemplar points by template_id filter
             self.client.delete(
                 collection_name=self.collection_name,
-                points_selector=qdrant_models.PointIdsList(points=[int(template_id)]),
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="template_id",
+                            match=MatchValue(value=int(template_id)),
+                        )
+                    ]
+                ),
             )
-            logger.info(f"Removed template {template_id} from Qdrant")
+            logger.info(f"Removed template {template_id} and all exemplars from Qdrant")
             return True
         except Exception as e:
             logger.error(f"Failed to remove template {template_id}: {e}")
@@ -324,8 +439,10 @@ class TemplateVectorService:
         ``TemplateMatchingService.find_matching_templates()`` so they can be
         used as a drop-in replacement.
 
-        Uses ``query_points()`` (qdrant-client >=1.12) instead of the
-        deprecated ``search()`` method which was removed in v1.16.
+        Multi-exemplar aware: retrieves more points than *limit* so that
+        multiple exemplars for the same template are considered. The final
+        result per template uses the **max score** across all its points
+        (metadata + exemplars), so the best-matching exemplar wins.
         """
         if not self.available or not self.client:
             return []
@@ -335,19 +452,21 @@ class TemplateVectorService:
 
             start = time.time()
 
+            # Fetch more points than limit to capture multiple exemplars
+            # per template before dedup. 4x is a reasonable multiplier.
+            raw_limit = max(limit * 4, 20)
+
             # Always run an unfiltered search to catch templates whose
-            # stored category may not match the evaluator's primary_type
-            # (e.g., AI generator stored "other" but doc type is "contract").
+            # stored category may not match the evaluator's primary_type.
             unfiltered_response = self.client.query_points(
                 collection_name=self.collection_name,
                 query=document_embedding,
-                limit=limit,
+                limit=raw_limit,
                 with_payload=True,
             )
             unfiltered_results = unfiltered_response.points if unfiltered_response else []
 
-            # If a category filter is given, also run a filtered search
-            # so exact-category matches get a slight boost.
+            # If a category filter is given, also run a filtered search.
             filtered_results = []
             if category_filter:
                 query_filter = Filter(
@@ -362,7 +481,7 @@ class TemplateVectorService:
                     collection_name=self.collection_name,
                     query=document_embedding,
                     query_filter=query_filter,
-                    limit=limit,
+                    limit=raw_limit,
                     with_payload=True,
                 )
                 filtered_results = filtered_response.points if filtered_response else []
@@ -370,8 +489,9 @@ class TemplateVectorService:
             elapsed_ms = (time.time() - start) * 1000
 
             # Merge results: deduplicate by template_id, keeping the
-            # highest score for each template.  Category-filtered hits
-            # are checked first so their scores take precedence when equal.
+            # **max score** across all points (metadata + exemplars).
+            # This means the best-matching exemplar determines the
+            # template's final score.
             seen_ids: dict[int, dict] = {}
             for hit in list(filtered_results) + list(unfiltered_results):
                 payload = hit.payload or {}
@@ -380,7 +500,11 @@ class TemplateVectorService:
                     continue
                 score = round(float(hit.score), 3)
                 point_type = payload.get("point_type", "template_metadata")
+                exemplar_idx = payload.get("exemplar_index")
                 if tid not in seen_ids or score > seen_ids[tid]["match_score"]:
+                    source = f"vector_search:{point_type}"
+                    if exemplar_idx is not None:
+                        source += f"[{exemplar_idx}]"
                     seen_ids[tid] = {
                         "template_id": tid,
                         "template_name": payload.get("name", ""),
@@ -389,7 +513,7 @@ class TemplateVectorService:
                         "field_count": payload.get("field_count", 0),
                         "description": payload.get("description", ""),
                         "usage_count": 0,  # not stored in Qdrant
-                        "match_source": f"vector_search:{point_type}",
+                        "match_source": source,
                     }
 
             suggestions = sorted(
