@@ -103,8 +103,11 @@ services:
       - 6334/tcp
     volumes:
       - qdrant_storage:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    # NOTE: Do NOT set QDRANT__SERVICE__API_KEY to empty string — that enables
+    # auth with an empty key, breaking all local requests. Only set it in .env
+    # when a real key is needed (production).
+    # environment:
+    #   - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
 
   neo4j:
     image: neo4j:latest
