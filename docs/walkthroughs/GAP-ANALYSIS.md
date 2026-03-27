@@ -11,7 +11,7 @@ Consolidated view of everything Josh asked to see vs. what we can actually demo 
 | 1 | Upload a document, create record | YES | [01](01-upload-and-extract.md) |
 | 2 | Upload similar doc, verify extraction | YES | [02](02-similar-document-matching.md) |
 | 3 | See all documents for a template | YES | [03](03-template-documents-view.md) |
-| 4 | Edit templates inline | PARTIAL — editor exists but not on detail page | [04](04-template-editing.md) |
+| 4 | Edit templates inline | YES — Edit Template button on detail page header | [04](04-template-editing.md) |
 | 5 | Backend API upload process | YES | [06](06-api-upload-flow.md) |
 | 6 | Snowflake integration | PARTIAL — config works, import route removed | [07](07-snowflake-integration.md) |
 
