@@ -19,8 +19,8 @@ import { HighlightOverlay } from './HighlightOverlay';
 import { FieldHighlight, PageDimensions } from '@/types/highlights';
 
 // Configure PDF.js worker
-// Using unpkg CDN for the worker file to avoid bundling issues
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Using local file to avoid CORS issues with external CDNs
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 interface PDFViewerWithHighlightsProps {
   /** PDF file URL or blob */

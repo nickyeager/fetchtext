@@ -162,7 +162,7 @@ class TemplateMatchingService:
             self.logger.info(f"Scoring {len(all_templates)} templates against document type '{document_type}'")
             for template in all_templates:
                 try:
-                    score = await self._calculate_template_score(
+                    score, components = await self._calculate_template_score(
                         template, document_type, content_keywords, document_embedding,
                         document_text=document_text,
                     )
@@ -176,7 +176,8 @@ class TemplateMatchingService:
                             'category': template['category'],
                             'field_count': len(template.get('smart_variables', [])),
                             'description': template.get('description', ''),
-                            'usage_count': template.get('usage_count', 0)
+                            'usage_count': template.get('usage_count', 0),
+                            'score_components': {k: round(v, 3) for k, v in components.items()}
                         })
 
                 except Exception as e:
@@ -358,7 +359,7 @@ class TemplateMatchingService:
         content_keywords: List[str],
         document_embedding: Optional[List[float]] = None,
         document_text: Optional[str] = None,
-    ) -> float:
+    ) -> Tuple[float, Dict[str, float]]:
         """
         Calculate comprehensive template match score using 5 components.
 
@@ -416,7 +417,7 @@ class TemplateMatchingService:
             f"-> total={total_score:.2f}"
         )
 
-        return min(total_score, 1.0)  # Cap at 1.0
+        return min(total_score, 1.0), score_components  # Cap at 1.0
 
     def _score_category_match(self, template_category: str, document_type: str) -> float:
         """Score how well template category matches document type"""
