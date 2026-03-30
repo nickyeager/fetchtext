@@ -18,9 +18,12 @@ import { Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-reac
 import { HighlightOverlay } from './HighlightOverlay';
 import { FieldHighlight, PageDimensions } from '@/types/highlights';
 
-// Configure PDF.js worker
-// Using local file to avoid CORS issues with external CDNs
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+// Configure PDF.js worker — use the version bundled with react-pdf
+// to avoid version mismatches and CORS issues with external CDNs
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 interface PDFViewerWithHighlightsProps {
   /** PDF file URL or blob */

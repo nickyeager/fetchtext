@@ -8,7 +8,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronDown, Zap, FileText, Target } from 'lucide-react'
+import { ChevronDown, ChevronRight, Zap, FileText, Target, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   getMatchScoreColor,
@@ -24,6 +24,13 @@ export interface TemplateSuggestion {
   field_count: number
   extraction_quality?: number
   combined_score?: number
+  score_components?: {
+    category: number
+    fields: number
+    semantic: number
+    rerank: number
+    success: number
+  }
 }
 
 interface TemplateMatchCardProps {
@@ -86,6 +93,47 @@ function ScoreRing({
   )
 }
 
+function ScoreBar({
+  label,
+  weight,
+  value,
+  maxWeight,
+}: {
+  label: string
+  weight: string
+  value: number
+  maxWeight: number
+}) {
+  // value is already weighted (e.g. 0.25 out of 0.30 max)
+  // Show how much of the possible weight was achieved
+  const percent = maxWeight > 0 ? Math.min(100, (value / maxWeight) * 100) : 0
+  const level = percent >= 70 ? 'high' : percent >= 40 ? 'medium' : 'low'
+  const barColor = {
+    high: 'bg-green-500',
+    medium: 'bg-yellow-500',
+    low: 'bg-red-400',
+  }[level]
+
+  return (
+    <div className='space-y-1'>
+      <div className='flex items-center justify-between text-xs'>
+        <span className='text-muted-foreground'>
+          {label} <span className='opacity-60'>({weight})</span>
+        </span>
+        <span className='font-mono font-medium'>
+          {(value * 100).toFixed(0)}pts
+        </span>
+      </div>
+      <div className='h-1.5 w-full rounded-full bg-muted'>
+        <div
+          className={cn('h-full rounded-full transition-all duration-500', barColor)}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export function TemplateMatchCard({
   suggestions,
   onSelectTemplate,
@@ -95,6 +143,7 @@ export function TemplateMatchCard({
 }: TemplateMatchCardProps) {
   const navigate = useNavigate()
   const [showAlternatives, setShowAlternatives] = useState(false)
+  const [showScoring, setShowScoring] = useState(false)
 
   if (!suggestions || suggestions.length === 0) {
     return (
@@ -178,6 +227,39 @@ export function TemplateMatchCard({
             </Button>
           </div>
         </div>
+
+        {/* Scoring breakdown */}
+        {primary.score_components && (
+          <Collapsible open={showScoring} onOpenChange={setShowScoring}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='w-full justify-between text-muted-foreground'
+              >
+                <span className='flex items-center gap-1'>
+                  <BarChart3 className='h-3.5 w-3.5' />
+                  Scoring Breakdown
+                </span>
+                <ChevronRight
+                  className={cn(
+                    'h-4 w-4 transition-transform',
+                    showScoring && 'rotate-90'
+                  )}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className='pt-2'>
+              <div className='space-y-2.5 rounded-lg border border-border bg-muted/30 p-3'>
+                <ScoreBar label='Semantic Similarity' weight='30%' value={primary.score_components.semantic} maxWeight={0.30} />
+                <ScoreBar label='Category Alignment' weight='25%' value={primary.score_components.category} maxWeight={0.25} />
+                <ScoreBar label='Field Coverage' weight='20%' value={primary.score_components.fields} maxWeight={0.20} />
+                <ScoreBar label='LLM Re-ranking' weight='15%' value={primary.score_components.rerank} maxWeight={0.15} />
+                <ScoreBar label='Historical Success' weight='10%' value={primary.score_components.success} maxWeight={0.10} />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {/* Alternatives */}
         {alternatives.length > 0 && (
