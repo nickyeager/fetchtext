@@ -60,12 +60,21 @@ test('Josh Demo — Full FetchText Walkthrough', async ({ page }) => {
   // Watch SSE processing stages stream in
   // Wait for processing to complete (navigates to detail page)
   await page.waitForURL(/\/documents\/\d+/, { timeout: 120_000 });
-  await PAUSE(3000); // Let viewer see extracted fields at top
+  await PAUSE(4000); // Let viewer see PDF preview + extracted fields
 
-  // Scroll down to see all extracted field cards
-  await page.evaluate(() => window.scrollTo({ top: 600, behavior: 'smooth' }));
+  // Scroll down to see extracted field cards with confidence scores
+  await page.evaluate(() => window.scrollTo({ top: 500, behavior: 'smooth' }));
   await PAUSE(3000);
-  await page.evaluate(() => window.scrollTo({ top: 1200, behavior: 'smooth' }));
+
+  // Try to expand the scoring breakdown (if template match card is visible)
+  const scoringBtn = page.locator('button:has-text("Scoring Breakdown")');
+  if (await scoringBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await scoringBtn.click();
+    await PAUSE(3000); // Show the 5-factor breakdown
+  }
+
+  // Scroll further to see more extracted fields
+  await page.evaluate(() => window.scrollTo({ top: 1000, behavior: 'smooth' }));
   await PAUSE(3000);
 
   // ── Part 4: Templates List ────────────────────────────────────────
