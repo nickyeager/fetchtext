@@ -9,7 +9,7 @@ import secrets
 import logging
 import httpx
 from typing import Dict, Any, Optional, Tuple, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 import hashlib
 import base64
@@ -515,7 +515,8 @@ class OAuthManager:
         result = db_config.client.table("organization_integrations").select(
             "id", "status", "scopes", "metadata",
             "last_error", "last_sync_at", "connected_at",
-            "token_expires_at", "created_at", "updated_at"
+            "token_expires_at", "created_at", "updated_at",
+            "oauth_state_expires_at"
         ).eq("organization_id", organization_id).eq(
             "integration_type", integration_type
         ).maybe_single().execute()
@@ -524,7 +525,42 @@ class OAuthManager:
         if not result or not result.data:
             return None
 
-        return result.data
+        data = result.data
+
+        # Auto-expire stale pending OAuth states. If the row is still "pending"
+        # but the OAuth state window has passed, the user never completed the
+        # authorization flow. Clean it up now so the UI never shows a stuck
+        # "pending" badge.
+        if data.get("status") == "pending":
+            expires_at_raw = data.get("oauth_state_expires_at")
+            is_expired = False
+            if expires_at_raw:
+                try:
+                    expires_at = datetime.fromisoformat(
+                        expires_at_raw.replace("Z", "+00:00")
+                    )
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=timezone.utc)
+                    is_expired = datetime.now(timezone.utc) > expires_at
+                except (ValueError, AttributeError):
+                    pass  # Unparseable date — leave the row as-is
+            else:
+                # No expiry recorded at all — treat as expired to unblock the UI
+                is_expired = True
+
+            if is_expired:
+                row_id = data.get("id")
+                if row_id:
+                    db_config.client.table("organization_integrations").update(
+                        {
+                            "status": "revoked",
+                            "oauth_state": None,
+                            "oauth_state_expires_at": None,
+                        }
+                    ).eq("id", row_id).execute()
+                data = {**data, "status": "revoked", "oauth_state": None, "oauth_state_expires_at": None}
+
+        return data
 
     @classmethod
     async def list_organization_integrations(

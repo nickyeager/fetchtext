@@ -400,6 +400,7 @@ export function IntegrationCard({
 
   const isConnected = status === 'connected'
   const isError = status === 'error' || status === 'expired'
+  const isPending = status === 'pending'
 
   return (
     <Card>
@@ -440,7 +441,19 @@ export function IntegrationCard({
             onDisconnect={handleDisconnect}
           />
         )}
-        {!isConnected && !isError && (
+        {isPending && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Authorization is pending. If you did not complete the OAuth flow or
+              got stuck, you can cancel and try again.
+            </p>
+            <Button variant="outline" size="sm" onClick={handleDisconnect}>
+              <Unlink className="mr-2 h-4 w-4" />
+              Cancel &amp; Reset
+            </Button>
+          </div>
+        )}
+        {!isConnected && !isError && !isPending && (
           <DisconnectedState
             configured={configured}
             description={description}
