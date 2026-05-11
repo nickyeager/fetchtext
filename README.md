@@ -58,35 +58,54 @@ with your choice of local Ollama models or Azure OpenAI.
 
 ### Prerequisites
 
-- Docker and Docker Compose v2
-- Python 3.11+ (for `start_services.py`)
-- Node 20 + pnpm (only if you plan to develop the dashboard)
-- 8 GB RAM minimum, 16 GB recommended (Docling layout models are heavy)
+- **Docker Desktop 4.30+** (Compose v2 bundled) — macOS, Linux, or
+  Windows with WSL2
+- **Python 3.11+** (any system Python; `start_services.py` uses only
+  stdlib)
+- **`openssl`** (for generating secrets — pre-installed on macOS/Linux)
+- **8 GB RAM minimum**, 16 GB recommended (Docling layout models are
+  the bottleneck)
+- **20 GB free disk** for images + initial model downloads
+- *Optional, for dashboard development:* Node 20 + pnpm 9
+  (`nvm install 20 && npm install -g pnpm`)
 
 ### Run it
 
 ```bash
-git clone https://github.com/<your-fork>/fetchtext.git
+# 1. Clone the repo
+git clone https://github.com/nickyeager/fetchtext.git
 cd fetchtext
 
-# 1. Configure
+# 2. Generate strong secrets and create your .env
 cp .env.example .env
-# Edit .env — at minimum set:
-#   POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY,
-#   N8N_ENCRYPTION_KEY, DASHBOARD_PASSWORD
-# See .env.example for the full list with comments.
 
-# 2. Start the stack
-python start_services.py --profile cpu
+# Generate the four required secrets and paste them into .env:
+echo "POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)"
+echo "JWT_SECRET=$(openssl rand -hex 32)"
+echo "N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+echo "SECRET_KEY_BASE=$(openssl rand -base64 64 | tr -d '\n')"
+echo "DASHBOARD_PASSWORD=$(openssl rand -base64 24)"
+
+# Generate matching Supabase ANON_KEY and SERVICE_ROLE_KEY using the
+# Supabase JWT generator — paste your JWT_SECRET in and copy the two
+# tokens it gives you into .env:
+#   https://supabase.com/docs/guides/self-hosting#api-keys
+# (Or use the default ones from .env.example for local-only experimentation.)
+
+# 3. Start the stack
+python3 start_services.py --profile cpu
 # Or: --profile gpu-nvidia / --profile gpu-amd
 
-# 3. Wait for services to come up (~2 minutes first time)
-curl http://localhost:8090/health   # document processor
+# 4. Wait for services to come up (~2-5 min on first launch)
+curl http://localhost:8090/health   # document processor — expect: {"status":"healthy"}
 open http://localhost:5173          # admin dashboard
 ```
 
-The first launch downloads Docling layout models (~1 GB) and any Ollama
-models you've configured. Subsequent starts are fast.
+**First-launch tips**
+- Docling layout models (~1 GB) download lazily on first document upload
+- Default login: `admin@fetchtext.local` / value of `DASHBOARD_PASSWORD`
+- Stop everything: `docker compose -p localai down`
+- Tail logs: `docker compose -p localai logs -f document-processor`
 
 ### Service URLs (defaults)
 
@@ -111,6 +130,36 @@ All configuration lives in `.env`. The big knobs:
   `AZURE_OPENAI_*` vars and toggling provider in Settings → AI Models
 - Integration OAuth credentials — see `.env.example` for Google, Microsoft,
   Dropbox, Slack, QuickBooks, Xero, Snowflake
+
+## Troubleshooting
+
+**`curl localhost:8090/health` hangs or 502s**
+The document processor takes ~30s to come up on first boot (model
+download + DB migrations). Tail logs to watch progress:
+`docker compose -p localai logs -f document-processor`. Look for
+*"Application startup complete"*.
+
+**Dashboard loads but shows "Failed to fetch"**
+Frontend ANON_KEY mismatch with backend. The two must come from the
+same JWT_SECRET. Quickest fix: copy the demo keys from
+`.env.example` straight across (local-dev only — regenerate for any
+deployment).
+
+**Docling extraction is incredibly slow**
+On CPU with no GPU, layout model inference is 30–60s per page. Either
+(a) switch to `--profile gpu-nvidia`, or (b) configure Azure OpenAI in
+`Settings → AI Models` to bypass local LLM entirely.
+
+**Port already in use**
+Default external ports: 5173, 8000–8003, 8005, 8007, 8090, 11434. To
+remap, set the matching `*_EXTERNAL_PORT` in `.env` (see `.env.example`).
+
+**`SECRET_KEY_BASE` errors at supabase-realtime startup**
+`SECRET_KEY_BASE` must be exactly 64 bytes of base64. Regenerate:
+`openssl rand -base64 64 | tr -d '\n'`.
+
+More: [`docs/guides/MIGRATION_INSTRUCTIONS.md`](docs/guides/MIGRATION_INSTRUCTIONS.md)
+and [`CLAUDE.md`](CLAUDE.md) (extensive ops notes for maintainers).
 
 ## Architecture
 
