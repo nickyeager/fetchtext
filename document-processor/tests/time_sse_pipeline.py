@@ -25,7 +25,7 @@ import requests
 from pathlib import Path
 
 LOCAL_URL = "http://localhost:8090"
-PROD_URL = "https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io"
+PROD_URL = "https://your-document-processor.example.com"
 DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent.parent / "localai-admin-dashboard" / "tests" / "fixtures" / "Stucco Contract V1.pdf"
 
 

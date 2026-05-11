@@ -1,6 +1,6 @@
 # Walkthrough 1: Upload & Extract
 
-**Josh's ask:** "Upload a document via the admin upload flow, creating a document record"
+**the design partner's ask:** "Upload a document via the admin upload flow, creating a document record"
 
 **Status:** Ready
 

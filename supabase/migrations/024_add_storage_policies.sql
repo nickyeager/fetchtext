@@ -1,6 +1,6 @@
 -- Migration: Update storage RLS policies for documents bucket
 -- Applied to production Supabase: 2025-02-10
--- https://app.supabase.com/project/rawhmcrtzfdhryyfovee
+-- https://app.supabase.com/project/your-project-id
 
 -- The original production policies had overly restrictive conditions:
 --   (bucket_id = 'documents') AND (storage.foldername(name))[1] = auth.uid()::text

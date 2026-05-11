@@ -1,6 +1,6 @@
 -- Migration: Add Stripe subscription columns to organizations table
 -- Required for Stripe subscription webhook handling
--- Apply to production Supabase: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+-- Apply to production Supabase: https://app.supabase.com/project/your-project-id/sql/new
 
 -- Add columns for Stripe subscription tracking
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tier text DEFAULT 'free';

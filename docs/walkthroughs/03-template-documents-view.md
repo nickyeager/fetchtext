@@ -1,6 +1,6 @@
 # Walkthrough 3: Template-Documents View
 
-**Josh's ask:** "See all documents associated with a template"
+**the design partner's ask:** "See all documents associated with a template"
 
 **Status:** Ready
 
@@ -45,7 +45,7 @@ The table shows:
 
 > "Let's look at it from the template side. Here's our Contract Key Terms Extractor template — it has 29 documents processed with it. You can see every document, its match score, and status."
 >
-> "This is important for Josh's use case — when you have a procurement template, you want to see every contract that's been processed with it, compare the extracted fields across vendors, and spot anomalies."
+> "This is important for the design partner's use case — when you have a procurement template, you want to see every contract that's been processed with it, compare the extracted fields across vendors, and spot anomalies."
 
 ---
 

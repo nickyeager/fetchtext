@@ -1,12 +1,12 @@
-# Gap Analysis: Josh Demo Readiness
+# Gap Analysis: the design partner Demo Readiness
 
-Consolidated view of everything Josh asked to see vs. what we can actually demo today.
+Consolidated view of everything the design partner asked to see vs. what we can actually demo today.
 
 ---
 
-## Josh's Demo Flow — Status
+## the design partner's Demo Flow — Status
 
-| # | What Josh Wants to See | Can We Demo It? | Walkthrough |
+| # | What the design partner Wants to See | Can We Demo It? | Walkthrough |
 |---|----------------------|-----------------|-------------|
 | 1 | Upload a document, create record | YES | [01](01-upload-and-extract.md) |
 | 2 | Upload similar doc, verify extraction | YES | [02](02-similar-document-matching.md) |
@@ -17,7 +17,7 @@ Consolidated view of everything Josh asked to see vs. what we can actually demo 
 
 ---
 
-## Josh's Feature Requests — Status
+## the design partner's Feature Requests — Status
 
 | Feature | Status | What Exists | What's Missing |
 |---------|--------|-------------|----------------|
@@ -35,7 +35,7 @@ Consolidated view of everything Josh asked to see vs. what we can actually demo 
 ## Critical Gaps for Demo (Must Fix)
 
 ### 1. Template Edit Button on Detail Page
-**Problem:** Josh asked to see template editing. The editor exists but is only accessible from the templates list page (gear icon). The template detail page has NO edit affordance.
+**Problem:** the design partner asked to see template editing. The editor exists but is only accessible from the templates list page (gear icon). The template detail page has NO edit affordance.
 
 **Impact:** During demo, when you're on the template detail page showing documents and examples, there's no way to edit without navigating away.
 
@@ -59,12 +59,12 @@ Consolidated view of everything Josh asked to see vs. what we can actually demo 
 ## Nice-to-Have Gaps (Would Improve Demo)
 
 ### 3. Scoring Breakdown in UI
-**Problem:** The 5-factor scoring model runs on the backend but the UI only shows the final score (e.g., "62%"). Josh cares about understanding WHY a template matched.
+**Problem:** The 5-factor scoring model runs on the backend but the UI only shows the final score (e.g., "62%"). the design partner cares about understanding WHY a template matched.
 
 **Fix:** Add a collapsible "Scoring Details" panel to the template match card on document detail page. Show category, field coverage, semantic, re-rank, and success scores.
 
 ### 4. Side-by-Side Document Comparison
-**Problem:** Josh wants to compare similar documents' extracted fields. Currently you can only view one document at a time.
+**Problem:** the design partner wants to compare similar documents' extracted fields. Currently you can only view one document at a time.
 
 **Fix:** Add a "Compare" button on the template-documents list that opens two documents side by side with field comparison.
 
@@ -77,7 +77,7 @@ Consolidated view of everything Josh asked to see vs. what we can actually demo 
 
 ## Feature Roadmap Gaps (Future Batches)
 
-These are from Josh's longer-term vision. They're planned but not started:
+These are from the design partner's longer-term vision. They're planned but not started:
 
 | Feature | Graph RAG Batch | Dependencies |
 |---------|----------------|--------------|

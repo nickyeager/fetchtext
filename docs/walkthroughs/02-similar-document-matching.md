@@ -1,6 +1,6 @@
 # Walkthrough 2: Similar Document Matching
 
-**Josh's ask:** "Upload a second document that is similar (same or slightly different) and verify correct text extraction" + "Improve the semantic relevancy score"
+**the design partner's ask:** "Upload a second document that is similar (same or slightly different) and verify correct text extraction" + "Improve the semantic relevancy score"
 
 **Status:** Ready
 

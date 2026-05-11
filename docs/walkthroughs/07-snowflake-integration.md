@@ -1,6 +1,6 @@
 # Walkthrough 7: Snowflake Integration
 
-**Josh's ask:** "Show the Snowflake integration"
+**the design partner's ask:** "Show the Snowflake integration"
 
 **Status:** Has Gaps
 

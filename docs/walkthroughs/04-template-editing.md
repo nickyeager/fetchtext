@@ -1,6 +1,6 @@
 # Walkthrough 4: Template Editing
 
-**Josh's ask:** "Show 'editing' of templates (inline editing in template detail)"
+**the design partner's ask:** "Show 'editing' of templates (inline editing in template detail)"
 
 **Status:** Has Gaps
 
@@ -54,7 +54,7 @@ The main editor area uses a TipTap rich text editor:
 | Gap | Impact | Priority | Notes |
 |-----|--------|----------|-------|
 | **No edit button on template detail page** | Users land on detail page and can't figure out how to edit | HIGH | Detail page (`$templateId.tsx`) only has a read-only TemplateViewer. Need an "Edit" button that either opens the editor inline or navigates to the editor. |
-| **Editor is only accessible from templates list** | Must navigate away from detail page to edit | HIGH | Josh specifically asked to see editing on the template detail page |
+| **Editor is only accessible from templates list** | Must navigate away from detail page to edit | HIGH | the design partner specifically asked to see editing on the template detail page |
 | **No inline editing on detail page** | Can't quickly tweak a field name or hint without opening full editor | MEDIUM | Would be ideal for demos — click a variable, edit in place |
 | **Template editor doesn't show extraction preview** | Can't see "what would this extract?" while editing | LOW | Nice-to-have for iterating on templates |
 

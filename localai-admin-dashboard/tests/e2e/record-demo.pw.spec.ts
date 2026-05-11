@@ -1,5 +1,5 @@
 /**
- * Josh Demo Recording Script
+ * Demo Recording Script
  *
  * Records a full walkthrough of the FetchText demo flow as a .webm video.
  * Uses Playwright for reliable file uploads, SSE monitoring, and navigation.
@@ -26,7 +26,7 @@ test.use({
   launchOptions: { slowMo: 150 }, // Slow down for watchability
 });
 
-test('Josh Demo — Full FetchText Walkthrough', async ({ page }) => {
+test('Demo — Full FetchText Walkthrough', async ({ page }) => {
   test.setTimeout(300_000); // 5 min max
 
   // ── Part 1: Login ─────────────────────────────────────────────────

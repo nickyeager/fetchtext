@@ -1,8 +1,8 @@
 # Environment and Secrets
 .env
-.env.local
-.env.production
-.env.test
+.env.*
+!.env.example
+!.env.*.example
 *.env.backup
 SECRETS.local.md
 .secrets/
@@ -137,5 +137,42 @@ localai-admin-dashboard/playwright/.auth/
 # Claude Code local config
 .claude/
 
+# Internal AI agent workspace (plans, code reviews, system reviews)
+# Keep local for development; not appropriate for public OSS repo
+.agents/
+
+# Demo recordings (large binaries; regenerable from record-demo.ts)
+docs/demo-recordings/*.webm
+docs/demo-recordings/*.mp4
+
+# Internal/private docs
+SECRETS.local.md
+GITHUB_SECRETS_FINAL_STEPS.md
+Copilot-Processing.md
+
+# Internal product planning, deployment logs, system reviews
+# (kept locally for the maintainer; not part of the public OSS repo)
+docs/plans/
+docs/system-reviews/
+docs/analysis/
+docs/deployment/
+docs/PRODUCTION_CONFIG.md
+docs/PRODUCTION_RESOURCES.md
+docs/supabase-deployment-log.md
+docs/deployment-verification-checklist.md
+docs/TWO_PASS_API_INTEGRATION.md
+
+# Internal feature planning (PRPs / INITIAL.md) - lives in features/
+features/
+
+# Internal Copilot architecture instructions (FetchText-specific)
+.github/instructions/ARCHITECTURE.md
+.github/instructions/copilot-thought-logging.instructions.md
+
 # Service logs
 start_services.log
+
+docs/DOCUMENTATION_INDEX.md
+
+# Launch copy and other private maintainer notes
+.launch/

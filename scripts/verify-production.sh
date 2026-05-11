@@ -14,7 +14,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-SUPABASE_PROJECT_ID="rawhmcrtzfdhryyfovee"
+SUPABASE_PROJECT_ID="your-project-id"
 SUPABASE_URL="https://${SUPABASE_PROJECT_ID}.supabase.co"
 GITHUB_REPO="nickyeager/fetchtext"
 LOCAL_BACKEND_URL="http://localhost:8090"

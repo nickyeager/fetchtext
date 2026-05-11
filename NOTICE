@@ -1,0 +1,26 @@
+FetchText
+Copyright 2025-present Nick Yeager and FetchText Contributors
+
+This product includes software developed by:
+
+  local-ai-packaged
+  Copyright 2025-present Cole Medin and Contributors
+  https://github.com/coleam00/local-ai-packaged
+  Licensed under the Apache License, Version 2.0
+
+FetchText extends local-ai-packaged with the following original components:
+
+  - Document Processor (document-processor/)
+      FastAPI service for document ingestion, OCR, and structured data
+      extraction using Docling and LLM-based entity extraction.
+
+  - LocalAI Admin Dashboard (localai-admin-dashboard/)
+      React/TypeScript application providing the FetchText user interface,
+      smart template system, and integration management.
+
+  - Smart Template system, integration registry, vault service, and
+    related infrastructure under document-processor/app/services/.
+
+This product also includes or depends on third-party software. See the
+respective package manifests (requirements.txt, pyproject.toml,
+package.json) for the complete list of dependencies and their licenses.

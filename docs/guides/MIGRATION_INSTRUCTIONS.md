@@ -17,7 +17,7 @@ This creates a fresh database schema with seeded templates. Use this if you want
 
 1. **Open Supabase SQL Editor**
    ```
-   https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+   https://app.supabase.com/project/your-project-id/sql/new
    ```
 
 2. **Copy the migration script**
@@ -87,20 +87,20 @@ This creates a fresh database schema with seeded templates. Use this if you want
 
 This restores your existing data including any documents and custom templates you've created.
 
-**Wait for DNS propagation** (check with `nslookup db.rawhmcrtzfdhryyfovee.supabase.co`)
+**Wait for DNS propagation** (check with `nslookup db.your-project.supabase.co`)
 
 Once DNS resolves, run from Azure VM:
 
 ```bash
 # From Azure VM (128.24.73.54)
 PGPASSWORD='LeastClothSky23!' psql \
-  -h db.rawhmcrtzfdhryyfovee.supabase.co \
+  -h db.your-project.supabase.co \
   -U postgres \
   -d postgres \
   -f /tmp/supabase_backup.sql
 ```
 
-**Note**: DNS propagation can take 10-30 minutes. The database endpoint is `db.rawhmcrtzfdhryyfovee.supabase.co`.
+**Note**: DNS propagation can take 10-30 minutes. The database endpoint is `db.your-project.supabase.co`.
 
 ## What the Migration Creates
 
@@ -225,6 +225,6 @@ After running the migration script:
 ## Need Help?
 
 - **Supabase Docs**: https://supabase.com/docs
-- **SQL Editor**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql
-- **Table Editor**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/editor
-- **Logs**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/logs/explorer
+- **SQL Editor**: https://app.supabase.com/project/your-project-id/sql
+- **Table Editor**: https://app.supabase.com/project/your-project-id/editor
+- **Logs**: https://app.supabase.com/project/your-project-id/logs/explorer

@@ -35,7 +35,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 # Supabase credentials from .env
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://rawhmcrtzfdhryyfovee.supabase.co")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://your-project.supabase.co")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY", "")
 
 # SendGrid credentials from .env

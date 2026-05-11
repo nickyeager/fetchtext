@@ -40,7 +40,7 @@ FetchText production uses three deployment surfaces:
 |---------|---------|---------------|-------------------|
 | **Frontend (Dashboard)** | Azure Static Web Apps | `https://fetchtext.io` | `deploy-dashboard.yml` |
 | **Document Processor** | Azure Container App | `https://ft-dev-document-processor-*.azurecontainerapps.io` | `deploy-container-app.yml` |
-| **Database / Auth** | Managed Supabase | `https://rawhmcrtzfdhryyfovee.supabase.co` | SQL Editor / MCP tool |
+| **Database / Auth** | Managed Supabase | `https://your-project.supabase.co` | SQL Editor / MCP tool |
 | **N8N** | Azure VM (Docker + Caddy) | `https://n8n.fetchtext.io` | `deploy-vm.yml` |
 | **Qdrant** | Azure VM (Docker) | Internal only (`qdrant:6333`) | `deploy-vm.yml` |
 | **Neo4j** | Azure VM (Docker) | Internal only | `deploy-vm.yml` |

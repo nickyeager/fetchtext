@@ -67,7 +67,7 @@ export function getBackendUrl(target?: Target): string {
     return (
       process.env.PROD_BACKEND_URL ||
       process.env.VITE_DOCUMENT_PROCESSOR_URL ||
-      'https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io'
+      'https://your-document-processor.example.com'
     );
   }
 
@@ -82,7 +82,7 @@ export function getSupabaseUrl(target?: Target): string {
 
   if (t === 'production') {
     return (
-      process.env.SUPABASE_PROD_URL || 'https://rawhmcrtzfdhryyfovee.supabase.co'
+      process.env.SUPABASE_PROD_URL || 'https://your-project.supabase.co'
     );
   }
 

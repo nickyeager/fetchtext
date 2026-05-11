@@ -398,8 +398,8 @@ npx pnpm generate:types   # Generate TypeScript types
 ```
 
 **Production** (Managed Supabase):
-- **Instance**: https://rawhmcrtzfdhryyfovee.supabase.co
-- **SQL Editor**: https://app.supabase.com/project/rawhmcrtzfdhryyfovee/sql/new
+- **Instance**: https://your-project.supabase.co
+- **SQL Editor**: https://app.supabase.com/project/your-project-id/sql/new
 - **Deployment Log**: [docs/supabase-deployment-log.md](docs/supabase-deployment-log.md)
 - **Migration Process**: Test locally → Document in deployment log → Apply via SQL Editor → Verify
 
@@ -418,7 +418,7 @@ docker kill -s SIGUSR1 supabase-rest
 docker exec supabase-db psql -U postgres -d postgres -c "\d table_name"
 
 # Production
-mcp__supabase__apply_migration(project_id="rawhmcrtzfdhryyfovee", name="migration_name", query="SQL")
+mcp__supabase__apply_migration(project_id="your-project-id", name="migration_name", query="SQL")
 ```
 
 **Sync Checklist:**

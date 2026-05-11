@@ -30,7 +30,7 @@ const FRONTEND_URL = IS_PRODUCTION
   : (process.env.FRONTEND_URL || 'http://localhost:5173')
 
 const BACKEND_URL = IS_PRODUCTION
-  ? (process.env.BACKEND_URL || process.env.PROD_BACKEND_URL || 'https://ft-dev-document-processor-uhqrm5.graystone-50b6fbc2.eastus2.azurecontainerapps.io')
+  ? (process.env.BACKEND_URL || process.env.PROD_BACKEND_URL || 'https://your-document-processor.example.com')
   : (process.env.BACKEND_URL || 'http://localhost:8090')
 
 // =============================================================================

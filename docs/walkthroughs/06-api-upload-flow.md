@@ -1,6 +1,6 @@
 # Walkthrough 6: API Upload Flow
 
-**Josh's ask:** "Show the backend upload process via the API"
+**the design partner's ask:** "Show the backend upload process via the API"
 
 **Status:** Ready
 

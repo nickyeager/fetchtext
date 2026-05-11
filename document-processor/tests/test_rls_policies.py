@@ -12,7 +12,7 @@ Usage:
     cd document-processor && python -m pytest tests/test_rls_policies.py -v
 
     # Against production
-    SUPABASE_URL=https://rawhmcrtzfdhryyfovee.supabase.co \
+    SUPABASE_URL=https://your-project.supabase.co \
     ANON_KEY=<prod_anon_key> \
     SERVICE_ROLE_KEY=<prod_service_role_key> \
     python -m pytest tests/test_rls_policies.py -v

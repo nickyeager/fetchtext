@@ -20,4 +20,4 @@ See [GAP-ANALYSIS.md](GAP-ANALYSIS.md) for a consolidated view of all demo gaps 
 
 ## Based On
 
-These walkthroughs are designed around feedback from Josh (~2026-03-13), who described a **services scoping agent** use case — automating procurement document processing with template matching, entity extraction, and field-level similarity search.
+These walkthroughs are designed around feedback from the design partner (~2026-03-13), who described a **services scoping agent** use case — automating procurement document processing with template matching, entity extraction, and field-level similarity search.

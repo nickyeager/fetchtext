@@ -1,6 +1,6 @@
 # Walkthrough 5: Multi-Exemplar Training
 
-**Josh's ask:** "Needs multiple example documents to infer that multiple templates exist — can't just have one example per template"
+**the design partner's ask:** "Needs multiple example documents to infer that multiple templates exist — can't just have one example per template"
 
 **Status:** Ready (Batch 1 just completed)
 
@@ -67,7 +67,7 @@ Each exemplar captures a different "flavor" of documents that belong to this tem
 
 ## Demo Script
 
-> "Josh mentioned needing multiple example documents per template. Here's how that works. I go to the Contract Template and click 'Examples'. Right now it has no examples — let me add three different contracts."
+> "the design partner mentioned needing multiple example documents per template. Here's how that works. I go to the Contract Template and click 'Examples'. Right now it has no examples — let me add three different contracts."
 >
 > [Upload 3 contracts]
 >

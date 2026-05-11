@@ -292,7 +292,7 @@ FetchText production uses a hybrid deployment:
 |-----------|---------|---------|
 | Frontend | Azure Static Web Apps | `fetchtext.io` - deployed via `deploy-dashboard.yml` |
 | Document Processor | Azure Container App | FastAPI backend - deployed via `deploy-container-app.yml` |
-| Database / Auth | Managed Supabase | `rawhmcrtzfdhryyfovee.supabase.co` |
+| Database / Auth | Managed Supabase | `your-project.supabase.co` |
 | N8N, Qdrant, Ollama, Neo4j, etc. | Azure VM | Full docker-compose stack at `/srv/supabase` - deployed via `deploy-vm.yml` |
 
 ### Qdrant in Production
