@@ -1,8 +1,13 @@
-# FetchText
+<p align="center">
+  <img src="docs/assets/header.svg" alt="FetchText — self-hosted document AI with LLM smart templates" width="100%">
+</p>
 
-[![CI](https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+<p align="center">
+  <a href="https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml"><img src="https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  <a href="https://github.com/nickyeager/fetchtext/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><img src="https://img.shields.io/github/issues-search/nickyeager/fetchtext?query=is%3Aopen%20label%3A%22good%20first%20issue%22&label=good%20first%20issues&color=7057ff" alt="Good First Issues"></a>
+</p>
 
 **Self-hosted document processing, extraction, and generation — powered by
 local or cloud LLMs.**
@@ -109,30 +114,106 @@ All configuration lives in `.env`. The big knobs:
 
 ## Architecture
 
-```
-┌─────────────────┐    HTTPS    ┌─────────────────┐
-│  Admin Dashboard│ ──────────> │      Caddy      │ (reverse proxy)
-│  (React/Vite)   │             └────────┬────────┘
-└─────────────────┘                      │
-                                         ▼
-   ┌────────────────┬─────────────────────┬──────────────────┐
-   ▼                ▼                     ▼                  ▼
-┌────────┐   ┌─────────────┐       ┌──────────┐      ┌─────────────┐
-│Supabase│   │  Document   │       │   n8n    │      │ Open WebUI  │
-│ (auth+ │   │  Processor  │       │(workflows)│     │             │
-│  DB +  │   │  (FastAPI)  │       └──────────┘      └─────────────┘
-│storage)│   └──────┬──────┘
-└────────┘          │
-                    ▼
-          ┌────────────────────┐
-          │ Docling | Qdrant   │
-          │ Ollama  | Azure AI │
-          │ Langfuse           │
-          └────────────────────┘
+```mermaid
+%%{ init: { 'theme': 'base', 'themeVariables': {
+  'primaryColor': '#1E293B',
+  'primaryTextColor': '#F8FAFC',
+  'primaryBorderColor': '#475569',
+  'lineColor': '#64748B',
+  'fontFamily': '-apple-system, system-ui, sans-serif'
+}}}%%
+flowchart LR
+    classDef user fill:#0F172A,stroke:#60A5FA,color:#F8FAFC
+    classDef edge fill:#1E293B,stroke:#A78BFA,color:#F8FAFC
+    classDef app fill:#1E40AF,stroke:#60A5FA,color:#F8FAFC
+    classDef data fill:#5B21B6,stroke:#A78BFA,color:#F8FAFC
+    classDef ai fill:#9D174D,stroke:#F472B6,color:#F8FAFC
+    classDef ext fill:#065F46,stroke:#34D399,color:#F8FAFC
+
+    User([User])
+
+    subgraph Edge[" "]
+      direction TB
+      Caddy["Caddy<br/><i>HTTPS / reverse proxy</i>"]
+    end
+
+    subgraph Apps["Application Layer"]
+      direction TB
+      Dashboard["Admin Dashboard<br/><i>React · TanStack · shadcn/ui</i>"]
+      Processor["Document Processor<br/><i>FastAPI · SSE streaming</i>"]
+      N8N["n8n<br/><i>Workflows · webhooks</i>"]
+      WebUI["Open WebUI<br/><i>Chat interface</i>"]
+    end
+
+    subgraph DataLayer["Data &amp; Storage"]
+      direction TB
+      Supabase["Supabase<br/><i>Auth · Postgres · Storage</i>"]
+      Qdrant["Qdrant<br/><i>Vector DB</i>"]
+      Neo4j["Neo4j<br/><i>Knowledge graph</i>"]
+      MinIO["MinIO<br/><i>S3-compatible store</i>"]
+    end
+
+    subgraph AILayer["AI &amp; Extraction"]
+      direction TB
+      Docling["Docling<br/><i>Layout · OCR · tables</i>"]
+      Ollama["Ollama<br/><i>Local LLMs</i>"]
+      Azure["Azure OpenAI<br/><i>Cloud LLMs</i>"]
+      Langfuse["Langfuse<br/><i>LLM observability</i>"]
+    end
+
+    subgraph Integrations["External Integrations"]
+      direction TB
+      Drive["Google Drive"]
+      M365["Microsoft 365"]
+      Snowflake["Snowflake"]
+      Other["Dropbox · Slack ·<br/>QuickBooks · Xero"]
+    end
+
+    User -->|HTTPS| Caddy
+    Caddy --> Dashboard
+    Caddy --> Processor
+    Caddy --> N8N
+    Caddy --> WebUI
+
+    Dashboard -->|REST + Realtime| Supabase
+    Dashboard -->|SSE| Processor
+    Processor --> Supabase
+    Processor --> Docling
+    Processor -->|template matching| Qdrant
+    Processor --> Neo4j
+    Processor -->|switchable| Ollama
+    Processor -->|switchable| Azure
+    Processor -->|traces| Langfuse
+    Processor --> MinIO
+
+    N8N -->|webhooks| Processor
+    Processor -.->|fetch documents| Drive
+    Processor -.-> M365
+    Processor -.-> Snowflake
+    Processor -.-> Other
+
+    User:::user
+    Caddy:::edge
+    Dashboard:::app
+    Processor:::app
+    N8N:::app
+    WebUI:::app
+    Supabase:::data
+    Qdrant:::data
+    Neo4j:::data
+    MinIO:::data
+    Docling:::ai
+    Ollama:::ai
+    Azure:::ai
+    Langfuse:::ai
+    Drive:::ext
+    M365:::ext
+    Snowflake:::ext
+    Other:::ext
 ```
 
-See [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
-for the full breakdown.
+Source: [`docs/assets/architecture.mmd`](docs/assets/architecture.mmd) ·
+Full breakdown: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md)
 
 ## Documentation
 

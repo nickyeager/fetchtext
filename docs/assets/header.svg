@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-label="FetchText – self-hosted document AI">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="50%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#F472B6"/>
+    </linearGradient>
+    <linearGradient id="doc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#CBD5E1"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#1E293B" stroke-width="1" opacity="0.4"/>
+    </pattern>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="320" fill="url(#bg)"/>
+  <rect width="1200" height="320" fill="url(#grid)"/>
+
+  <!-- Accent bar -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#accent)"/>
+
+  <!-- Decorative document stack on the right -->
+  <g transform="translate(870, 70)" opacity="0.9">
+    <!-- Back doc -->
+    <g transform="translate(60, 20) rotate(8)">
+      <rect width="160" height="200" rx="6" fill="url(#doc)" opacity="0.45"/>
+    </g>
+    <!-- Middle doc -->
+    <g transform="translate(30, 10) rotate(-4)">
+      <rect width="160" height="200" rx="6" fill="url(#doc)" opacity="0.7"/>
+    </g>
+    <!-- Front doc with content lines -->
+    <g>
+      <rect width="160" height="200" rx="6" fill="url(#doc)"/>
+      <!-- Header band -->
+      <rect x="14" y="14" width="80" height="8" rx="2" fill="#0F172A" opacity="0.7"/>
+      <rect x="14" y="28" width="50" height="6" rx="2" fill="#475569"/>
+      <!-- Body lines -->
+      <rect x="14" y="56" width="132" height="4" rx="2" fill="#94A3B8"/>
+      <rect x="14" y="68" width="120" height="4" rx="2" fill="#94A3B8"/>
+      <rect x="14" y="80" width="128" height="4" rx="2" fill="#94A3B8"/>
+      <rect x="14" y="92" width="100" height="4" rx="2" fill="#94A3B8"/>
+      <!-- Highlighted extracted field -->
+      <rect x="12" y="110" width="138" height="14" rx="3" fill="#A78BFA" opacity="0.25"/>
+      <rect x="14" y="114" width="92" height="6" rx="2" fill="#A78BFA"/>
+      <!-- More body lines -->
+      <rect x="14" y="134" width="132" height="4" rx="2" fill="#94A3B8"/>
+      <rect x="14" y="146" width="80" height="4" rx="2" fill="#94A3B8"/>
+      <!-- Another highlighted field -->
+      <rect x="12" y="160" width="138" height="14" rx="3" fill="#60A5FA" opacity="0.25"/>
+      <rect x="14" y="164" width="110" height="6" rx="2" fill="#60A5FA"/>
+    </g>
+    <!-- Arrow flowing right -->
+    <g transform="translate(210, 100)" opacity="0.85">
+      <path d="M 0 0 L 60 0" stroke="url(#accent)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M 50 -8 L 64 0 L 50 8" fill="none" stroke="url(#accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <!-- JSON output card -->
+    <g transform="translate(280, 60)">
+      <rect width="160" height="120" rx="6" fill="#0B1220" stroke="#334155"/>
+      <text x="14" y="28" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#60A5FA">{</text>
+      <text x="22" y="44" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#A78BFA">"vendor":</text>
+      <text x="86" y="44" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#34D399">"Acme",</text>
+      <text x="22" y="60" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#A78BFA">"date":</text>
+      <text x="74" y="60" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#34D399">"2026-",</text>
+      <text x="22" y="76" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#A78BFA">"total":</text>
+      <text x="78" y="76" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#F472B6">$8,000</text>
+      <text x="22" y="92" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#A78BFA">"score":</text>
+      <text x="78" y="92" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#F472B6">0.94</text>
+      <text x="14" y="108" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" fill="#60A5FA">}</text>
+    </g>
+  </g>
+
+  <!-- Wordmark + tagline -->
+  <g transform="translate(80, 130)">
+    <!-- Logo glyph: stylized "F" inside a rounded square -->
+    <g transform="translate(0, -14)">
+      <rect width="64" height="64" rx="14" fill="url(#accent)" filter="url(#glow)"/>
+      <text x="32" y="48" text-anchor="middle" font-family="-apple-system, system-ui, 'Segoe UI', sans-serif" font-weight="800" font-size="42" fill="#0F172A">F</text>
+    </g>
+    <!-- Wordmark -->
+    <text x="84" y="34" font-family="-apple-system, system-ui, 'Segoe UI', sans-serif" font-weight="800" font-size="56" fill="#F8FAFC" letter-spacing="-1.5">FetchText</text>
+    <!-- Tagline -->
+    <text x="84" y="74" font-family="-apple-system, system-ui, 'Segoe UI', sans-serif" font-weight="500" font-size="20" fill="#94A3B8">Self-hosted document AI &#8212; extract structured data with LLM smart templates</text>
+    <!-- Chips -->
+    <g transform="translate(84, 100)" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="600">
+      <g transform="translate(0, 0)">
+        <rect width="86" height="26" rx="13" fill="#1E3A8A" opacity="0.6"/>
+        <text x="43" y="17" text-anchor="middle" fill="#BFDBFE">Apache 2.0</text>
+      </g>
+      <g transform="translate(96, 0)">
+        <rect width="96" height="26" rx="13" fill="#5B21B6" opacity="0.6"/>
+        <text x="48" y="17" text-anchor="middle" fill="#DDD6FE">Self-hosted</text>
+      </g>
+      <g transform="translate(202, 0)">
+        <rect width="106" height="26" rx="13" fill="#9D174D" opacity="0.6"/>
+        <text x="53" y="17" text-anchor="middle" fill="#FBCFE8">Ollama + Azure</text>
+      </g>
+      <g transform="translate(318, 0)">
+        <rect width="78" height="26" rx="13" fill="#065F46" opacity="0.6"/>
+        <text x="39" y="17" text-anchor="middle" fill="#A7F3D0">Docling</text>
+      </g>
+    </g>
+  </g>
+</svg>
