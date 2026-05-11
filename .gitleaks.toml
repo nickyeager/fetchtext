@@ -1,0 +1,43 @@
+# gitleaks configuration for FetchText
+#
+# Suppresses known false positives so CI doesn't flag safe content on every
+# PR. Every entry here represents a deliberate, reviewed decision — don't
+# add entries without verifying the content is actually safe.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "FetchText safe patterns"
+
+# 1. Public Supabase self-hosted demo JWTs — these are the well-known
+#    default keys shipped by Supabase for local development. Anyone can
+#    find them in the Supabase Docker setup; they have no production value.
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyAg''',                              # multiline supabase-demo JWTs (header)
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJyb2xlIjoi[a-z_]+","aXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3NTUyNDQ1MjMsImV4cCI6MTc4Njc4MDUyM30''', # default LocalAI keys
+]
+
+# 2. Test fixtures and documentation API key placeholders
+stopwords = [
+  "ftxt_a1b2c3",
+  "ftxt_testkey",
+  "ftxt_validkey",
+  "1234567890_abc123",
+  "1734567890_xyz789",
+  "dGhlIHNhbXBsZSBub25jZQ==",        # base64 "the sample nonce"
+  "your-super-secret-jwt-token",
+  "your-32-character-encryption-key",
+  "your-document-processor.example.com",
+]
+
+# 3. Path-based allowlists — files where placeholder secrets are intentional
+paths = [
+  '''\.env\.example''',
+  '''\.env\..*\.example''',
+  '''docs/api/.*\.md''',                  # API docs use example tokens
+  '''documentation/.*\.md''',             # placeholder OPENSSH PRIVATE KEY in old VM docs
+  '''.*test_.*\.py''',                    # pytest fixtures use placeholder JWTs
+  '''.*\.test\.(ts|tsx|js)''',            # vitest fixtures
+  '''.*test.*\.pw\.spec\.ts''',           # playwright fixtures
+]
