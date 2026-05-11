@@ -23,12 +23,15 @@ stopwords = [
   "ftxt_a1b2c3",
   "ftxt_testkey",
   "ftxt_validkey",
+  "YOUR_API_KEY_HERE",
   "1234567890_abc123",
   "1734567890_xyz789",
   "dGhlIHNhbXBsZSBub25jZQ==",        # base64 "the sample nonce"
   "your-super-secret-jwt-token",
   "your-32-character-encryption-key",
   "your-document-processor.example.com",
+  "$(openssl rand",                   # shell command in quickstart, not a key
+  "openssl rand -",                   # same — covers all openssl rand variants
 ]
 
 # 3. Path-based allowlists — files where placeholder secrets are intentional

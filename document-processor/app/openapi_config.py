@@ -261,7 +261,7 @@ Include `webhook_url` when calling the `/api/v1/process` endpoint:
 
 ```bash
 curl -X POST https://api.fetchtext.io/api/v1/process \\
-  -H "Authorization: Bearer ftxt_your_api_key" \\
+  -H "Authorization: Bearer YOUR_API_KEY_HERE" \\
   -F "file=@document.pdf" \\
   -F "webhook_url=https://your-app.com/webhooks/fetchtext" \\
   -F "webhook_secret=your_secret_key"
