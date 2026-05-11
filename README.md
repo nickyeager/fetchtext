@@ -276,7 +276,12 @@ Full breakdown: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITEC
 ## Status
 
 Pre-1.0. Public API and database schema may change. We use FetchText
-internally and ship breaking changes as we learn.
+internally and ship breaking changes as we learn — release notes live
+in [CHANGELOG.md](CHANGELOG.md).
+
+What we're working on next is in [ROADMAP.md](ROADMAP.md). If
+something there matters to you (or something missing does), open an
+issue.
 
 ## Contributing
 
