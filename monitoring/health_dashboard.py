@@ -65,7 +65,7 @@ class WebMonitoringDashboard:
             'localai-langfuse-web-1': {'ports': [3000], 'health_endpoint': '/api/public/health', 'category': 'monitoring'},
             'localai-langfuse-worker-1': {'ports': [3030], 'health_endpoint': None, 'category': 'monitoring'},
             # Template Gallery specific monitoring
-            'localai-admin-dashboard': {'ports': [5174], 'health_endpoint': '/health', 'category': 'template_gallery'}
+            'dashboard': {'ports': [5174], 'health_endpoint': '/health', 'category': 'template_gallery'}
         }
 
     async def collect_template_metrics(self):

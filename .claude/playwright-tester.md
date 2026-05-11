@@ -80,7 +80,7 @@ On failure, ALWAYS attach:
 
 ### File Organization
 ```
-localai-admin-dashboard/
+dashboard/
 ├── tests/
 │   ├── e2e/                    # Playwright E2E tests
 │   │   ├── *.pw.spec.ts       # Test files (MUST use .pw.spec.ts)
@@ -281,7 +281,7 @@ python start_services.py --profile cpu
 docker compose -p localai up -d supabase-db supabase-kong document-processor
 
 # Frontend dev server (if not using preview)
-cd localai-admin-dashboard && pnpm dev
+cd dashboard && pnpm dev
 ```
 
 Environment variables (.env.e2e):

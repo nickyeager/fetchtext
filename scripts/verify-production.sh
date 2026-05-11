@@ -410,7 +410,7 @@ check_secrets() {
     fi
 
     # Check frontend env
-    if [ -f "localai-admin-dashboard/.env.local" ]; then
+    if [ -f "dashboard/.env.local" ]; then
         check_pass "Frontend .env.local exists"
     else
         check_warn "Frontend .env.local missing"

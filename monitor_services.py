@@ -74,7 +74,7 @@ class LocalAIMonitor:
             ServiceConfig("Supabase Auth", "supabase-auth", 9999, None, None, None),
             
             # Admin Dashboard
-            ServiceConfig("Admin Dashboard", "localai-admin-dashboard", 3005, 5174, "/", "text/html"),
+            ServiceConfig("Admin Dashboard", "dashboard", 3005, 5174, "/", "text/html"),
         ]
     
     def get_container_status(self) -> Dict[str, Dict]:

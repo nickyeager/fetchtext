@@ -70,25 +70,25 @@ flowchart TB
 
 ## 📁 File Structure & Code Locations
 
-### Frontend (localai-admin-dashboard/src/)
+### Frontend (dashboard/src/)
 
 #### Upload Flow
-- **[DocumentUploadPage.tsx:200-321](localai-admin-dashboard/src/features/documents/components/DocumentUploadPage.tsx#L200-L321)** - Main upload handler
+- **[DocumentUploadPage.tsx:200-321](dashboard/src/features/documents/components/DocumentUploadPage.tsx#L200-L321)** - Main upload handler
   - Lines 208-212: Create document record
   - Lines 266-273: Evaluate document type
   - Lines 275-283: Extract content with Docling
   - Lines 285-301: Finalize with metadata
 
 #### Document Detail View
-- **[DocumentDetailView.tsx:206-238](localai-admin-dashboard/src/features/documents/components/DocumentDetailView.tsx#L206-L238)** - Content display logic
-- **[DocumentDetailView.tsx:438-500](localai-admin-dashboard/src/features/documents/components/DocumentDetailView.tsx#L438-L500)** - `handleRerunExtraction()` function
-- **[DocumentDetailView.tsx:360-436](localai-admin-dashboard/src/features/documents/components/DocumentDetailView.tsx#L360-L436)** - `handleProcessingAction()` handler
+- **[DocumentDetailView.tsx:206-238](dashboard/src/features/documents/components/DocumentDetailView.tsx#L206-L238)** - Content display logic
+- **[DocumentDetailView.tsx:438-500](dashboard/src/features/documents/components/DocumentDetailView.tsx#L438-L500)** - `handleRerunExtraction()` function
+- **[DocumentDetailView.tsx:360-436](dashboard/src/features/documents/components/DocumentDetailView.tsx#L360-L436)** - `handleProcessingAction()` handler
 
 #### Document Processor Service
-- **[document-processor-enhanced.ts:595-632](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L595-L632)** - Async job polling for content extraction
-- **[document-processor-enhanced.ts:1350-1392](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L1350-L1392)** - `processWithExistingTemplate()` method
-- **[document-processor-enhanced.ts:433-549](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L433-L549)** - `processDocumentWithTemplate()` method
-- **[document-processor-enhanced.ts:1367](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L1367)** - `evaluateDocumentType()` method
+- **[document-processor-enhanced.ts:595-632](dashboard/src/lib/document-processor-enhanced.ts#L595-L632)** - Async job polling for content extraction
+- **[document-processor-enhanced.ts:1350-1392](dashboard/src/lib/document-processor-enhanced.ts#L1350-L1392)** - `processWithExistingTemplate()` method
+- **[document-processor-enhanced.ts:433-549](dashboard/src/lib/document-processor-enhanced.ts#L433-L549)** - `processDocumentWithTemplate()` method
+- **[document-processor-enhanced.ts:1367](dashboard/src/lib/document-processor-enhanced.ts#L1367)** - `evaluateDocumentType()` method
 
 ### Backend (document-processor/)
 
@@ -203,7 +203,7 @@ const processedContent = await documentProcessor.processDocumentWithDocling(file
 console.log('✅ Content extracted:', processedContent.content?.substring(0, 100));
 ```
 
-**Async Processing Flow** ([document-processor-enhanced.ts:595-632](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L595-L632)):
+**Async Processing Flow** ([document-processor-enhanced.ts:595-632](dashboard/src/lib/document-processor-enhanced.ts#L595-L632)):
 
 **Request**:
 ```typescript
@@ -798,7 +798,7 @@ total_score = (
 
 **Why Needed**: Document processing (PDF extraction, OCR, AI analysis) can take 3-10 seconds. The backend returns a `job_id` immediately so the user doesn't wait.
 
-**Implementation** ([document-processor-enhanced.ts:595-632](localai-admin-dashboard/src/lib/document-processor-enhanced.ts#L595-L632)):
+**Implementation** ([document-processor-enhanced.ts:595-632](dashboard/src/lib/document-processor-enhanced.ts#L595-L632)):
 
 ```typescript
 // 1. Upload file
@@ -1011,7 +1011,7 @@ CREATE TABLE smart_templates (
 
 - **[TEMPLATE_MATCHING_CURRENT_STATE.md](TEMPLATE_MATCHING_CURRENT_STATE.md)** - Deep dive into template matching system and enhancement suggestions
 - **[RERUN_SMART_EXTRACTION_FLOW.md](RERUN_SMART_EXTRACTION_FLOW.md)** - Complete flow diagram and code walkthrough for rerun functionality
-- **[localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md)** - Frontend upload flow documentation
+- **[dashboard/DOCUMENT_UPLOAD_FLOW.md](dashboard/DOCUMENT_UPLOAD_FLOW.md)** - Frontend upload flow documentation
 
 ## 🎯 Next Steps & Enhancements
 

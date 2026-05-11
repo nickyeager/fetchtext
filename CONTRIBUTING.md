@@ -22,10 +22,10 @@ documentation, and code.
 
 ## Development Workflow
 
-### Frontend (`localai-admin-dashboard/`)
+### Frontend (`dashboard/`)
 
 ```bash
-cd localai-admin-dashboard
+cd dashboard
 source ~/.nvm/nvm.sh && nvm use 20
 npx pnpm install
 npx pnpm build         # production build

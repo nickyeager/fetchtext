@@ -120,8 +120,8 @@ service_status_*.log
 
 
 # Ignore legacy/archived dashboard build artifacts
-localai-admin-dashboard/dist.old.*/
-localai-admin-dashboard/dist.old.1762746652/
+dashboard/dist.old.*/
+dashboard/dist.old.1762746652/
 
 azure-credentials.json
 
@@ -132,7 +132,7 @@ azure-credentials.json
 .env.snowflake-test
 
 # Playwright auth state (contains session tokens)
-localai-admin-dashboard/playwright/.auth/
+dashboard/playwright/.auth/
 
 # Claude Code local config
 .claude/

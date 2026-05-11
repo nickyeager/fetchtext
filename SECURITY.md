@@ -31,7 +31,7 @@ this period. Pinned releases may receive backports on a case-by-case basis.
 
 In scope:
 
-- The FetchText admin dashboard (`localai-admin-dashboard/`)
+- The FetchText admin dashboard (`dashboard/`)
 - The document processor service (`document-processor/`)
 - Service orchestration (`docker-compose.yml`, `start_services.py`,
   `Caddyfile`)

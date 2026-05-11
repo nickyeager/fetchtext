@@ -40,10 +40,10 @@ echo "Python: $PYTHON_PASSED passed, $PYTHON_FAILED failed"
 echo ""
 echo "🎭 Running Critical Playwright E2E Tests..."
 echo "--------------------------------------------"
-cd /Users/nickyeager/Code/agents/local-ai-packaged/localai-admin-dashboard
+cd /Users/nickyeager/Code/agents/local-ai-packaged/dashboard
 
 export TEST_USER_EMAIL="admin@fetchtext.local"
-export TEST_USER_PASSWORD="***REMOVED-TEST-PASSWORD***"
+export TEST_USER_PASSWORD="CHANGEME-set-via-TEST_USER_PASSWORD-env"
 
 # Run auth and settings tests
 if npx playwright test tests/e2e/auth/00-auth-smoke.pw.spec.ts tests/e2e/settings/org-llm-config.pw.spec.ts --reporter=line 2>&1 | tee /tmp/e2e-test-results.txt; then

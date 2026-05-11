@@ -5,7 +5,7 @@
  * Uses Playwright for reliable file uploads, SSE monitoring, and navigation.
  *
  * Run:
- *   cd localai-admin-dashboard
+ *   cd dashboard
  *   source ~/.nvm/nvm.sh && nvm use 20
  *   npx playwright test ../docs/demo-recordings/record-demo.ts --reporter=list
  */
@@ -35,7 +35,7 @@ test('Demo — Full FetchText Walkthrough', async ({ page }) => {
 
   await page.fill('input[type="email"], input[name="email"]', 'admin@fetchtext.local');
   await PAUSE(300);
-  await page.fill('input[type="password"], input[name="password"]', '***REMOVED-TEST-PASSWORD***');
+  await page.fill('input[type="password"], input[name="password"]', 'CHANGEME-set-via-TEST_USER_PASSWORD-env');
   await PAUSE(300);
 
   await page.click('button:has-text("Login")');

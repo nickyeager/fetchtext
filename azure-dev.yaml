@@ -6,7 +6,7 @@ metadata:
 
 services:
   dashboard:
-    project: ./localai-admin-dashboard
+    project: ./dashboard
     language: custom
     host: staticwebapp
     dist: dist

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+    environment:
+      - VITE_SUPABASE_URL=http://localhost:8000
+      - VITE_SUPABASE_ANON_KEY=${ANON_KEY}
+    ports:
+      - "5174:5173"
+    command: pnpm dev --host 0.0.0.0

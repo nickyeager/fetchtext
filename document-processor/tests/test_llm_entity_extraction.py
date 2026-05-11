@@ -36,7 +36,7 @@ ANON_KEY = os.environ.get(
     "ANON_KEY",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzU1MjQ0NTIzLCJleHAiOjE3ODY3ODA1MjN9.h6VsUD-W6BuvpX5giP6Q-WSKrwQa6-2PPlAPFUzvtzU",
 )
-STUCCO_CONTRACT_PATH = PROJECT_ROOT / "localai-admin-dashboard" / "tests" / "fixtures" / "Stucco Contract V1.pdf"
+STUCCO_CONTRACT_PATH = PROJECT_ROOT / "dashboard" / "tests" / "fixtures" / "Stucco Contract V1.pdf"
 
 
 def _get_auth_token() -> Optional[str]:

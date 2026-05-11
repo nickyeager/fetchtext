@@ -7,7 +7,7 @@
 
 ## Applications & Services
 - `document-processor/` – Python service (FastAPI) with `app/` routers, models, and services plus extensive tests and scripts.
-- `localai-admin-dashboard/` – Vite/TypeScript admin UI with Playwright tests, build assets, and Docker artefacts.
+- `dashboard/` – Vite/TypeScript admin UI with Playwright tests, build assets, and Docker artefacts.
 - `monitoring/` – Alerting dashboards, health checks, and supporting docker-compose configurations for observability.
 - `flowise/` – Exported Flowise chatflows and custom tool definitions.
 - `searxng/`, `neo4j/`, `infra/` – Service-specific configuration (search engine, graph database, Azure Bicep deployment modules).

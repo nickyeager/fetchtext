@@ -23,7 +23,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "localai-admin-dashboard/node_modules"
+    "dashboard/node_modules"
   ],
   "ts-node": {
     "esm": false,

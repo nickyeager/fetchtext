@@ -5,14 +5,14 @@
 
 ### File Analysis
 - docker-compose.yml
-  - `localai-admin-dashboard` build args set `VITE_SUPABASE_URL: http://localhost:8000` and `VITE_SUPABASE_ANON_KEY: ${ANON_KEY}`; backend services use internal `SUPABASE_URL: http://supabase-kong:8000`.
-- localai-admin-dashboard/Dockerfile
+  - `dashboard` build args set `VITE_SUPABASE_URL: http://localhost:8000` and `VITE_SUPABASE_ANON_KEY: ${ANON_KEY}`; backend services use internal `SUPABASE_URL: http://supabase-kong:8000`.
+- dashboard/Dockerfile
   - Accepts `ARG VITE_SUPABASE_URL` and `ARG VITE_SUPABASE_ANON_KEY`; exports them to `ENV` so Vite can embed values during build.
-- localai-admin-dashboard/src/lib/supabase.ts
+- dashboard/src/lib/supabase.ts
   - Supabase client constructed from `import.meta.env.VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; confirms build-time embedding behavior applies.
-- localai-admin-dashboard/tests/e2e/config-embed.pw.spec.ts
+- dashboard/tests/e2e/config-embed.pw.spec.ts
   - E2E test asserts production bundle JS contains `http://localhost:8000` and not Docker-internal hosts (`kong`, `supabase-kong`). Guards against regressions.
-- localai-admin-dashboard/tests/auth/global-setup.ts
+- dashboard/tests/auth/global-setup.ts
   - `globalSetup` performs a password grant against `SUPABASE_URL` with `SUPABASE_ANON_KEY`, writes Playwright `storageState` with session; expects `BASE_URL` front-end health to be 200.
 - .github/instructions/ARCHITECTURE.md and ARCHITECTURE.md
   - Document split between host URL (`http://localhost:8000`) for browser and internal DNS (`http://supabase-kong:8000`) for container-to-container calls.
@@ -48,13 +48,13 @@ Front-end (Vite + React) reads `VITE_*` env at build time; Docker image builds e
 
 ### Implementation Patterns
 - Browser builds must never reference Docker-internal DNS (`kong`, `supabase-kong`) due to DNS resolution failures (net::ERR_NAME_NOT_RESOLVED) in the user's network context.
-- Vite env changes require a rebuild (`docker compose build localai-admin-dashboard`) and container restart to take effect.
+- Vite env changes require a rebuild (`docker compose build dashboard`) and container restart to take effect.
 - Playwright uses `globalSetup` to perform a password grant against Supabase and persists `storageState` to start tests authenticated.
 - A regression test (`config-embed.pw.spec.ts`) asserts the built JS includes `http://localhost:8000` only.
 
 ### Complete Examples
 ```ts
-// Source: localai-admin-dashboard/tests/auth/global-setup.ts (verified)
+// Source: dashboard/tests/auth/global-setup.ts (verified)
 import { request } from '@playwright/test';
 
 const ctx = await request.newContext({
@@ -80,7 +80,7 @@ if (resp.status() !== 200) throw new Error(`Auth failed: ${resp.status()} ${awai
 ```yaml
 # docker-compose.yml (frontend build args)
 services:
-  localai-admin-dashboard:
+  dashboard:
     build:
       args:
         VITE_SUPABASE_URL: http://localhost:8000
@@ -115,7 +115,7 @@ Adopt and enforce a split-URL policy with automation:
 - Key Tasks: 
   - Update `.github/instructions/copilot-instructions.md` to replace `VITE_SUPABASE_URL: http://kong:8000` with `http://localhost:8000` (browser builds), keeping `supabase-kong` for containers only.
   - Ensure `docker-compose.yml` continues to pass correct build args for the dashboard and runtime env for backends.
-  - Run `docker compose build --no-cache localai-admin-dashboard && docker compose up -d localai-admin-dashboard` on env changes.
+  - Run `docker compose build --no-cache dashboard && docker compose up -d dashboard` on env changes.
   - Run Playwright tests with `globalSetup` to verify auth and `config-embed.pw.spec.ts` to guard against regressions.
   - Wire E2E into CI pipeline with a minimal Supabase subset started and `.env.e2e` secrets injected.
 - Dependencies: Supabase services via Kong (`:8000`), ANON_KEY in `.env`, Playwright test runner, Docker.

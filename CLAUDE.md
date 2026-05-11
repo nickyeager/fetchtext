@@ -172,7 +172,7 @@ Before declaring ANY feature complete or deployable:
 **After EVERY implementation session**, before declaring work complete, you MUST run the stucco contract E2E test. This is the primary smoke test for the full document processing pipeline (upload → SSE streaming → template matching → field extraction → detail page rendering).
 
 ```bash
-cd localai-admin-dashboard
+cd dashboard
 source ~/.nvm/nvm.sh && nvm use 20
 E2E_SKIP_GLOBAL_SETUP=1 npx playwright test tests/e2e/document-processing/stucco-upload-e2e.pw.spec.ts --reporter=list
 ```
@@ -261,7 +261,7 @@ See [docs/guides/LLM_ENTITY_EXTRACTION.md](docs/guides/LLM_ENTITY_EXTRACTION.md)
 
 Self-hosted AI platform with three main components:
 
-1. **LocalAI Admin Dashboard** (`localai-admin-dashboard/`) - React/TypeScript frontend with TanStack Router
+1. **LocalAI Admin Dashboard** (`dashboard/`) - React/TypeScript frontend with TanStack Router
 2. **Document Processor** (`document-processor/`) - Python FastAPI service for document processing using Docling
 3. **Service Infrastructure** - Docker Compose orchestrated services including Supabase, N8N, Ollama, and monitoring
 
@@ -273,7 +273,7 @@ source ~/.nvm/nvm.sh && nvm use 20 && npx pnpm [command]
 ### Key Documentation
 
 - **Documentation Index**: [docs/DOCUMENTATION_INDEX.md](docs/DOCUMENTATION_INDEX.md)
-- **Document Upload Flow**: [localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md](localai-admin-dashboard/DOCUMENT_UPLOAD_FLOW.md)
+- **Document Upload Flow**: [dashboard/DOCUMENT_UPLOAD_FLOW.md](dashboard/DOCUMENT_UPLOAD_FLOW.md)
 - **Architecture**: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
 - **Project Structure**: [docs/architecture/PROJECT_STRUCTURE.md](docs/architecture/PROJECT_STRUCTURE.md)
 - **Deployment Plan**: [docs/architecture/DEPLOYMENT_PLAN.md](docs/architecture/DEPLOYMENT_PLAN.md)
@@ -348,7 +348,7 @@ docker compose ps
 | Change Type | Required Action | Command |
 |-------------|-----------------|---------|
 | `document-processor/app/**/*.py` | **Rebuild container** | `docker compose -p localai up -d --build document-processor` |
-| `localai-admin-dashboard/**` | **Rebuild immediately** | `source ~/.nvm/nvm.sh && nvm use 20 && cd localai-admin-dashboard && npx pnpm build` |
+| `dashboard/**` | **Rebuild immediately** | `source ~/.nvm/nvm.sh && nvm use 20 && cd dashboard && npx pnpm build` |
 | `.env` changes | **Restart ALL containers** | `docker compose -p localai restart` |
 | `supabase/migrations/` | **Apply migration** | Use Supabase CLI or MCP tool |
 
@@ -363,7 +363,7 @@ docker compose -p localai logs document-processor --tail=20
 
 ### Frontend Development
 ```bash
-cd localai-admin-dashboard/
+cd dashboard/
 npx pnpm build        # Production build (preferred for testing changes)
 npx pnpm test         # Run Vitest tests (DO NOT use --watch flag)
 npx pnpm test:auth    # Run authentication compliance tests
@@ -517,7 +517,7 @@ console.log('[DocumentUpload] Starting upload process', {
 - **macOS Storage**: Uses MinIO S3 backend (port 9010) via docker-compose.override.yml
 - **Network**: All services MUST be in the `localai` Docker network
 
-### Frontend Architecture (localai-admin-dashboard/)
+### Frontend Architecture (dashboard/)
 - **TanStack Router** for routing (not React Router)
 - **shadcn/ui** components from `@/components/ui/`
 - **Absolute imports** with `@/` prefix
@@ -582,7 +582,7 @@ useEffect(() => {
 
 ### File Structure
 ```
-localai-admin-dashboard/src/
+dashboard/src/
 ├── components/       # Reusable UI components
 ├── features/        # Feature-specific modules
 ├── lib/            # Utilities and services
@@ -610,14 +610,14 @@ document-processor/
 - Langfuse: `LANGFUSE_SALT`, `NEXTAUTH_SECRET`
 - Azure OpenAI: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT_NAME`, `AZURE_OPENAI_API_VERSION`
 
-**Frontend** (`localai-admin-dashboard/.env.local`):
+**Frontend** (`dashboard/.env.local`):
 - `VITE_SUPABASE_URL`: Must point to Kong gateway (default: `http://localhost:8000`)
 - `VITE_SUPABASE_ANON_KEY`: **MUST match `ANON_KEY` from root `.env`**
 
 ```bash
 # Verify JWT tokens match:
 grep ANON_KEY .env
-grep VITE_SUPABASE_ANON_KEY localai-admin-dashboard/.env.local
+grep VITE_SUPABASE_ANON_KEY dashboard/.env.local
 ```
 
 ### AI Services
@@ -662,7 +662,7 @@ Unified template architecture (migration 010):
 
 1. **Environment Setup**: Copy `.env.example` to `.env` and configure secrets
 2. **Service Startup**: Use `python start_services.py` with appropriate profile
-3. **Frontend Development**: Work in `localai-admin-dashboard/` with `pnpm build` to test changes
+3. **Frontend Development**: Work in `dashboard/` with `pnpm build` to test changes
 4. **Testing**: Vitest for frontend, pytest for document processor
 5. **Deployment**: Use `--environment public` flag for production
 

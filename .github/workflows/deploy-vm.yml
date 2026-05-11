@@ -15,7 +15,7 @@ on:
       - "docker-compose.yml"
       - "docker-compose.*.yml"
       - "document-processor/**"
-      - "localai-admin-dashboard/**"
+      - "dashboard/**"
       - "supabase/**"
       - ".env.example"
       - ".github/workflows/deploy-vm.yml"

@@ -20,7 +20,7 @@ curl http://localhost:8090/health
 
 ✅ **Frontend Built**
 ```bash
-cd localai-admin-dashboard
+cd dashboard
 pnpm build
 ```
 
@@ -241,7 +241,7 @@ docker compose -p localai restart document-processor
 
 **Frontend Rollback:**
 ```bash
-cd localai-admin-dashboard
+cd dashboard
 git checkout HEAD -- src/features/documents/components/DocumentUploadPage.tsx
 git checkout HEAD -- src/lib/document-processor-enhanced.ts
 pnpm build

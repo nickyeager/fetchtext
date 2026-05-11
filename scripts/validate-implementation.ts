@@ -177,8 +177,8 @@ class ContextEngineeringValidator {
   private async validateImplementation(featureName: string, requirements: FeatureRequirements, result: ValidationResult): Promise<void> {
     // Look for implementation files based on feature name
     const possibleDirs = [
-      join(this.projectRoot, 'localai-admin-dashboard', 'src', 'features', featureName),
-      join(this.projectRoot, 'localai-admin-dashboard', 'src', 'lib'),
+      join(this.projectRoot, 'dashboard', 'src', 'features', featureName),
+      join(this.projectRoot, 'dashboard', 'src', 'lib'),
       join(this.projectRoot, 'document-processor', 'app', 'services'),
     ];
 
@@ -272,8 +272,8 @@ class ContextEngineeringValidator {
 
   private async validateTests(featureName: string, result: ValidationResult): Promise<void> {
     const testDirs = [
-      join(this.projectRoot, 'localai-admin-dashboard', 'src', '__tests__'),
-      join(this.projectRoot, 'localai-admin-dashboard', 'src', 'features', featureName, '__tests__'),
+      join(this.projectRoot, 'dashboard', 'src', '__tests__'),
+      join(this.projectRoot, 'dashboard', 'src', 'features', featureName, '__tests__'),
       join(this.projectRoot, 'document-processor', 'tests'),
     ];
 
@@ -303,7 +303,7 @@ class ContextEngineeringValidator {
     if (testFilesFound > 0) {
       try {
         // Run frontend tests
-        const frontendTestDir = join(this.projectRoot, 'localai-admin-dashboard');
+        const frontendTestDir = join(this.projectRoot, 'dashboard');
         if (existsSync(frontendTestDir)) {
           execSync('pnpm test', { cwd: frontendTestDir, stdio: 'pipe' });
           result.details.push({

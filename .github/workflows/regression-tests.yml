@@ -11,7 +11,7 @@ on:
       - ".github/workflows/**"
       - "docker-compose.yml"
       - "infra/**"
-      - "localai-admin-dashboard/src/**"
+      - "dashboard/src/**"
 
 env:
   NODE_VERSION: "20"
@@ -38,14 +38,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: pnpm install --frozen-lockfile
 
       - name: Run config regression tests
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: |
           npx vitest run src/__tests__/integration/env-services-regression.test.ts \
             src/__tests__/integration/document-id-validation.test.ts \
@@ -77,14 +77,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: pnpm build
         env:
           VITE_SUPABASE_URL: "https://placeholder.supabase.co"
@@ -115,14 +115,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-          cache-dependency-path: localai-admin-dashboard/pnpm-lock.yaml
+          cache-dependency-path: dashboard/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: npx playwright install --with-deps chromium
 
       - name: Wait for deploy workflows (main push only)
@@ -132,7 +132,7 @@ jobs:
           sleep 90
 
       - name: Create production env file
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: |
           cat > .env.e2e.production <<EOF
           PROD_TEST_USER_EMAIL=${{ secrets.PROD_TEST_USER_EMAIL }}
@@ -153,7 +153,7 @@ jobs:
           done
 
       - name: Run production CORS e2e test
-        working-directory: localai-admin-dashboard
+        working-directory: dashboard
         run: |
           npx playwright test \
             --config=playwright.production.config.ts \

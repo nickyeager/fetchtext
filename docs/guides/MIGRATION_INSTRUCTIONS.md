@@ -72,7 +72,7 @@ This creates a fresh database schema with seeded templates. Use this if you want
      gen_random_uuid(),
      '00000000-0000-0000-0000-000000000000',
      'admin@fetchtext.local',
-     crypt('***REMOVED-TEST-PASSWORD***', gen_salt('bf')),
+     crypt('CHANGEME-set-via-TEST_USER_PASSWORD-env', gen_salt('bf')),
      NOW(),
      NOW(),
      NOW(),
@@ -143,7 +143,7 @@ After running the migration script:
 1. **Test Login**
    ```
    Navigate to: https://fetchtext.io
-   Login: admin@fetchtext.local / ***REMOVED-TEST-PASSWORD***
+   Login: admin@fetchtext.local / CHANGEME-set-via-TEST_USER_PASSWORD-env
    ```
 
 2. **Verify Templates**

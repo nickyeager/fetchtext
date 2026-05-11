@@ -95,9 +95,9 @@ run_template_tests() {
     fi
     
     # Run Vitest E2E tests if available
-    if [ -d "localai-admin-dashboard" ]; then
+    if [ -d "dashboard" ]; then
         echo -e "\n${BLUE}🎭 Running Frontend E2E Tests...${NC}"
-        cd localai-admin-dashboard
+        cd dashboard
         
         # Check if the E2E test exists
         if [ -f "tests/e2e/template-matching-e2e.spec.ts" ]; then

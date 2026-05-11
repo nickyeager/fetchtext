@@ -42,7 +42,7 @@ agent-browser wait --load networkidle
 agent-browser snapshot -i
 # Fill login form
 agent-browser fill @{email-input} "admin@fetchtext.local"
-agent-browser fill @{password-input} "***REMOVED-TEST-PASSWORD***"
+agent-browser fill @{password-input} "CHANGEME-set-via-TEST_USER_PASSWORD-env"
 agent-browser click @{login-button}
 agent-browser wait --url "**/dashboard"
 ```

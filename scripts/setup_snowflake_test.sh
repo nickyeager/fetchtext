@@ -220,7 +220,7 @@ echo "  python -m pytest tests/test_snowflake_integration.py -v"
 echo ""
 echo "To run the frontend integration tests:"
 echo ""
-echo "  cd localai-admin-dashboard"
+echo "  cd dashboard"
 echo "  source ~/.nvm/nvm.sh && nvm use 20 && npx pnpm test -- src/__tests__/integration/snowflake-integration.test.ts"
 echo ""
 

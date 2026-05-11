@@ -10,12 +10,12 @@ Read these files to understand the codebase before starting work:
 3. `tsconfig.json` - TypeScript strict settings
 4. `docker-compose.yml` - Service orchestration
 5. `document-processor/app/config/settings.py` - Backend configuration
-6. `localai-admin-dashboard/src/lib/supabase.ts` - Supabase client setup
-7. `localai-admin-dashboard/src/lib/supabase-auth-utils.ts` - Auth utilities
+6. `dashboard/src/lib/supabase.ts` - Supabase client setup
+7. `dashboard/src/lib/supabase-auth-utils.ts` - Auth utilities
 
 Then run:
 ```bash
-source ~/.nvm/nvm.sh && nvm use 20 && cd localai-admin-dashboard && npx pnpm build
+source ~/.nvm/nvm.sh && nvm use 20 && cd dashboard && npx pnpm build
 ```
 
 Confirm all checks pass before proceeding.

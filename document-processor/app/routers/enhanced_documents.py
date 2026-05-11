@@ -1409,15 +1409,19 @@ async def get_field_positions(
 
         # Find positions using docling service
         from app.services.docling_service import docling_service
-        positions = await docling_service.find_text_positions(
+        result = await docling_service.find_text_positions(
             temp_file_path,
             search_texts=search_texts
         )
 
+        positions = result.get("positions", [])
+        page_dimensions = result.get("page_dimensions", {})
+
         return JSONResponse(content={
             "filename": file.filename,
             "positions": positions,
-            "total_found": len(positions)
+            "total_found": len(positions),
+            "page_dimensions": {str(k): v for k, v in page_dimensions.items()},
         })
 
     except json.JSONDecodeError as e:

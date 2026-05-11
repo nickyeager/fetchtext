@@ -1424,124 +1424,182 @@ class DoclingService:
         self,
         file_path: Path,
         search_texts: List[str]
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Find positions of specific text strings in a document.
 
-        This method processes a document and finds where specific text strings
-        appear, returning position data including bounding boxes when available.
+        Uses PyMuPDF for PDFs (fast, precise character-level bounding boxes)
+        with Docling as fallback for non-PDF formats.
 
         Args:
             file_path: Path to the document
             search_texts: List of text strings to find
 
         Returns:
-            List of position data for found texts, each containing:
-            - text: The search text that was found
-            - found_in: Context where the text was found (truncated to 100 chars)
-            - page: Page number where found (1-indexed)
-            - bbox: Bounding box dict with x, y, width, height (may be None)
-            - element_type: Type of document element (e.g., 'TextItem', 'paragraph')
+            Dict with:
+            - positions: List of position data for found texts
+            - page_dimensions: Dict mapping page numbers to {width, height} in PDF points
         """
-        positions = []
-
-        # Return empty list for empty search
+        # Return empty for empty search
         if not search_texts:
-            return positions
+            return {"positions": [], "page_dimensions": {}}
 
         try:
-            # Determine file type and processing method
             file_suffix = file_path.suffix.lower()
 
-            # For text files, use enhanced text extraction
+            # For text files, use text-based search
             if file_suffix in ['.txt', '.text']:
-                return await self._find_text_positions_in_text_file(file_path, search_texts)
+                positions = await self._find_text_positions_in_text_file(file_path, search_texts)
+                return {"positions": positions, "page_dimensions": {}}
 
-            # For PDFs and other formats, use Docling if available
-            if not self.use_real_docling or not self.converter:
-                logger.warning("Docling not available for position extraction, falling back to text search")
-                return await self._find_text_positions_in_text_file(file_path, search_texts)
+            # For PDFs, use PyMuPDF for fast, precise bounding boxes
+            if file_suffix == '.pdf' and PYMUPDF_AVAILABLE:
+                return await asyncio.to_thread(
+                    self._find_text_positions_with_pymupdf, file_path, search_texts
+                )
 
-            # Convert document using Docling.
-            # Run in a thread to avoid blocking the event loop.
-            result = await asyncio.to_thread(self.converter.convert, str(file_path))
-            doc = result.document
+            # Fallback to Docling for non-PDF formats
+            if self.use_real_docling and self.converter:
+                return await self._find_text_positions_with_docling(file_path, search_texts)
 
-            # Build page height lookup for coordinate conversion
-            # PDF coordinates have origin at bottom-left, screen coords at top-left
-            page_heights: Dict[int, float] = {}
-            if hasattr(doc, 'pages') and doc.pages:
-                for page_id, page_data in doc.pages.items():
-                    if hasattr(page_data, 'size') and page_data.size:
-                        page_heights[page_id] = float(page_data.size.height)
-
-            # Extract text with positions from texts list (correct Docling API)
-            # doc.texts is a list of text items (TextItem, SectionHeaderItem, etc.)
-            if hasattr(doc, 'texts') and doc.texts:
-                for item in doc.texts:
-                    # Get text content from the item
-                    item_text = getattr(item, 'text', '') or ''
-                    if not item_text:
-                        continue
-
-                    # Check if any search text is in this item (case-insensitive)
-                    for search_text in search_texts:
-                        if search_text.lower() in item_text.lower():
-                            # Extract provenance/position data
-                            prov = getattr(item, 'prov', None)
-                            bbox_data = None
-                            page_num = 1
-
-                            if prov:
-                                # Docling prov is a list of provenance entries
-                                for p in prov:
-                                    # Get page number
-                                    if hasattr(p, 'page_no'):
-                                        page_num = p.page_no
-
-                                    # Get bounding box
-                                    if hasattr(p, 'bbox') and p.bbox:
-                                        bbox = p.bbox
-                                        # Docling uses l, t, r, b for left, top, right, bottom
-                                        # PDF coordinates: origin at bottom-left, y increases upward
-                                        # Screen coordinates: origin at top-left, y increases downward
-                                        # Convert: screen_y = page_height - pdf_top
-                                        page_height = page_heights.get(page_num, 792.0)  # Default to US Letter
-
-                                        x = float(bbox.l) if hasattr(bbox, 'l') else 0
-                                        # bbox.t is top (higher y in PDF), bbox.b is bottom (lower y in PDF)
-                                        # For screen coords, we want y from top of page
-                                        pdf_top = float(max(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
-                                        pdf_bottom = float(min(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
-                                        height = abs(pdf_top - pdf_bottom)
-                                        # Convert to screen coordinates (flip y-axis)
-                                        screen_y = page_height - pdf_top
-                                        width = abs(float(bbox.r - bbox.l)) if hasattr(bbox, 'r') and hasattr(bbox, 'l') else 0
-
-                                        bbox_data = {
-                                            "x": x,
-                                            "y": screen_y,
-                                            "width": width,
-                                            "height": height,
-                                            "page_height": page_height,  # Include for debugging
-                                        }
-                                    # Use first provenance entry with bbox
-                                    if bbox_data:
-                                        break
-
-                            positions.append({
-                                "text": search_text,
-                                "found_in": item_text[:100],
-                                "page": page_num,
-                                "bbox": bbox_data,
-                                "element_type": item.__class__.__name__ if hasattr(item, '__class__') else 'unknown'
-                            })
-
-            return positions
+            logger.warning("No text position extraction method available, falling back to text search")
+            positions = await self._find_text_positions_in_text_file(file_path, search_texts)
+            return {"positions": positions, "page_dimensions": {}}
 
         except Exception as e:
             logger.error(f"Error finding text positions: {e}")
-            return positions
+            return {"positions": [], "page_dimensions": {}}
+
+    @staticmethod
+    def _find_text_positions_with_pymupdf(
+        file_path: Path,
+        search_texts: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Find text positions using PyMuPDF (fitz).
+
+        Uses page.search_for() for precise character-level bounding boxes.
+        Coordinates are in PDF points with top-left origin (matching react-pdf).
+
+        Returns dict with 'positions' list and 'page_dimensions' dict.
+        """
+        positions = []
+        page_dimensions: Dict[int, Dict[str, float]] = {}
+
+        doc = pymupdf.open(str(file_path))
+        try:
+            for page_idx, page in enumerate(doc):
+                page_num = page_idx + 1
+                rect = page.rect
+                page_dimensions[page_num] = {
+                    "width": float(rect.width),
+                    "height": float(rect.height),
+                }
+
+                for search_text in search_texts:
+                    if not search_text or len(search_text.strip()) == 0:
+                        continue
+
+                    # search_for returns list of fitz.Rect for each match
+                    # Uses top-left origin, coordinates in PDF points
+                    matches = page.search_for(search_text, flags=pymupdf.TEXT_PRESERVE_WHITESPACE)
+
+                    if not matches:
+                        # Try case-insensitive by searching for lowercase
+                        # PyMuPDF search_for is case-insensitive by default,
+                        # but try with quads=False for better tolerance
+                        matches = page.search_for(search_text)
+
+                    for match_rect in matches:
+                        positions.append({
+                            "text": search_text,
+                            "found_in": search_text[:100],
+                            "page": page_num,
+                            "bbox": {
+                                "x": float(match_rect.x0),
+                                "y": float(match_rect.y0),
+                                "width": float(match_rect.width),
+                                "height": float(match_rect.height),
+                            },
+                            "element_type": "text_match",
+                        })
+                        # Only take the first match per search text per page
+                        break
+        finally:
+            doc.close()
+
+        return {"positions": positions, "page_dimensions": page_dimensions}
+
+    async def _find_text_positions_with_docling(
+        self,
+        file_path: Path,
+        search_texts: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Find text positions using Docling (fallback for non-PDF formats).
+        Returns whole-element bounding boxes.
+        """
+        positions = []
+        page_dimensions: Dict[int, Dict[str, float]] = {}
+
+        result = await asyncio.to_thread(self.converter.convert, str(file_path))
+        doc = result.document
+
+        # Build page dimensions lookup
+        page_heights: Dict[int, float] = {}
+        if hasattr(doc, 'pages') and doc.pages:
+            for page_id, page_data in doc.pages.items():
+                if hasattr(page_data, 'size') and page_data.size:
+                    h = float(page_data.size.height)
+                    w = float(page_data.size.width)
+                    page_heights[page_id] = h
+                    page_dimensions[page_id] = {"width": w, "height": h}
+
+        if hasattr(doc, 'texts') and doc.texts:
+            for item in doc.texts:
+                item_text = getattr(item, 'text', '') or ''
+                if not item_text:
+                    continue
+
+                for search_text in search_texts:
+                    if search_text.lower() in item_text.lower():
+                        prov = getattr(item, 'prov', None)
+                        bbox_data = None
+                        page_num = 1
+
+                        if prov:
+                            for p in prov:
+                                if hasattr(p, 'page_no'):
+                                    page_num = p.page_no
+
+                                if hasattr(p, 'bbox') and p.bbox:
+                                    bbox = p.bbox
+                                    page_height = page_heights.get(page_num, 792.0)
+                                    x = float(bbox.l) if hasattr(bbox, 'l') else 0
+                                    pdf_top = float(max(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
+                                    pdf_bottom = float(min(bbox.t, bbox.b)) if hasattr(bbox, 't') and hasattr(bbox, 'b') else 0
+                                    height = abs(pdf_top - pdf_bottom)
+                                    screen_y = page_height - pdf_top
+                                    width = abs(float(bbox.r - bbox.l)) if hasattr(bbox, 'r') and hasattr(bbox, 'l') else 0
+
+                                    bbox_data = {
+                                        "x": x,
+                                        "y": screen_y,
+                                        "width": width,
+                                        "height": height,
+                                    }
+                                if bbox_data:
+                                    break
+
+                        positions.append({
+                            "text": search_text,
+                            "found_in": item_text[:100],
+                            "page": page_num,
+                            "bbox": bbox_data,
+                            "element_type": item.__class__.__name__ if hasattr(item, '__class__') else 'unknown'
+                        })
+
+        return {"positions": positions, "page_dimensions": page_dimensions}
 
     async def _find_text_positions_in_text_file(
         self,

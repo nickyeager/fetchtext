@@ -157,7 +157,7 @@ def wait_for_services(timeout: int = 300) -> bool:
     key_services = [
         'supabase-kong',
         'supabase-auth', 
-        'localai-admin-dashboard',
+        'dashboard',
         'supabase-db'
     ]
     
@@ -173,7 +173,7 @@ def wait_for_services(timeout: int = 300) -> bool:
                     success, _, _ = run_command('curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health')
                     if success:
                         healthy_services += 1
-                elif service == 'localai-admin-dashboard':
+                elif service == 'dashboard':
                     success, _, _ = run_command('curl -s -o /dev/null -w "%{http_code}" http://localhost:5174/health')
                     if success:
                         healthy_services += 1
@@ -215,7 +215,7 @@ def main():
     
     problem_containers = [
         'qdrant', 'supabase-kong', 'supabase-auth', 
-        'localai-admin-dashboard', 'supabase-db'
+        'dashboard', 'supabase-db'
     ]
     
     for container in remaining:
@@ -258,7 +258,7 @@ def main():
         else:
             print("\n⚠️  Some services may not be fully ready. Check logs:")
             print("   docker logs supabase-kong")
-            print("   docker logs localai-admin-dashboard")
+            print("   docker logs dashboard")
     else:
         print("\n❌ Failed to start main services")
         return 1

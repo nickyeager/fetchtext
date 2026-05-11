@@ -5,7 +5,7 @@ Seed a Supabase auth user (managed or local) for the dashboard.
 Usage (from repo root):
     python scripts/seed_supabase_user.py \
             --email admin@fetchtext.local \
-            --password ***REMOVED-TEST-PASSWORD*** \
+            --password CHANGEME-set-via-TEST_USER_PASSWORD-env \
             --supabase-url "$(az keyvault secret show --vault-name ft-dev-kv --name supabase-url --query value -o tsv)" \
             --service-role-key "$(az keyvault secret show --vault-name ft-dev-kv --name supabase-service-role --query value -o tsv)"
 """
@@ -39,7 +39,7 @@ def create_user(supabase_url: str, service_key: str, email: str, password: str) 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed a Supabase auth user.")
     parser.add_argument("--email", required=False, default=os.getenv("SEED_USER_EMAIL", "admin@fetchtext.local"))
-    parser.add_argument("--password", required=False, default=os.getenv("SEED_USER_PASSWORD", "***REMOVED-TEST-PASSWORD***"))
+    parser.add_argument("--password", required=False, default=os.getenv("SEED_USER_PASSWORD", "CHANGEME-set-via-TEST_USER_PASSWORD-env"))
     parser.add_argument("--supabase-url", required=False, default=os.getenv("SUPABASE_URL") or os.getenv("SUPABASE_INTERNAL_URL"))
     parser.add_argument("--service-role-key", required=False, default=os.getenv("SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
     return parser.parse_args()

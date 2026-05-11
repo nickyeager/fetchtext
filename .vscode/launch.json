@@ -10,7 +10,7 @@
             "request": "launch",
             "name": "Run Vite (pnpm dev)",
             "command": "pnpm dev",
-            "cwd": "${workspaceFolder}/localai-admin-dashboard"
+            "cwd": "${workspaceFolder}/dashboard"
         },
         {
             // Launch Chrome with proper webRoot and Vite source map mappings
@@ -18,7 +18,7 @@
             "request": "launch",
             "name": "Chrome: Vite App",
             "url": "http://localhost:5173",
-            "webRoot": "${workspaceFolder}/localai-admin-dashboard",
+            "webRoot": "${workspaceFolder}/dashboard",
             "sourceMaps": true,
             "sourceMapPathOverrides": {
                 "webpack:///*": "${webRoot}/*",
@@ -31,7 +31,7 @@
                 "@/*": "${webRoot}/src/*"
             },
             "skipFiles": [
-                "${workspaceFolder}/localai-admin-dashboard/node_modules/**/*.js",
+                "${workspaceFolder}/dashboard/node_modules/**/*.js",
                 "<node_internals>/**/*.js"
             ]
         },
@@ -41,7 +41,7 @@
             "request": "attach",
             "name": "Attach: Chrome",
             "port": 9222,
-            "webRoot": "${workspaceFolder}/localai-admin-dashboard",
+            "webRoot": "${workspaceFolder}/dashboard",
             "sourceMaps": true,
             "sourceMapPathOverrides": {
                 "webpack:///*": "${webRoot}/*",

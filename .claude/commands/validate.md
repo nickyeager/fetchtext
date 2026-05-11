@@ -7,7 +7,7 @@ Run comprehensive validation. Execute in sequence:
 
 1. **Frontend Build** (includes type checking):
    ```bash
-   source ~/.nvm/nvm.sh && nvm use 20 && cd localai-admin-dashboard && npx pnpm build
+   source ~/.nvm/nvm.sh && nvm use 20 && cd dashboard && npx pnpm build
    ```
 
 2. **Backend Health Check**:

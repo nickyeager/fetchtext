@@ -112,7 +112,7 @@ FetchText production uses three deployment surfaces:
 ### Administrative Interfaces
 | Service | External Port | Internal Container:Port | Description |
 |---------|---------------|------------------------|-------------|
-| **LocalAI Admin Dashboard** | `:5174` | `localai-admin-dashboard:3005` | Main admin interface |
+| **LocalAI Admin Dashboard** | `:5174` | `dashboard:3005` | Main admin interface |
 | **SearXNG Search** | `:8006` | `searxng:8080` | Private search engine |
 
 ## Direct Access Ports (Not behind Caddy)
@@ -309,7 +309,7 @@ docker compose up -d
 docker compose down
 
 # Rebuild specific service
-docker compose up -d --build localai-admin-dashboard
+docker compose up -d --build dashboard
 
 # View logs
 docker compose logs -f [service_name]

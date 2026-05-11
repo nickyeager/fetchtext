@@ -14,7 +14,7 @@ FetchText extends local-ai-packaged with the following original components:
       FastAPI service for document ingestion, OCR, and structured data
       extraction using Docling and LLM-based entity extraction.
 
-  - LocalAI Admin Dashboard (localai-admin-dashboard/)
+  - LocalAI Admin Dashboard (dashboard/)
       React/TypeScript application providing the FetchText user interface,
       smart template system, and integration management.
 

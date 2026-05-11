@@ -26,7 +26,7 @@ from pathlib import Path
 
 LOCAL_URL = "http://localhost:8090"
 PROD_URL = "https://your-document-processor.example.com"
-DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent.parent / "localai-admin-dashboard" / "tests" / "fixtures" / "Stucco Contract V1.pdf"
+DEFAULT_FIXTURE = Path(__file__).resolve().parent.parent.parent / "dashboard" / "tests" / "fixtures" / "Stucco Contract V1.pdf"
 
 
 def run_timing(file_path: Path, backend_url: str) -> dict:

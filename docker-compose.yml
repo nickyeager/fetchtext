@@ -354,13 +354,13 @@ services:
         max-size: "1m"
         max-file: "1"      
 
-  localai-admin-dashboard:
+  dashboard:
     build:
-      context: ./localai-admin-dashboard
+      context: ./dashboard
       args:
         VITE_SUPABASE_URL: http://localhost:8000
         VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
-    container_name: localai-admin-dashboard
+    container_name: dashboard
     restart: unless-stopped
     ports:
       - "5174:3005"
@@ -652,7 +652,7 @@ services:
       DB_ENC_KEY: supabaserealtime
       DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
       API_JWT_SECRET: ${JWT_SECRET}
-      SECRET_KEY_BASE: ***REMOVED-SECRET-KEY-BASE***
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
       ERL_AFLAGS: "-proto_dist inet_tcp"
       DNS_NODES: "''"
       RLIMIT_NOFILE: "10000"

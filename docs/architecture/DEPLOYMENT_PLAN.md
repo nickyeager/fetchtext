@@ -7,7 +7,7 @@ FetchText is a complex multi-service AI platform consisting of ~30 Docker contai
 ## System Architecture Overview
 
 ### Core Services
-- **Frontend**: React/TypeScript (localai-admin-dashboard) on port 5174
+- **Frontend**: React/TypeScript (dashboard) on port 5174
 - **API Backend**: Python FastAPI (document-processor) on port 8090
 - **Authentication/Database**: Supabase stack (8 containers)
 - **Workflow Engine**: N8N on port 5678
