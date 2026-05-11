@@ -1,5 +1,9 @@
 # FetchText
 
+[![CI](https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyeager/fetchtext/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 **Self-hosted document processing, extraction, and generation — powered by
 local or cloud LLMs.**
 
