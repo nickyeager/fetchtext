@@ -1,0 +1,63 @@
+name: Bug report
+description: Report something that is broken or behaving unexpectedly.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more we can reproduce locally, the faster we can fix it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the unexpected behavior.
+      placeholder: "When I uploaded a 12-page PDF with the `invoice` template, extraction returned an empty result."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Smallest-possible recipe that triggers the bug.
+      placeholder: |
+        1. `docker compose up -d`
+        2. Upload `examples/sample-invoice.pdf` via the UI
+        3. Select template `invoice`
+        4. Click Extract
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, fetchtext version/commit, profile used, LLM provider.
+      value: |
+        - OS:
+        - Docker version:
+        - fetchtext version / commit:
+        - Profile:
+        - LLM provider:
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / screenshots
+      description: Paste any error output, console messages, or screenshots that help locate the failure.
+      render: shell
+    validations:
+      required: false
