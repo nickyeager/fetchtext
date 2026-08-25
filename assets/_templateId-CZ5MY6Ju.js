@@ -1,0 +1,2 @@
+import{j as t}from"./index-DIIWZ4Cb.js";import{A as e,b as o}from"./alert-pxRCzfOU.js";import{T as n}from"./triangle-alert-izyIbNFp.js";const i=()=>t.jsx("div",{className:"container mx-auto p-6",children:t.jsxs(e,{variant:"destructive",children:[t.jsx(n,{className:"h-4 w-4"}),t.jsx(o,{children:"Smart template not found. It may have been deleted or you don't have permission to view it."})]})});export{i as notFoundComponent};
+//# sourceMappingURL=_templateId-CZ5MY6Ju.js.map

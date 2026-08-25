@@ -1,0 +1,2 @@
+import{j as r}from"./index-DIIWZ4Cb.js";import{A as o,b as s}from"./alert-pxRCzfOU.js";import{T as t}from"./triangle-alert-izyIbNFp.js";const m=({error:e})=>r.jsx("div",{className:"container mx-auto p-6",children:r.jsxs(o,{variant:"destructive",children:[r.jsx(t,{className:"h-4 w-4"}),r.jsxs(s,{children:["Error loading smart template: ",e.message||"Unknown error occurred"]})]})});export{m as errorComponent};
+//# sourceMappingURL=_templateId-BQU9wUNO.js.map
